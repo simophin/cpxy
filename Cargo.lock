@@ -449,6 +449,7 @@ dependencies = [
  "async-std",
  "bytes",
  "futures",
+ "httparse",
  "tide",
 ]
 
