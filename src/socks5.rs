@@ -1,8 +1,9 @@
 use crate::cursor::Cursor;
 use crate::socks5::Status::Completed;
-use futures::{AsyncBufRead, AsyncBufReadExt, AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
+use async_std::net::TcpStream;
+use futures::{select, AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt, FutureExt};
 use std::fmt::{Debug, Formatter};
-use std::io::Error;
+use std::io::ErrorKind;
 use std::net::{Ipv4Addr, Ipv6Addr};
 use tide::log;
 
@@ -55,6 +56,51 @@ enum Address {
     IPv4(Ipv4Addr),
     IPv6(Ipv6Addr),
     DomainName(String),
+}
+
+impl Default for Address {
+    fn default() -> Self {
+        Self::IPv4(Ipv4Addr::UNSPECIFIED)
+    }
+}
+
+impl ToString for Address {
+    fn to_string(&self) -> String {
+        match self {
+            Address::IPv4(a) => a.to_string(),
+            Address::IPv6(a) => a.to_string(),
+            Address::DomainName(n) => n.clone(),
+        }
+    }
+}
+
+impl Address {
+    async fn write(&self, w: &mut (impl AsyncWrite + Unpin + ?Sized)) -> anyhow::Result<()> {
+        match self {
+            Address::IPv6(a) => {
+                let mut buf = [0u8; 17];
+                buf[0] = 0x4;
+                (&mut buf[1..17]).copy_from_slice(&a.octets());
+                w.write_all(&buf[..]).await?
+            }
+
+            Address::IPv4(a) => {
+                let mut buf = [0u8; 5];
+                buf[0] = 0x1;
+                (&mut buf[1..5]).copy_from_slice(&a.octets());
+                w.write_all(&buf[..]).await?
+            }
+
+            Address::DomainName(n) => {
+                let mut v = Vec::with_capacity(1 + n.as_bytes().len());
+                v.push(n.len() as u8);
+                v.extend_from_slice(n.as_bytes());
+                w.write_all(&v).await?;
+            }
+        }
+
+        Ok(())
+    }
 }
 
 impl Parsable for Address {
@@ -116,7 +162,11 @@ struct ClientConnRequest {
     port: u16,
 }
 
-#[derive(Debug)]
+const CMD_CONNECT_TCP: u8 = 1;
+const CMD_BIND_TCP: u8 = 2;
+const CMD_BIND_UDP: u8 = 3;
+
+#[derive(Debug, Copy, Clone)]
 struct ConnStatusCode(u8);
 
 impl std::fmt::Display for ConnStatusCode {
@@ -201,6 +251,18 @@ async fn parse_buf<T: Parsable, const N: usize>(
     }
 }
 
+async fn write_response(
+    tx: &mut (impl AsyncWrite + Unpin + ?Sized),
+    status: ConnStatusCode,
+    bound_address: Address,
+    bound_port: u16,
+) -> anyhow::Result<()> {
+    tx.write_all(&[0x5, status.0, 0]).await?;
+    bound_address.write(tx).await?;
+    tx.write_all(&bound_port.to_be_bytes()).await?;
+    Ok(())
+}
+
 pub async fn serve_socks5(
     rx: &mut (impl AsyncRead + Unpin + ?Sized),
     tx: &mut (impl AsyncWrite + Unpin + ?Sized),
@@ -225,13 +287,42 @@ pub async fn serve_socks5(
     }
 
     match parse_buf(&mut cursor, rx).await {
-        Ok(ClientConnRequest { cmd, address, port }) => {}
+        Ok(ClientConnRequest { cmd, address, port }) if cmd == CMD_CONNECT_TCP => {
+            let (upstream_rx, upstream_tx) =
+                match TcpStream::connect(format!("{}:{}", address.to_string(), port)).await {
+                    Ok(c) => c.split(),
+                    Err(e) => {
+                        let code = ConnStatusCode(match e.kind() {
+                            ErrorKind::ConnectionReset | ErrorKind::ConnectionRefused => 0x5,
+                            ErrorKind::TimedOut => 0x3,
+                            _ => 0x1,
+                        });
+                        write_response(tx, code, Default::default(), 0).await?;
+                        return Err(e.into());
+                    }
+                };
+
+            write_response(tx, ConnStatusCode(0), Default::default(), 0).await?;
+
+            if let Err(e) = select! {
+                result = async_std::io::copy(upstream_rx, tx).fuse() => result,
+                result = async_std::io::copy(rx, upstream_tx).fuse() => result,
+            } {
+                return Err(e.into());
+            }
+            Ok(())
+        }
+        Ok(r) => {
+            write_response(tx, ConnStatusCode(0x7), Default::default(), 0).await?;
+            Err(anyhow::anyhow!("Unsupported command: {}", r.cmd))
+        }
         Err(e) if e.is::<ConnStatusCode>() => {
-            let code: ConnStatusCode = e.downcast().unwrap();
-            tx.write_all()
+            write_response(tx, *e.downcast_ref().unwrap(), Default::default(), 0).await?;
+            Err(e.into())
+        }
+        Err(e) => {
+            write_response(tx, ConnStatusCode(0x01), Default::default(), 0).await?;
+            Err(e.into())
         }
     }
-    log::info!("{:?}", conn_req);
-
-    Ok(())
 }
