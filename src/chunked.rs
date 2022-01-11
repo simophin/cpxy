@@ -1,4 +1,4 @@
-use futures::{AsyncBufRead, AsyncBufReadExt, AsyncReadExt, AsyncWrite, AsyncWriteExt};
+use futures::{AsyncBufRead, AsyncWrite};
 
 pub async fn copy_chunked_to_raw(
     r: &mut (impl AsyncBufRead + Unpin + ?Sized),
