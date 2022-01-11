@@ -22,7 +22,7 @@ jobs:
         # A list of files, directories, and wildcard patterns to cache and restore
         path: target
         # An explicit key for restoring and saving the cache
-        key: hashFiles("Cargo.lock")
+        key: ${{ runner.os }}-${{ hashFiles('**/Cargo.lock') }}
     - name: Build
       run: cargo build --verbose
     - name: Run tests
