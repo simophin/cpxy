@@ -9,6 +9,7 @@
     <option name="withSudo" value="false" />
     <option name="backtrace" value="SHORT" />
     <envs>
+      <env name="RUST_LOG" value="info" />
       <env name="UPSTREAM_HOST" value="l.fanchao.dev" />
     </envs>
     <option name="isRedirectInput" value="false" />
