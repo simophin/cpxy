@@ -334,5 +334,32 @@ impl<'a> UdpPacket<'a> {
         }
 
         let frag_no = msg[2];
+        msg = &msg[3..];
+        let addr = match Address::parse(msg)? {
+            ParseStatus::Incomplete => return Err(anyhow::anyhow!("Incomplete address")),
+            Completed((offset, r)) => {
+                msg = &msg[offset..];
+                r
+            }
+        };
+
+        let data = msg;
+        Ok(Self {
+            frag_no,
+            addr,
+            data,
+        })
+    }
+
+    pub async fn write_packet(
+        frag_no: u8,
+        addr: &Address,
+        data: &[u8],
+        tx: &mut (impl AsyncWrite + Unpin + ?Sized),
+    ) -> anyhow::Result<()> {
+        tx.write_all(&[0x00, 0x00, frag_no]).await?;
+        addr.write(tx).await?;
+        tx.write_all(data).await?;
+        Ok(())
     }
 }
