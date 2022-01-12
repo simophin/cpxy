@@ -8,11 +8,9 @@ edition = "2021"
 [dependencies]
 async-std = { version = "1", features = ["attributes", "unstable"] }
 anyhow = "1"
-bytes = "1"
 async-native-tls = "0"
 futures = "0"
 httparse = "1"
 urlencoding = "2"
 log = "0"
 env_logger = "0"
-url = "2"
