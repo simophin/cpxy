@@ -44,7 +44,7 @@ impl Parsable for ClientGreeting {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Eq, PartialEq)]
 pub enum Address {
     IPv4 {
         ip: [u8; 4],
@@ -318,5 +318,21 @@ pub async fn wait_for_handshake(
             write_response(tx, ConnStatusCode(0x01), &Default::default()).await?;
             Err(e.into())
         }
+    }
+}
+
+pub struct UdpPacket<'a> {
+    pub frag_no: u8,
+    pub addr: Address,
+    pub data: &'a [u8],
+}
+
+impl<'a> UdpPacket<'a> {
+    pub fn parse(mut msg: &'a [u8]) -> anyhow::Result<Self> {
+        if msg.len() < 4 || msg[0] != 0 || msg[1] != 0 {
+            return Err(anyhow::anyhow!("Invalid UDP header"));
+        }
+
+        let frag_no = msg[2];
     }
 }
