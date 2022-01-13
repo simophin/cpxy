@@ -2,7 +2,7 @@ use std::fmt::{Debug, Display, Formatter};
 use std::io::ErrorKind::UnexpectedEof;
 
 use bytes::BufMut;
-use futures::{AsyncRead, AsyncReadExt};
+use futures::{AsyncBufRead, AsyncRead, AsyncReadExt};
 
 #[derive(Debug)]
 pub enum ParseError {
@@ -45,23 +45,3 @@ pub trait Writable {
     fn write_len(&self) -> usize;
     fn write(&self, buf: &mut impl BufMut) -> bool;
 }
-//
-// pub async fn parse_async<'a: 'b, 'b, T: Parsable<'a> + 'a>(
-//     r: &'b mut (impl AsyncRead + Unpin + ?Sized),
-//     buf: &'a mut [u8],
-// ) -> anyhow::Result<(usize, T)> {
-//     let mut total_bytes_read = 0;
-//     loop {
-//         let bytes_read = r.read(&mut buf[total_bytes_read..]).await?;
-//         if bytes_read == 0 {
-//             return Err(std::io::Error::from(UnexpectedEof).into());
-//         }
-//
-//         total_bytes_read += bytes_read;
-//         let mut buf = &buf[..total_bytes_read];
-//         match T::parse(&mut buf)? {
-//             Some(v) => return Ok((0, v)),
-//             None => continue,
-//         }
-//     }
-// }
