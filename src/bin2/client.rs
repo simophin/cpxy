@@ -3,33 +3,26 @@ use async_std::net::{TcpListener, TcpStream};
 use async_std::task::spawn;
 use cjk_proxy::chunked::copy_with_cursor;
 use cjk_proxy::cursor::Cursor;
-use cjk_proxy::parse::{parse_cursor, Parsable, ParseStatus};
+use cjk_proxy::parse::{Parsable, ParseError, ParseResult};
 use cjk_proxy::socks5::{
-    wait_for_handshake, write_response, Address, ClientConnRequest, ConnStatusCode, CMD_BIND_UDP,
-    CMD_CONNECT_TCP,
+    Address, ClientConnRequest, ConnStatusCode, CMD_BIND_UDP, CMD_CONNECT_TCP,
 };
 use futures::{select, AsyncReadExt, AsyncWriteExt, FutureExt};
 use httparse::{Status, EMPTY_HEADER};
 
 #[derive(Debug)]
-struct HttpParseResult {
-    bound_address: Address,
+struct HttpParseResult<'a> {
+    bound_address: Address<'a>,
 }
 
-impl Parsable for HttpParseResult {
-    fn parse(buf: &[u8]) -> anyhow::Result<ParseStatus<(usize, Self)>>
-    where
-        Self: Sized,
-    {
+impl<'a> Parsable<'a> for HttpParseResult<'a> {
+    fn parse(buf: &'a [u8]) -> ParseResult<'a, Self> {
         let mut headers = [EMPTY_HEADER; 20];
         let mut response = httparse::Response::new(&mut headers);
         match response.parse(buf)? {
             Status::Complete(offset) => {
                 if response.code != Some(101) {
-                    return Err(anyhow::anyhow!(
-                        "Expecting 101 response, got: {:?}",
-                        response
-                    ));
+                    return Err(ParseError::unexpected("http code", response.code, "101"));
                 }
 
                 let bound_address = String::from_utf8_lossy(
@@ -37,7 +30,7 @@ impl Parsable for HttpParseResult {
                         .headers
                         .iter()
                         .find(|x| x.name.eq_ignore_ascii_case("X-Bound-Address"))
-                        .ok_or_else(|| anyhow!("No bound address set"))?
+                        .ok_or_else(|| ParseError::unexpected("bound_address", "", "non empty"))?
                         .value,
                 );
 
@@ -46,16 +39,23 @@ impl Parsable for HttpParseResult {
                         .headers
                         .iter()
                         .find(|x| x.name.eq_ignore_ascii_case("X-Bound-Port"))
-                        .ok_or_else(|| anyhow!("No bound port set"))?
+                        .ok_or_else(|| ParseError::unexpected("bound_port", "", "non empty"))?
                         .value,
-                )
-                .as_ref()
-                .parse()?;
+                );
 
-                Ok(ParseStatus::Completed((
-                    offset,
+                Ok(Some((
+                    &buf[offset..],
                     Self {
-                        bound_address: Address::from(bound_address.as_ref(), bound_port)?,
+                        bound_address: Address::from(
+                            bound_address.as_ref(),
+                            bound_port.as_ref().parse().map_err(|_| {
+                                ParseError::unexpected(
+                                    "bound port",
+                                    bound_port.to_string(),
+                                    "numeric port",
+                                )
+                            })?,
+                        )?,
                     },
                 )))
             }
@@ -70,7 +70,11 @@ async fn serve_sock_conn(sock_stream: TcpStream, hostname: &str, port: u16) -> a
     let ClientConnRequest { cmd, address } =
         wait_for_handshake(&mut socks_rx, &mut socks_tx).await?;
 
-    log::info!("ClientConnRequest(cmd = {}, address = {:?})", cmd, address);
+    log::info!(
+        "ClientConnRequest(cmd = {:?}, address = {:?})",
+        cmd,
+        address
+    );
 
     let url = match cmd {
         CMD_CONNECT_TCP => urlencoding::encode(&format!("tcp://{}", address)).into_owned(),

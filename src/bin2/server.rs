@@ -1,49 +1,50 @@
 use async_std::net::{TcpListener, TcpStream};
 use async_std::task::spawn;
-use cjk_proxy::cursor::Cursor;
-use cjk_proxy::parse::{parse_cursor, Parsable, ParseStatus};
 use futures::{select, AsyncReadExt, AsyncWriteExt, FutureExt};
 use httparse::Status;
+use std::borrow::Cow;
+
+use cjk_proxy::cursor::Cursor;
+use cjk_proxy::parse::{Parsable, ParseError, ParseResult};
 
 #[derive(Debug)]
-struct ProxyRequest {
-    protocol: String,
-    address: String,
+struct ProxyRequest<'a> {
+    protocol: Cow<'a, str>,
+    address: Cow<'a, str>,
 }
 
-impl Parsable for ProxyRequest {
-    fn parse(buf: &[u8]) -> anyhow::Result<ParseStatus<(usize, Self)>>
-    where
-        Self: Sized,
-    {
+impl<'a> Parsable<'a> for ProxyRequest<'a> {
+    fn parse(buf: &'a [u8]) -> ParseResult<'a, Self> {
         let mut headers = [httparse::EMPTY_HEADER; 20];
         let mut req = httparse::Request::new(&mut headers);
         match req.parse(buf)? {
             Status::Complete(offset) => match req.path {
                 Some(v) => {
-                    let v = urlencoding::decode(&v[1..])?;
+                    let v = urlencoding::decode(&v[1..]).map_err(|_| {
+                        ParseError::unexpected("path", v.to_string(), "valid url encoded path")
+                    })?;
                     let mut splits = v.split("://");
                     let protocol = splits
                         .next()
-                        .ok_or_else(|| anyhow::anyhow!("Invalid url: {}", v))?;
+                        .ok_or_else(|| ParseError::unexpected("protocol", v.to_string(), "://"))?;
                     let address = splits
                         .next()
-                        .ok_or_else(|| anyhow::anyhow!("Invalid url: {}", v))?;
+                        .ok_or_else(|| ParseError::unexpected("protocol", v.to_string(), "://"))?;
                     if protocol.trim().is_empty() || address.trim().is_empty() {
-                        return Err(anyhow::anyhow!("Invalid url: {}", v));
+                        return Err(ParseError::unexpected("protocol/address", "", "non empty"));
                     }
 
-                    Ok(ParseStatus::Completed((
-                        offset,
+                    Ok(Some((
+                        &buf[offset..],
                         Self {
-                            protocol: protocol.to_string(),
-                            address: address.to_string(),
+                            protocol: Cow::Borrowed(protocol),
+                            address: Cow::Borrowed(address),
                         },
                     )))
                 }
-                _ => return Err(anyhow::anyhow!("Unknown path: {:?}", req.path)),
+                _ => return Err(ParseError::unexpected("path", "", "non empty")),
             },
-            Status::Partial => Ok(ParseStatus::Incomplete),
+            Status::Partial => Ok(None),
         }
     }
 }
@@ -62,9 +63,9 @@ async fn serve_client(socket: TcpStream) -> anyhow::Result<()> {
         }
     };
 
-    match protocol.as_str() {
+    match protocol.as_ref() {
         "tcp" => {
-            let upstream = match TcpStream::connect(address).await {
+            let upstream = match TcpStream::connect(address.as_ref()).await {
                 Ok(r) => r,
                 Err(e) => {
                     tx.write_all(b"HTTP/1.1 500\r\n\r\n").await?;
