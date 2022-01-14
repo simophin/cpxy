@@ -1,10 +1,12 @@
-use crate::parse::{Parsable, ParseError, ParseResult, Writable};
-use async_std::net::ToSocketAddrs;
-use bytes::{Buf, BufMut};
 use std::borrow::Cow;
 use std::fmt::Formatter;
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr, SocketAddrV4, SocketAddrV6};
 use std::str::FromStr;
+
+use async_std::net::ToSocketAddrs;
+use bytes::{Buf, BufMut};
+
+use crate::parse::{Parsable, ParseError, ParseResult, Writable};
 
 #[derive(Debug, Eq, PartialEq, Clone)]
 pub enum Address<'a> {

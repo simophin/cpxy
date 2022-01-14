@@ -1,4 +1,6 @@
 use std::fmt::{Debug, Display, Formatter};
+use std::future::Future;
+use std::io::BufRead;
 use std::io::ErrorKind::UnexpectedEof;
 
 use bytes::BufMut;

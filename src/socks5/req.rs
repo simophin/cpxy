@@ -1,6 +1,8 @@
-use super::Address;
-use crate::parse::{Parsable, ParseError, ParseResult};
 use bytes::Buf;
+
+use crate::parse::{Parsable, ParseError, ParseResult};
+
+use super::Address;
 
 #[derive(Debug, Copy, Clone, Eq, PartialEq)]
 pub struct ConnStatusCode(u8);
@@ -69,11 +71,11 @@ impl<'a> Parsable<'a> for ClientConnRequest<'a> {
 
 type Auth = u8;
 
-const AUTH_NO_PASSWORD: Auth = 0x0;
+pub const AUTH_NO_PASSWORD: Auth = 0x0;
 
 #[derive(Debug, Clone)]
 pub struct ClientGreeting<'a> {
-    auths: &'a [Auth],
+    pub auths: &'a [Auth],
 }
 
 impl<'a> Parsable<'a> for ClientGreeting<'a> {
