@@ -7,6 +7,7 @@ use std::net::SocketAddr;
 
 use crate::socks5::{negotiate_request, Address, ClientConnRequest, Command, ConnStatusCode};
 use crate::udp::{copy_frame_to_socks5_udp, copy_socks5_udp_to_frame};
+use crate::utils::copy_io;
 
 async fn negotiate_with_server(
     upstream_host: &str,
@@ -62,10 +63,9 @@ async fn serve_client_tcp(
 
     let (upstream_rx, upstream_tx) = upstream.split();
     select! {
-        r1 = async_std::io::copy(rx, upstream_tx).fuse() => r1?,
-        r2 = async_std::io::copy(upstream_rx, tx).fuse() => r2?,
-    };
-    Ok(())
+        r1 = copy_io(rx, upstream_tx).fuse() => r1,
+        r2 = copy_io(upstream_rx, tx).fuse() => r2,
+    }
 }
 
 async fn prepare_client_udp(

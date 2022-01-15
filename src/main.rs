@@ -4,7 +4,8 @@ mod http;
 mod parse;
 mod server;
 mod socks5;
-pub mod udp;
+mod udp;
+mod utils;
 
 use futures::{select, FutureExt};
 

@@ -1,9 +1,7 @@
 use std::fmt::{Debug, Formatter};
 use std::io::Cursor;
-use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr, SocketAddrV4, SocketAddrV6};
-use std::str::FromStr;
+use std::net::{Ipv4Addr, Ipv6Addr, SocketAddr, SocketAddrV4, SocketAddrV6};
 
-use async_std::net::ToSocketAddrs;
 use bytes::{Buf, BufMut};
 
 use crate::parse::{Parsable, ParseError, ParseResult, Writable};
@@ -152,29 +150,6 @@ impl std::fmt::Display for Address {
         match self {
             Self::IP(addr) => std::fmt::Display::fmt(addr, f),
             Self::Name(name, port) => f.write_fmt(format_args!("{}:{}", name, port)),
-        }
-    }
-}
-
-impl Address {
-    pub async fn to_sock_addrs(&self) -> anyhow::Result<SocketAddr> {
-        match self {
-            Address::IP(addr) => Ok(addr.clone()),
-            Address::Name(name, port) => (name.as_ref(), *port)
-                .to_socket_addrs()
-                .await?
-                .next()
-                .ok_or_else(|| anyhow::anyhow!("Unable to solve domain {}", name)),
-        }
-    }
-
-    pub fn from(s: &str, port: u16) -> anyhow::Result<Self> {
-        match IpAddr::from_str(s) {
-            Ok(IpAddr::V4(addr)) => Ok(Address::IP(SocketAddr::V4(SocketAddrV4::new(addr, port)))),
-            Ok(IpAddr::V6(addr)) => Ok(Address::IP(SocketAddr::V6(SocketAddrV6::new(
-                addr, port, 0, 0,
-            )))),
-            Err(_) => Ok(Self::Name(s.to_string(), port)),
         }
     }
 }

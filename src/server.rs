@@ -1,8 +1,8 @@
 use crate::http;
 use crate::http::Request;
 use crate::udp::{copy_frame_to_udp, copy_udp_to_frame};
+use crate::utils::copy_io;
 use anyhow::anyhow;
-use async_std::io::copy;
 use async_std::net::{TcpListener, TcpStream, UdpSocket};
 use async_std::task::spawn;
 use futures::{select, AsyncReadExt, FutureExt};
@@ -28,10 +28,9 @@ async fn serve_client_tcp(mut sock: TcpStream, address: String) -> anyhow::Resul
     let (upstream_rx, upstream_tx) = upstream.split();
     let (rx, tx) = sock.split();
     select! {
-        r1 = copy(upstream_rx, tx).fuse() => r1?,
-        r2 = copy(rx, upstream_tx).fuse() => r2?,
-    };
-    Ok(())
+        r1 = copy_io(upstream_rx, tx).fuse() => r1,
+        r2 = copy_io(rx, upstream_tx).fuse() => r2,
+    }
 }
 
 async fn prepare_client_udp(address: &str) -> anyhow::Result<(UdpSocket, SocketAddr)> {
