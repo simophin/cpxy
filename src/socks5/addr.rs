@@ -46,11 +46,11 @@ impl Parsable for Address {
             }
 
             0x3 => {
-                if buf.remaining() < 2 {
+                if buf.remaining() < 1 {
                     return Ok(None);
                 }
 
-                let name_len = buf.get_u16() as usize;
+                let name_len = buf.get_u8() as usize;
                 if buf.remaining() < name_len + 2 {
                     return Ok(None);
                 }
@@ -99,7 +99,7 @@ impl Writable for Address {
         3 + match self {
             Address::IP(SocketAddr::V4(_)) => 4,
             Address::IP(SocketAddr::V6(_)) => 16,
-            Address::Name(name, _) => 2 + name.as_bytes().len(),
+            Address::Name(name, _) => 1 + name.as_bytes().len(),
         }
     }
 
@@ -128,16 +128,16 @@ impl Writable for Address {
                 buf.put_u16(addr.port());
             }
             Address::Name(host, port) => {
-                if buf.remaining_mut() < 1 + 2 + host.as_bytes().len() + 2 {
+                if buf.remaining_mut() < 1 + 1 + host.as_bytes().len() + 2 {
                     return false;
                 }
 
-                if host.len() > u16::MAX as usize {
+                if host.len() > u8::MAX as usize {
                     return false;
                 }
 
                 buf.put_u8(0x3);
-                buf.put_u16(host.as_bytes().len() as u16);
+                buf.put_u8(host.as_bytes().len() as u8);
                 buf.put_slice(host.as_bytes());
                 buf.put_u16(*port);
             }

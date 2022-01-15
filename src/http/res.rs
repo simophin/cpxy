@@ -32,6 +32,15 @@ impl Response {
         Ok(())
     }
 
+    pub async fn write_rejection(
+        reason: &str,
+        w: &mut (impl AsyncWrite + Unpin + ?Sized),
+    ) -> anyhow::Result<()> {
+        w.write_all(format!("HTTP/1.1 500 {reason}\r\n\r\n").as_bytes())
+            .await?;
+        Ok(())
+    }
+
     pub fn parse(buf: &[u8]) -> Result<Option<Self>, ParseError> {
         let mut headers = [EMPTY_HEADER; 20];
         let mut response = httparse::Response::new(&mut headers);

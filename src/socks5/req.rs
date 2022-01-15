@@ -39,7 +39,7 @@ pub struct ClientConnRequest {
 
 impl ClientConnRequest {
     pub fn parse(mut buf: &[u8]) -> Result<Option<Self>, ParseError> {
-        if buf.remaining() < 4 {
+        if buf.remaining() < 3 {
             return Ok(None);
         }
 

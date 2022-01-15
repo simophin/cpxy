@@ -32,7 +32,7 @@ pub async fn negotiate_request(
 
     log::info!("Got {:?}", greeting);
 
-    if greeting.auths.contains(&AUTH_NO_PASSWORD) {
+    if !greeting.auths.contains(&AUTH_NO_PASSWORD) {
         ClientGreeting::respond(AUTH_NOT_ACCEPTED, tx).await?;
         return Err(
             ParseError::unexpected("auth type", format!("{:?}", greeting.auths), "0x00").into(),

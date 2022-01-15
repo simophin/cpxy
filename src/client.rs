@@ -47,85 +47,110 @@ async fn serve_client_tcp(
     Ok(())
 }
 
-pub async fn serve_client(
+async fn serve_client(
+    mut sock: TcpStream,
+    upstream_host: &str,
+    upstream_addr: &str,
+) -> anyhow::Result<()> {
+    let (mut rx, mut tx) = sock.split();
+
+    let ClientConnRequest { cmd, address } = match negotiate_request(&mut rx, &mut tx).await {
+        Ok(r) => r,
+        Err(e) if e.is::<ConnStatusCode>() => {
+            ClientConnRequest::respond(&mut tx, *e.downcast_ref().unwrap(), &Default::default())
+                .await?;
+            return Err(e.into());
+        }
+        Err(e) => return Err(e.into()),
+    };
+
+    match cmd {
+        Command::CONNECT_TCP => {
+            let (bound, upstream) = match negotiate_with_server(
+                &upstream_host,
+                &upstream_addr,
+                "tcp",
+                &address,
+            )
+            .await
+            {
+                Ok(v) => v,
+                Err(e) => {
+                    ClientConnRequest::respond(
+                        &mut tx,
+                        ConnStatusCode::FAILED,
+                        &Default::default(),
+                    )
+                    .await?;
+                    return Err(e.into());
+                }
+            };
+
+            ClientConnRequest::respond(
+                &mut tx,
+                ConnStatusCode::GRANTED,
+                &Address::IP(bound.bound_address),
+            )
+            .await?;
+
+            serve_client_tcp(rx, tx, upstream).await
+        }
+
+        Command::BIND_UDP => {
+            let (bound, upstream) = match negotiate_with_server(
+                &upstream_host,
+                &upstream_addr,
+                "tcp",
+                &address,
+            )
+            .await
+            {
+                Ok(v) => v,
+                Err(e) => {
+                    ClientConnRequest::respond(
+                        &mut tx,
+                        ConnStatusCode::FAILED,
+                        &Default::default(),
+                    )
+                    .await?;
+                    return Err(e.into());
+                }
+            };
+            unimplemented!()
+        }
+
+        _ => {
+            ClientConnRequest::respond(
+                &mut tx,
+                ConnStatusCode::UNSUPPORTED_COMMAND,
+                &Default::default(),
+            )
+            .await?;
+            Err(anyhow::anyhow!("Unsupported socks command"))
+        }
+    }
+}
+
+pub async fn run_client(
     bind_addr: &str,
     upstream_host: &str,
     upstream_port: u16,
 ) -> anyhow::Result<()> {
     log::info!("Start client at {}", bind_addr);
     let listener = TcpListener::bind(bind_addr).await?;
-    let upstream_addr = format!("{}:{}", upstream_host, upstream_port);
+    let upstream_addr = format!("{upstream_host}:{upstream_port}");
 
     loop {
         let (sock, addr) = listener.accept().await?;
-        log::info!("Accepted client from: {}", addr);
+        log::info!("Accepted client from: {addr}");
 
         let upstream_host = upstream_host.to_string();
         let upstream_addr = upstream_addr.clone();
         spawn(async move {
-            let (mut rx, mut tx) = sock.split();
-
-            let ClientConnRequest { cmd, address } = match negotiate_request(&mut rx, &mut tx).await
-            {
-                Ok(r) => r,
-                Err(e) if e.is::<ConnStatusCode>() => {
-                    ClientConnRequest::respond(
-                        &mut tx,
-                        *e.downcast_ref().unwrap(),
-                        &Default::default(),
-                    )
-                    .await?;
-                    return Err(e.into());
-                }
-                Err(e) => return Err(e.into()),
-            };
-
-            match cmd {
-                Command::BIND_TCP => {
-                    let (bound, upstream) = match negotiate_with_server(
-                        &upstream_host,
-                        &upstream_addr,
-                        "tcp",
-                        &address,
-                    )
-                    .await
-                    {
-                        Ok(v) => v,
-                        Err(e) => {
-                            ClientConnRequest::respond(
-                                &mut tx,
-                                ConnStatusCode::FAILED,
-                                &Default::default(),
-                            )
-                            .await?;
-                            return Err(e.into());
-                        }
-                    };
-
-                    ClientConnRequest::respond(
-                        &mut tx,
-                        ConnStatusCode::GRANTED,
-                        &Address::IP(bound.bound_address),
-                    )
-                    .await?;
-
-                    serve_client_tcp(rx, tx, upstream).await
-                }
-
-                Command::BIND_UDP => {
-                    unimplemented!()
-                }
-
-                _ => {
-                    ClientConnRequest::respond(
-                        &mut tx,
-                        ConnStatusCode::UNSUPPORTED_COMMAND,
-                        &Default::default(),
-                    )
-                    .await?;
-                    Err(anyhow::anyhow!("Unsupported socks command"))
-                }
+            if let Err(e) = serve_client(sock, &upstream_host, &upstream_addr).await {
+                log::error!("Error serving client {addr}: {e}");
             }
+            log::info!("Client {addr} disconnected");
         });
     }
 }
