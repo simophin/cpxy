@@ -7,17 +7,39 @@
         {
             "type": "lldb",
             "request": "launch",
-            "name": "Cargo launch",
+            "name": "Debug executable 'cjk-proxy'",
             "cargo": {
                 "args": [
-                    "build"
-                ]
+                    "build",
+                    "--bin=cjk-proxy",
+                    "--package=cjk-proxy"
+                ],
+                "filter": {
+                    "name": "cjk-proxy",
+                    "kind": "bin"
+                }
             },
-            "program": "${cargo:program}",
             "args": [],
-            "env": {
-                "RUST_LOG": "debug"
-            }
+            "cwd": "${workspaceFolder}"
+        },
+        {
+            "type": "lldb",
+            "request": "launch",
+            "name": "Debug unit tests in executable 'cjk-proxy'",
+            "cargo": {
+                "args": [
+                    "test",
+                    "--no-run",
+                    "--bin=cjk-proxy",
+                    "--package=cjk-proxy"
+                ],
+                "filter": {
+                    "name": "cjk-proxy",
+                    "kind": "bin"
+                }
+            },
+            "args": [],
+            "cwd": "${workspaceFolder}"
         }
     ]
 }
