@@ -3,7 +3,7 @@ use crate::socks5::{Address, UdpPacket};
 use anyhow::anyhow;
 use async_std::net::UdpSocket;
 use bytes::{Buf, BufMut};
-use futures::{AsyncWrite, AsyncWriteExt};
+use futures::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
 use std::borrow::Cow;
 use std::fmt::Debug;
 
@@ -98,6 +98,61 @@ impl<'a> UdpFrame<'a> {
     }
 }
 
+pub async fn copy_udp_to_frame(
+    src: &UdpSocket,
+    target: &mut (impl AsyncWrite + Unpin + ?Sized),
+) -> anyhow::Result<()> {
+    let mut buf = vec![0u8; 65536];
+    loop {
+        let (n, peer) = match src.recv_from(buf.as_mut_slice()).await {
+            Ok(v) if v.0 > 0 => v,
+            Ok(_) => return Ok(()),
+            Err(e) => return Err(e.into()),
+        };
+
+        let frame = match src.peer_addr().as_ref() {
+            Ok(peer_addr) if peer_addr == &peer => {
+                UdpFrame::Send(Cow::Borrowed(&buf.as_slice()[..n]))
+            }
+            _ => UdpFrame::SendTo(Address::IP(peer), Cow::Borrowed(&buf.as_slice()[..n])),
+        };
+
+        frame.write_async(target).await?;
+    }
+}
+
+pub async fn copy_frame_to_udp(
+    src: &mut (impl AsyncRead + Unpin + ?Sized),
+    target: &UdpSocket,
+) -> anyhow::Result<()> {
+    let mut buf = vec![0u8; 65536];
+    let mut read_cursor = 0;
+    let mut write_cursor = 0;
+    loop {
+        match src.read(&mut buf.as_mut_slice()[write_cursor..]).await? {
+            0 => return Ok(()),
+            v => write_cursor += v,
+        };
+
+        while let Some((offset, frame)) =
+            UdpFrame::parse(&buf.as_slice()[read_cursor..write_cursor])?
+        {
+            read_cursor += offset;
+            match frame {
+                UdpFrame::Send(data) => target.send(data.as_ref()).await?,
+                UdpFrame::SendTo(addr, data) => match addr {
+                    Address::IP(ip) => target.send_to(data.as_ref(), ip).await?,
+                    Address::Name(host, name) => {
+                        target
+                            .send_to(data.as_ref(), &format!("{host}:{name}"))
+                            .await?
+                    }
+                },
+            };
+        }
+    }
+}
+
 pub async fn copy_socks5_udp_to_frame(
     src: &UdpSocket,
     socks_requested_address: &Address,
@@ -127,6 +182,51 @@ pub async fn copy_socks5_udp_to_frame(
         };
 
         frame.write_async(target).await?;
+    }
+}
+
+pub async fn copy_frame_to_socks5_udp(
+    src: &mut (impl AsyncRead + Unpin + ?Sized),
+    socks_requested_address: &Address,
+    target: &UdpSocket,
+) -> anyhow::Result<()> {
+    let mut buf = vec![0u8; 65536];
+    let mut write_cursor = 0;
+    let mut read_cursor = 0;
+    let mut udp_buf = Vec::new();
+    loop {
+        match src.read(&mut buf.as_mut_slice()[write_cursor..]).await? {
+            0 => return Ok(()),
+            v => write_cursor += v,
+        };
+
+        while let Some((offset, frame)) =
+            UdpFrame::parse(&buf.as_slice()[read_cursor..write_cursor])?
+        {
+            let packet = match frame {
+                UdpFrame::Send(data) => UdpPacket {
+                    frag_no: 0,
+                    addr: socks_requested_address.clone(),
+                    data,
+                },
+                UdpFrame::SendTo(addr, data) => UdpPacket {
+                    frag_no: 0,
+                    addr,
+                    data,
+                },
+            };
+            read_cursor += offset;
+
+            udp_buf.clear();
+            packet.write(&mut udp_buf)?;
+            target.send(&udp_buf).await?;
+        }
+
+        if read_cursor != write_cursor {
+            buf.copy_within(read_cursor..write_cursor, 0);
+            write_cursor = read_cursor;
+            read_cursor = 0;
+        }
     }
 }
 

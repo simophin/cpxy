@@ -8,6 +8,7 @@ use std::net::SocketAddr;
 use crate::socks5::{
     negotiate_request, Address, ClientConnRequest, Command, ConnStatusCode, UdpPacket,
 };
+use crate::udp::{copy_frame_to_socks5_udp, copy_socks5_udp_to_frame};
 
 async fn negotiate_with_server(
     upstream_host: &str,
@@ -72,10 +73,10 @@ async fn serve_client_tcp(
 async fn prepare_client_udp(
     upstream_host: &str,
     upstream_addr: &str,
-    address: Address,
+    address: &Address,
 ) -> anyhow::Result<(UdpSocket, TlsStream<TcpStream>, SocketAddr, SocketAddr)> {
     let (response, upstream) =
-        negotiate_with_server(&upstream_host, &upstream_addr, "udp", &address).await?;
+        negotiate_with_server(&upstream_host, &upstream_addr, "udp", address).await?;
 
     let socket = UdpSocket::bind("0.0.0.0:0").await?;
     let local_udp_addr = socket.local_addr()?;
@@ -91,7 +92,7 @@ async fn serve_client_udp(
     address: Address,
 ) -> anyhow::Result<()> {
     let (udp_socket, upstream, local_udp_addr, remote_udp_addr) =
-        match prepare_client_udp(upstream_host, upstream_addr, address).await {
+        match prepare_client_udp(upstream_host, upstream_addr, &address).await {
             Ok(v) => v,
             Err(e) => {
                 ClientConnRequest::respond(&mut tx, ConnStatusCode::FAILED, &Default::default())
@@ -107,19 +108,16 @@ async fn serve_client_udp(
     )
     .await?;
 
-    let mut buf = vec![0u8; 65536];
-    loop {
-        let n = match udp_socket.recv(buf.as_mut_slice()).await? {
-            0 => return Ok(()),
-            v => v,
-        };
+    let (mut upstream_rx, mut upstream_tx) = upstream.split();
 
-        let p = UdpPacket::parse(buf.as_slice())?;
+    select! {
+        r1 = copy_socks5_udp_to_frame(&udp_socket, &address, &mut upstream_tx).fuse() => r1,
+        r2 = copy_frame_to_socks5_udp(&mut upstream_rx, &address, &udp_socket).fuse() => r2,
     }
 }
 
 async fn serve_client(
-    mut sock: TcpStream,
+    sock: TcpStream,
     upstream_host: &str,
     upstream_addr: &str,
 ) -> anyhow::Result<()> {
