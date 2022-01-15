@@ -1,18 +1,23 @@
 use crate::parse::{Parsable, ParseError, ParseResult, Writable};
-use crate::socks5::Address;
+use crate::socks5::{Address, UdpPacket};
+use anyhow::anyhow;
+use async_std::net::UdpSocket;
 use bytes::{Buf, BufMut};
+use futures::{AsyncWrite, AsyncWriteExt};
 use std::borrow::Cow;
 use std::fmt::Debug;
-use std::io::Cursor;
 
 #[derive(Debug, Eq, PartialEq, Clone)]
-pub enum Message<'a> {
+pub enum UdpFrame<'a> {
     Send(Cow<'a, [u8]>),
     SendTo(Address, Cow<'a, [u8]>),
 }
 
-impl<'a> Message<'a> {
-    fn parse(mut buf: &[u8]) -> ParseResult<Self> {
+impl<'a> UdpFrame<'a> {
+    fn parse<'buf>(mut buf: &'buf [u8]) -> ParseResult<Self>
+    where
+        'buf: 'a,
+    {
         if !buf.has_remaining() {
             return Ok(None);
         }
@@ -28,74 +33,100 @@ impl<'a> Message<'a> {
                     return Ok(None);
                 }
 
-                let (pkt, rest) = buf.split_at(pkt_len);
-                Ok(Some((rest, Self::Send(Cow::Borrowed(pkt)))))
+                let (pkt, _) = buf.split_at(pkt_len);
+                Ok(Some((1 + 2 + pkt_len, Self::Send(Cow::Borrowed(pkt)))))
             }
 
             1 => {
-                let (rest, addr) = match Address::parse(buf)? {
+                let (offset, addr) = match Address::parse(buf)? {
                     Some(a) => a,
                     None => return Ok(None),
                 };
 
-                buf = rest;
+                buf.advance(offset);
 
                 if buf.remaining() < 2 {
                     return Ok(None);
                 }
 
                 let pkt_len = buf.get_u16() as usize;
+                if buf.remaining() < pkt_len {
+                    return Ok(None);
+                }
 
-                let (pkt, rest) = buf.split_at(pkt_len);
-                Ok(Some((rest, Self::SendTo(addr, Cow::Borrowed(pkt)))))
+                let (pkt, _) = buf.split_at(pkt_len);
+                Ok(Some((
+                    1 + offset + 2 + pkt_len,
+                    Self::SendTo(addr, Cow::Borrowed(pkt)),
+                )))
             }
 
             v => Err(ParseError::unexpected("Message type", v, "0 or 1")),
         }
     }
-}
 
-impl<'a> Writable for Message<'a> {
-    fn write_len(&self) -> usize {
-        todo!()
-    }
-
-    fn write(&self, buf: &mut impl BufMut) -> bool {
+    async fn write_async(&self, w: &mut (impl AsyncWrite + Unpin + ?Sized)) -> anyhow::Result<()> {
         match self {
-            Message::Send(data) => {
-                if buf.remaining_mut() < 1 + 2 + data.len() {
-                    return false;
-                }
-
+            Self::Send(data) => {
                 if data.len() > u16::MAX as usize {
-                    return false;
+                    return Err(anyhow!("Exceeded max data len"));
                 }
 
-                buf.put_u8(0);
-                buf.put_u16(data.len() as u16);
-                buf.put_slice(data);
+                let mut hdr = [0u8, 0, 0];
+                (&mut hdr[1..]).put_u16(data.len() as u16);
+
+                w.write_all(&hdr).await?;
+                w.write_all(data.as_ref()).await?;
+                Ok(())
             }
-            Message::SendTo(addr, data) => {
-                if buf.remaining_mut() < 1 + addr.write_len() + 2 + data.len() {
-                    return false;
-                }
 
-                buf.put_u8(1);
-
-                if !addr.write(buf) {
-                    return false;
-                }
-
+            Self::SendTo(addr, data) => {
                 if data.len() > u16::MAX as usize {
-                    return false;
+                    return Err(anyhow!("Exceeded max data len"));
                 }
 
-                buf.put_u16(data.len() as u16);
-                buf.put_slice(data);
+                let mut hdr = Vec::with_capacity(3 + addr.write_len());
+                hdr.put_u8(1u8);
+                assert!(addr.write(&mut hdr));
+                hdr.put_u16(data.len() as u16);
+
+                w.write_all(&hdr).await?;
+                w.write_all(data.as_ref()).await?;
+                Ok(())
             }
         }
+    }
+}
 
-        true
+pub async fn copy_socks5_udp_to_frame(
+    src: &UdpSocket,
+    socks_requested_address: &Address,
+    target: &mut (impl AsyncWrite + Unpin + ?Sized),
+) -> anyhow::Result<()> {
+    let mut buf = vec![0u8; 65536];
+    loop {
+        let n = match src.recv(buf.as_mut_slice()).await? {
+            0 => return Ok(()),
+            v => v,
+        };
+
+        let UdpPacket {
+            frag_no,
+            addr,
+            data,
+        } = UdpPacket::parse(&buf.as_slice()[..n])?;
+        if frag_no != 0 {
+            log::info!("Ignoring fragmented UDP packet sending to {addr}");
+            continue;
+        }
+
+        let frame = if &addr == socks_requested_address {
+            UdpFrame::Send(data)
+        } else {
+            UdpFrame::SendTo(addr, data)
+        };
+
+        frame.write_async(target).await?;
     }
 }
 
@@ -103,30 +134,39 @@ impl<'a> Writable for Message<'a> {
 mod test {
     use super::*;
 
-    #[test]
-    fn codec_works() {
+    #[async_std::test]
+    async fn codec_works() {
         let mut buf: Vec<u8> = Default::default();
         let data = b"hello, world";
 
-        assert!(Message::SendTo(Default::default(), Cow::Borrowed(data)).write(&mut buf));
-        assert!(Message::Send(Cow::Borrowed(data)).write(&mut buf));
+        UdpFrame::SendTo(Default::default(), Cow::Borrowed(data))
+            .write_async(&mut buf)
+            .await
+            .unwrap();
+        UdpFrame::Send(Cow::Borrowed(data))
+            .write_async(&mut buf)
+            .await
+            .unwrap();
 
         assert!(buf.len() > 0);
 
         {
-            let (rest, msg1) = Message::parse(&buf)
+            let mut buf = buf.as_slice();
+            let (offset, msg1) = UdpFrame::parse(buf)
                 .expect("To parse 1st msg")
                 .expect("Message to be there");
-            let (rest, msg2) = Message::parse(rest)
+            buf.advance(offset);
+            let (offset, msg2) = UdpFrame::parse(buf)
                 .expect("To parse 2nd msg")
                 .expect("Message to be there");
-            let msg3 = Message::parse(rest).expect("To parse 3rd msg");
+            buf.advance(offset);
+            let msg3 = UdpFrame::parse(buf).expect("To parse 3rd msg");
 
             assert_eq!(
                 msg1,
-                Message::SendTo(Default::default(), Cow::Borrowed(data))
+                UdpFrame::SendTo(Default::default(), Cow::Borrowed(data))
             );
-            assert_eq!(msg2, Message::Send(Cow::Borrowed(data)));
+            assert_eq!(msg2, UdpFrame::Send(Cow::Borrowed(data)));
             assert_eq!(msg3, None);
         }
     }

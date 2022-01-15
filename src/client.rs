@@ -1,10 +1,13 @@
 use crate::http;
 use async_native_tls::TlsStream;
-use async_std::net::{TcpListener, TcpStream};
+use async_std::net::{TcpListener, TcpStream, UdpSocket};
 use async_std::task::spawn;
 use futures::{select, AsyncRead, AsyncReadExt, AsyncWrite, FutureExt};
+use std::net::SocketAddr;
 
-use crate::socks5::{negotiate_request, Address, ClientConnRequest, Command, ConnStatusCode};
+use crate::socks5::{
+    negotiate_request, Address, ClientConnRequest, Command, ConnStatusCode, UdpPacket,
+};
 
 async fn negotiate_with_server(
     upstream_host: &str,
@@ -35,16 +38,84 @@ async fn negotiate_with_server(
 }
 
 async fn serve_client_tcp(
-    rx: impl AsyncRead + Unpin,
-    tx: impl AsyncWrite + Unpin,
-    upstream: TlsStream<TcpStream>,
+    mut rx: impl AsyncRead + Unpin,
+    mut tx: impl AsyncWrite + Unpin,
+    upstream_host: &str,
+    upstream_addr: &str,
+    address: Address,
 ) -> anyhow::Result<()> {
+    let (bound, upstream) =
+        match negotiate_with_server(&upstream_host, &upstream_addr, "tcp", &address).await {
+            Ok(v) => v,
+            Err(e) => {
+                ClientConnRequest::respond(&mut tx, ConnStatusCode::FAILED, &Default::default())
+                    .await?;
+                return Err(e.into());
+            }
+        };
+
+    ClientConnRequest::respond(
+        &mut tx,
+        ConnStatusCode::GRANTED,
+        &Address::IP(bound.bound_address),
+    )
+    .await?;
+
     let (upstream_rx, upstream_tx) = upstream.split();
     select! {
         r1 = async_std::io::copy(rx, upstream_tx).fuse() => r1?,
         r2 = async_std::io::copy(upstream_rx, tx).fuse() => r2?,
     };
     Ok(())
+}
+
+async fn prepare_client_udp(
+    upstream_host: &str,
+    upstream_addr: &str,
+    address: Address,
+) -> anyhow::Result<(UdpSocket, TlsStream<TcpStream>, SocketAddr, SocketAddr)> {
+    let (response, upstream) =
+        negotiate_with_server(&upstream_host, &upstream_addr, "udp", &address).await?;
+
+    let socket = UdpSocket::bind("0.0.0.0:0").await?;
+    let local_udp_addr = socket.local_addr()?;
+    let remote_udp_addr = response.bound_address;
+    Ok((socket, upstream, local_udp_addr, remote_udp_addr))
+}
+
+async fn serve_client_udp(
+    mut rx: impl AsyncRead + Unpin,
+    mut tx: impl AsyncWrite + Unpin,
+    upstream_host: &str,
+    upstream_addr: &str,
+    address: Address,
+) -> anyhow::Result<()> {
+    let (udp_socket, upstream, local_udp_addr, remote_udp_addr) =
+        match prepare_client_udp(upstream_host, upstream_addr, address).await {
+            Ok(v) => v,
+            Err(e) => {
+                ClientConnRequest::respond(&mut tx, ConnStatusCode::FAILED, &Default::default())
+                    .await?;
+                return Err(e);
+            }
+        };
+
+    ClientConnRequest::respond(
+        &mut tx,
+        ConnStatusCode::GRANTED,
+        &Address::IP(local_udp_addr),
+    )
+    .await?;
+
+    let mut buf = vec![0u8; 65536];
+    loop {
+        let n = match udp_socket.recv(buf.as_mut_slice()).await? {
+            0 => return Ok(()),
+            v => v,
+        };
+
+        let p = UdpPacket::parse(buf.as_slice())?;
+    }
 }
 
 async fn serve_client(
@@ -66,56 +137,10 @@ async fn serve_client(
 
     match cmd {
         Command::CONNECT_TCP => {
-            let (bound, upstream) = match negotiate_with_server(
-                &upstream_host,
-                &upstream_addr,
-                "tcp",
-                &address,
-            )
-            .await
-            {
-                Ok(v) => v,
-                Err(e) => {
-                    ClientConnRequest::respond(
-                        &mut tx,
-                        ConnStatusCode::FAILED,
-                        &Default::default(),
-                    )
-                    .await?;
-                    return Err(e.into());
-                }
-            };
-
-            ClientConnRequest::respond(
-                &mut tx,
-                ConnStatusCode::GRANTED,
-                &Address::IP(bound.bound_address),
-            )
-            .await?;
-
-            serve_client_tcp(rx, tx, upstream).await
+            serve_client_tcp(rx, tx, upstream_host, upstream_addr, address).await
         }
 
         Command::BIND_UDP => {
-            let (bound, upstream) = match negotiate_with_server(
-                &upstream_host,
-                &upstream_addr,
-                "tcp",
-                &address,
-            )
-            .await
-            {
-                Ok(v) => v,
-                Err(e) => {
-                    ClientConnRequest::respond(
-                        &mut tx,
-                        ConnStatusCode::FAILED,
-                        &Default::default(),
-                    )
-                    .await?;
-                    return Err(e.into());
-                }
-            };
             unimplemented!()
         }
 
