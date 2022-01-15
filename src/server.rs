@@ -1,8 +1,9 @@
 use crate::http;
 use crate::http::Request;
+use crate::udp::{copy_frame_to_udp, copy_udp_to_frame};
 use anyhow::anyhow;
 use async_std::io::copy;
-use async_std::net::{TcpListener, TcpStream};
+use async_std::net::{TcpListener, TcpStream, UdpSocket};
 use async_std::task::spawn;
 use futures::{select, AsyncReadExt, FutureExt};
 use std::net::SocketAddr;
@@ -33,8 +34,29 @@ async fn serve_client_tcp(mut sock: TcpStream, address: String) -> anyhow::Resul
     Ok(())
 }
 
-async fn serve_client_udp(sock: TcpStream, address: String) -> anyhow::Result<()> {
-    unimplemented!()
+async fn prepare_client_udp(address: &str) -> anyhow::Result<(UdpSocket, SocketAddr)> {
+    let socket = UdpSocket::bind("127.0.0.1:0").await?;
+    socket.connect(address).await?;
+    let remote_addr = socket.peer_addr()?;
+    Ok((socket, remote_addr))
+}
+
+async fn serve_client_udp(mut sock: TcpStream, address: String) -> anyhow::Result<()> {
+    let (upstream, address) = match prepare_client_udp(&address).await {
+        Ok(v) => v,
+        Err(e) => {
+            http::Response::write_rejection(e.to_string().as_str(), &mut sock).await?;
+            return Err(e.into());
+        }
+    };
+
+    http::Response::write(&address, &mut sock).await?;
+    let (mut rx, mut tx) = sock.split();
+
+    select! {
+        r1 = copy_frame_to_udp(&mut rx, &upstream).fuse() => r1,
+        r2 = copy_udp_to_frame(&upstream, &address, &mut tx).fuse() => r2,
+    }
 }
 
 async fn serve_client(mut sock: TcpStream) -> anyhow::Result<()> {

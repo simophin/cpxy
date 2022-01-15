@@ -10,7 +10,6 @@ pub struct ConnStatusCode(u8);
 impl ConnStatusCode {
     pub const GRANTED: Self = ConnStatusCode(0);
     pub const FAILED: Self = ConnStatusCode(0x1);
-    pub const UNSUPPORTED_ADDRESS_TYPE: Self = ConnStatusCode(0x8);
     pub const UNSUPPORTED_COMMAND: Self = ConnStatusCode(0x7);
 }
 
@@ -27,7 +26,6 @@ pub struct Command(u8);
 
 impl Command {
     pub const CONNECT_TCP: Self = Self(1);
-    pub const BIND_TCP: Self = Self(2);
     pub const BIND_UDP: Self = Self(3);
 }
 

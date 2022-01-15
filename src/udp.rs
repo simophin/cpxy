@@ -6,6 +6,7 @@ use bytes::{Buf, BufMut};
 use futures::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
 use std::borrow::Cow;
 use std::fmt::Debug;
+use std::net::SocketAddr;
 
 #[derive(Debug, Eq, PartialEq, Clone)]
 pub enum UdpFrame<'a> {
@@ -100,6 +101,7 @@ impl<'a> UdpFrame<'a> {
 
 pub async fn copy_udp_to_frame(
     src: &UdpSocket,
+    socks5_requested_addr: &SocketAddr,
     target: &mut (impl AsyncWrite + Unpin + ?Sized),
 ) -> anyhow::Result<()> {
     let mut buf = vec![0u8; 65536];
@@ -110,11 +112,10 @@ pub async fn copy_udp_to_frame(
             Err(e) => return Err(e.into()),
         };
 
-        let frame = match src.peer_addr().as_ref() {
-            Ok(peer_addr) if peer_addr == &peer => {
-                UdpFrame::Send(Cow::Borrowed(&buf.as_slice()[..n]))
-            }
-            _ => UdpFrame::SendTo(Address::IP(peer), Cow::Borrowed(&buf.as_slice()[..n])),
+        let frame = if socks5_requested_addr == &peer {
+            UdpFrame::Send(Cow::Borrowed(&buf.as_slice()[..n]))
+        } else {
+            UdpFrame::SendTo(Address::IP(peer), Cow::Borrowed(&buf.as_slice()[..n]))
         };
 
         frame.write_async(target).await?;

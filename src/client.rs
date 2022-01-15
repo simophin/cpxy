@@ -5,9 +5,7 @@ use async_std::task::spawn;
 use futures::{select, AsyncRead, AsyncReadExt, AsyncWrite, FutureExt};
 use std::net::SocketAddr;
 
-use crate::socks5::{
-    negotiate_request, Address, ClientConnRequest, Command, ConnStatusCode, UdpPacket,
-};
+use crate::socks5::{negotiate_request, Address, ClientConnRequest, Command, ConnStatusCode};
 use crate::udp::{copy_frame_to_socks5_udp, copy_socks5_udp_to_frame};
 
 async fn negotiate_with_server(
@@ -39,7 +37,7 @@ async fn negotiate_with_server(
 }
 
 async fn serve_client_tcp(
-    mut rx: impl AsyncRead + Unpin,
+    rx: impl AsyncRead + Unpin,
     mut tx: impl AsyncWrite + Unpin,
     upstream_host: &str,
     upstream_addr: &str,
@@ -74,24 +72,22 @@ async fn prepare_client_udp(
     upstream_host: &str,
     upstream_addr: &str,
     address: &Address,
-) -> anyhow::Result<(UdpSocket, TlsStream<TcpStream>, SocketAddr, SocketAddr)> {
-    let (response, upstream) =
+) -> anyhow::Result<(UdpSocket, TlsStream<TcpStream>, SocketAddr)> {
+    let (_, upstream) =
         negotiate_with_server(&upstream_host, &upstream_addr, "udp", address).await?;
 
     let socket = UdpSocket::bind("0.0.0.0:0").await?;
     let local_udp_addr = socket.local_addr()?;
-    let remote_udp_addr = response.bound_address;
-    Ok((socket, upstream, local_udp_addr, remote_udp_addr))
+    Ok((socket, upstream, local_udp_addr))
 }
 
 async fn serve_client_udp(
-    mut rx: impl AsyncRead + Unpin,
     mut tx: impl AsyncWrite + Unpin,
     upstream_host: &str,
     upstream_addr: &str,
     address: Address,
 ) -> anyhow::Result<()> {
-    let (udp_socket, upstream, local_udp_addr, remote_udp_addr) =
+    let (udp_socket, upstream, local_udp_addr) =
         match prepare_client_udp(upstream_host, upstream_addr, &address).await {
             Ok(v) => v,
             Err(e) => {
@@ -138,9 +134,7 @@ async fn serve_client(
             serve_client_tcp(rx, tx, upstream_host, upstream_addr, address).await
         }
 
-        Command::BIND_UDP => {
-            unimplemented!()
-        }
+        Command::BIND_UDP => serve_client_udp(tx, upstream_host, upstream_addr, address).await,
 
         _ => {
             ClientConnRequest::respond(
