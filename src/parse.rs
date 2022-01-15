@@ -1,10 +1,6 @@
 use std::fmt::{Debug, Display, Formatter};
-use std::future::Future;
-use std::io::BufRead;
-use std::io::ErrorKind::UnexpectedEof;
 
 use bytes::BufMut;
-use futures::{AsyncBufRead, AsyncRead, AsyncReadExt};
 
 #[derive(Debug)]
 pub enum ParseError {
@@ -37,10 +33,10 @@ impl ParseError {
 
 impl std::error::Error for ParseError {}
 
-pub type ParseResult<'a, T> = Result<Option<(&'a [u8], T)>, ParseError>;
+pub type ParseResult<T> = Result<Option<(usize, T)>, ParseError>;
 
-pub trait Parsable<'a>: Sized + 'a {
-    fn parse(buf: &'a [u8]) -> ParseResult<'a, Self>;
+pub trait Parsable: Sized {
+    fn parse(buf: &[u8]) -> ParseResult<Self>;
 }
 
 pub trait Writable {

@@ -1,6 +1,6 @@
+use crate::parse::{Parsable, ParseError, Writable};
 use bytes::Buf;
-
-use crate::parse::{Parsable, ParseError, ParseResult};
+use futures::{AsyncWrite, AsyncWriteExt};
 
 use super::Address;
 
@@ -32,13 +32,13 @@ impl Command {
 }
 
 #[derive(Debug, Clone)]
-pub struct ClientConnRequest<'a> {
+pub struct ClientConnRequest {
     pub cmd: Command,
-    pub address: Address<'a>,
+    pub address: Address,
 }
 
-impl<'a> Parsable<'a> for ClientConnRequest<'a> {
-    fn parse(mut buf: &'a [u8]) -> ParseResult<'a, Self> {
+impl ClientConnRequest {
+    pub fn parse(mut buf: &[u8]) -> Result<Option<Self>, ParseError> {
         if buf.remaining() < 4 {
             return Ok(None);
         }
@@ -54,47 +54,26 @@ impl<'a> Parsable<'a> for ClientConnRequest<'a> {
             _ => {}
         };
 
-        let (rest, address) = match Address::parse(buf)? {
+        let (_, address) = match Address::parse(buf)? {
             None => return Ok(None),
             Some(addr) => addr,
         };
 
-        Ok(Some((
-            rest,
-            Self {
-                cmd: Command(cmd),
-                address,
-            },
-        )))
+        Ok(Some(Self {
+            cmd: Command(cmd),
+            address,
+        }))
     }
-}
 
-type Auth = u8;
-
-pub const AUTH_NO_PASSWORD: Auth = 0x0;
-
-#[derive(Debug, Clone)]
-pub struct ClientGreeting<'a> {
-    pub auths: &'a [Auth],
-}
-
-impl<'a> Parsable<'a> for ClientGreeting<'a> {
-    fn parse(mut buf: &'a [u8]) -> ParseResult<'a, Self> {
-        if buf.remaining() < 2 {
-            return Ok(None);
-        }
-
-        match buf.get_u8() {
-            v if v != 0x5 => return Err(ParseError::unexpected("protocol", v, "0x5")),
-            _ => {}
-        };
-
-        let len = buf.get_u8() as usize;
-        if buf.remaining() < len {
-            return Ok(None);
-        }
-
-        let (auths, rest) = buf.split_at(len);
-        Ok(Some((rest, Self { auths })))
+    pub async fn respond(
+        w: &mut (impl AsyncWrite + Unpin + ?Sized),
+        code: ConnStatusCode,
+        bound_addr: &Address,
+    ) -> anyhow::Result<()> {
+        let mut buf = Vec::with_capacity(3 + bound_addr.write_len());
+        buf.extend_from_slice(&[0x5, code.0, 0x00]);
+        bound_addr.write(&mut buf);
+        w.write_all(&buf).await?;
+        Ok(())
     }
 }

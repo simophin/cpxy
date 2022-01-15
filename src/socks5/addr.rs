@@ -1,5 +1,5 @@
-use std::borrow::Cow;
-use std::fmt::Formatter;
+use std::fmt::{Debug, Formatter};
+use std::io::Cursor;
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr, SocketAddrV4, SocketAddrV6};
 use std::str::FromStr;
 
@@ -9,20 +9,20 @@ use bytes::{Buf, BufMut};
 use crate::parse::{Parsable, ParseError, ParseResult, Writable};
 
 #[derive(Debug, Eq, PartialEq, Clone)]
-pub enum Address<'a> {
-    V4(Cow<'a, [u8; 4]>, u16),
-    V6(Cow<'a, [u8; 16]>, u16),
-    Name(Cow<'a, str>, u16),
+pub enum Address {
+    IP(SocketAddr),
+    Name(String, u16),
 }
 
-impl<'a> Default for Address<'a> {
+impl<'a> Default for Address {
     fn default() -> Self {
-        Address::V4(Cow::Borrowed(&Address::DEFAULT_V4), 0)
+        Self::IP(SocketAddr::V4(SocketAddrV4::new(Ipv4Addr::UNSPECIFIED, 0)))
     }
 }
 
-impl<'a> Parsable<'a> for Address<'a> {
-    fn parse(mut buf: &'a [u8]) -> ParseResult<Self> {
+impl Parsable for Address {
+    fn parse(buf: &[u8]) -> ParseResult<Self> {
+        let mut buf = Cursor::new(buf);
         if !buf.has_remaining() {
             return Ok(None);
         }
@@ -33,11 +33,15 @@ impl<'a> Parsable<'a> for Address<'a> {
                     return Ok(None);
                 }
 
-                let (addr, mut buf) = buf.split_at(4);
+                let mut addr = [0u8; 4];
+                buf.copy_to_slice(&mut addr);
                 let port = buf.get_u16();
                 Ok(Some((
-                    buf,
-                    Self::V4(Cow::Borrowed(addr.try_into().unwrap()), port),
+                    buf.position() as usize,
+                    Self::IP(SocketAddr::V4(SocketAddrV4::new(
+                        Ipv4Addr::from(addr),
+                        port,
+                    ))),
                 )))
             }
 
@@ -51,21 +55,37 @@ impl<'a> Parsable<'a> for Address<'a> {
                     return Ok(None);
                 }
 
-                let (s, mut buf) = buf.split_at(name_len);
+                let mut name_buf = vec![0; name_len];
+                buf.copy_to_slice(name_buf.as_mut_slice());
+
                 let port = buf.get_u16();
-                Ok(Some((buf, Self::Name(String::from_utf8_lossy(s), port))))
+                Ok(Some((
+                    buf.position() as usize,
+                    Self::Name(
+                        String::from_utf8(name_buf).map_err(|_| {
+                            ParseError::unexpected("domain name", "invalid utf-8", "valid utf-8")
+                        })?,
+                        port,
+                    ),
+                )))
             }
 
             0x4 => {
-                if buf.remaining() < 18 {
+                if buf.remaining() < 6 {
                     return Ok(None);
                 }
 
-                let (addr, mut buf) = buf.split_at(16);
+                let mut addr = [0u8; 16];
+                buf.copy_to_slice(&mut addr);
                 let port = buf.get_u16();
                 Ok(Some((
-                    buf,
-                    Self::V6(Cow::Borrowed(addr.try_into().unwrap()), port),
+                    buf.position() as usize,
+                    Self::IP(SocketAddr::V6(SocketAddrV6::new(
+                        Ipv6Addr::from(addr),
+                        port,
+                        0,
+                        0,
+                    ))),
                 )))
             }
 
@@ -74,12 +94,12 @@ impl<'a> Parsable<'a> for Address<'a> {
     }
 }
 
-impl<'a> Writable for Address<'a> {
+impl Writable for Address {
     fn write_len(&self) -> usize {
         3 + match self {
-            Address::V4(ip, _) => ip.len(),
-            Address::V6(ip, _) => ip.len(),
-            Address::Name(name, _) => 2 + name.len(),
+            Address::IP(SocketAddr::V4(_)) => 4,
+            Address::IP(SocketAddr::V6(_)) => 16,
+            Address::Name(name, _) => 2 + name.as_bytes().len(),
         }
     }
 
@@ -89,23 +109,23 @@ impl<'a> Writable for Address<'a> {
         }
 
         match self {
-            Address::V4(addr, port) => {
-                if buf.remaining_mut() < 1 + addr.len() + 2 {
+            Address::IP(SocketAddr::V4(addr)) => {
+                if buf.remaining_mut() < 1 + 4 + 2 {
                     return false;
                 }
 
                 buf.put_u8(0x1);
-                buf.put_slice(addr.as_ref());
-                buf.put_u16(*port);
+                buf.put_slice(&addr.ip().octets());
+                buf.put_u16(addr.port());
             }
-            Address::V6(addr, port) => {
-                if buf.remaining_mut() < 1 + addr.len() + 2 {
+            Address::IP(SocketAddr::V6(addr)) => {
+                if buf.remaining_mut() < 1 + 16 + 2 {
                     return false;
                 }
 
                 buf.put_u8(0x4);
-                buf.put_slice(addr.as_ref());
-                buf.put_u16(*port);
+                buf.put_slice(&addr.ip().octets());
+                buf.put_u16(addr.port());
             }
             Address::Name(host, port) => {
                 if buf.remaining_mut() < 1 + 2 + host.as_bytes().len() + 2 {
@@ -127,35 +147,19 @@ impl<'a> Writable for Address<'a> {
     }
 }
 
-impl<'a> std::fmt::Display for Address<'a> {
+impl std::fmt::Display for Address {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         match self {
-            Self::V4(ip, port) => {
-                f.write_fmt(format_args!("{}:{}", Ipv4Addr::from(*ip.as_ref()), port))
-            }
-            Self::V6(ip, port) => {
-                f.write_fmt(format_args!("{}:{}", Ipv6Addr::from(*ip.as_ref()), port))
-            }
+            Self::IP(addr) => std::fmt::Display::fmt(addr, f),
             Self::Name(name, port) => f.write_fmt(format_args!("{}:{}", name, port)),
         }
     }
 }
 
-impl<'a> Address<'a> {
-    const DEFAULT_V4: [u8; 4] = [0; 4];
-
+impl Address {
     pub async fn to_sock_addrs(&self) -> anyhow::Result<SocketAddr> {
         match self {
-            Address::V4(ip, port) => Ok(SocketAddr::V4(SocketAddrV4::new(
-                Ipv4Addr::from(*ip.as_ref()),
-                *port,
-            ))),
-            Address::V6(ip, port) => Ok(SocketAddr::V6(SocketAddrV6::new(
-                Ipv6Addr::from(*ip.as_ref()),
-                *port,
-                0,
-                0,
-            ))),
+            Address::IP(addr) => Ok(addr.clone()),
             Address::Name(name, port) => (name.as_ref(), *port)
                 .to_socket_addrs()
                 .await?
@@ -164,40 +168,13 @@ impl<'a> Address<'a> {
         }
     }
 
-    pub fn from(s: &'a str, port: u16) -> anyhow::Result<Self> {
+    pub fn from(s: &str, port: u16) -> anyhow::Result<Self> {
         match IpAddr::from_str(s) {
-            Ok(IpAddr::V4(addr)) => Ok(Self::V4(Cow::Owned(addr.octets()), port)),
-            Ok(IpAddr::V6(addr)) => Ok(Self::V6(Cow::Owned(addr.octets()), port)),
-            Err(_) => Ok(Self::Name(Cow::Borrowed(s), port)),
+            Ok(IpAddr::V4(addr)) => Ok(Address::IP(SocketAddr::V4(SocketAddrV4::new(addr, port)))),
+            Ok(IpAddr::V6(addr)) => Ok(Address::IP(SocketAddr::V6(SocketAddrV6::new(
+                addr, port, 0, 0,
+            )))),
+            Err(_) => Ok(Self::Name(s.to_string(), port)),
         }
-    }
-}
-
-#[cfg(test)]
-mod test {
-    use super::*;
-
-    #[test]
-    fn parse_works() {
-        let mut buf: Vec<u8> = Vec::new();
-
-        assert!(Address::Name(Cow::Borrowed("localhost"), 8081).write(&mut buf));
-        assert!(Address::V4(Cow::Owned(Ipv4Addr::BROADCAST.octets()), 8182).write(&mut buf));
-        assert!(Address::V6(Cow::Owned(Ipv6Addr::UNSPECIFIED.octets()), 8183).write(&mut buf));
-
-        let (buf, addr) = Address::parse(buf.as_slice()).unwrap().unwrap();
-        assert_eq!(Address::Name(Cow::Borrowed("localhost"), 8081), addr);
-
-        let (buf, addr) = Address::parse(buf).unwrap().unwrap();
-        assert_eq!(
-            Address::V4(Cow::Owned(Ipv4Addr::BROADCAST.octets()), 8182),
-            addr
-        );
-
-        let (buf, addr) = Address::parse(buf).unwrap().unwrap();
-        assert_eq!(
-            Address::V6(Cow::Owned(Ipv6Addr::UNSPECIFIED.octets()), 8183),
-            addr
-        );
     }
 }

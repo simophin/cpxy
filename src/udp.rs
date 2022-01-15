@@ -3,15 +3,16 @@ use crate::socks5::Address;
 use bytes::{Buf, BufMut};
 use std::borrow::Cow;
 use std::fmt::Debug;
+use std::io::Cursor;
 
 #[derive(Debug, Eq, PartialEq, Clone)]
 pub enum Message<'a> {
     Send(Cow<'a, [u8]>),
-    SendTo(Address<'a>, Cow<'a, [u8]>),
+    SendTo(Address, Cow<'a, [u8]>),
 }
 
-impl<'a> Parsable<'a> for Message<'a> {
-    fn parse(mut buf: &'a [u8]) -> ParseResult<'a, Self> {
+impl<'a> Message<'a> {
+    fn parse(mut buf: &[u8]) -> ParseResult<Self> {
         if !buf.has_remaining() {
             return Ok(None);
         }
