@@ -1,4 +1,5 @@
 mod chunked;
+#[cfg(feature = "client")]
 mod client;
 mod http;
 mod parse;
@@ -7,7 +8,6 @@ mod socks5;
 mod udp;
 mod utils;
 
-use crate::client::run_client;
 use crate::server::run_server;
 use clap::{AppSettings, Parser, Subcommand};
 
@@ -30,6 +30,7 @@ enum Command {
         port: u16,
     },
 
+    #[cfg(feature = "client")]
     #[clap(setting(AppSettings::ArgRequiredElseHelp))]
     Client {
         /// The SOCKS5 host to listen on
@@ -57,13 +58,14 @@ async fn main() -> anyhow::Result<()> {
     let Cli { cmd } = Cli::parse();
     match cmd {
         Command::Server { host, port } => run_server(&format!("{host}:{port}")).await,
+        #[cfg(feature = "client")]
         Command::Client {
             socks5_host,
             socks5_port,
             remote_host,
             remote_port,
         } => {
-            run_client(
+            client::run_client(
                 &format!("{socks5_host}:{socks5_port}"),
                 &remote_host,
                 remote_port,

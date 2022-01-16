@@ -5,10 +5,14 @@ edition = "2021"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
+[features]
+client=["async-native-tls"]
+default=["client"]
+
 [dependencies]
 async-std = { version = "1", features = ["attributes", "unstable"] }
 anyhow = "1"
-async-native-tls = "0"
+async-native-tls = { version = "0", optional = true }
 futures = "0"
 httparse = "1"
 urlencoding = "2"

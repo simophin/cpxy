@@ -1,14 +1,13 @@
-FROM rust:alpine3.14
+FROM rust
 
 RUN mkdir /app
 WORKDIR /app
 COPY . ./
 
-RUN cargo build --release
+RUN cargo build --release -p cjk-proxy --no-default-features
 
-FROM alpine:3.14
+FROM ubuntu
 COPY --from=0 /app/target/release/cjk-proxy /usr/local/bin/
 
-ENTRYPOINT /usr/local/bin/cjk-proxy
 EXPOSE 8000
-CMD server
+CMD ["/usr/local/bin/cjk-proxy", "server"]
