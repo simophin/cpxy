@@ -1,5 +1,5 @@
-use futures::{AsyncWrite, AsyncWriteExt};
 use httparse::Status;
+use tokio::io::{AsyncWrite, AsyncWriteExt};
 
 use crate::parse::ParseError;
 use crate::socks5::Address;
@@ -72,7 +72,7 @@ impl Request {
 mod test {
     use super::*;
 
-    #[async_std::test]
+    #[tokio::test]
     async fn encoding_works() {
         let mut buf: Vec<u8> = Vec::new();
         Request::write(

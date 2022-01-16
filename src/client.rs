@@ -1,23 +1,29 @@
 use crate::http;
-use async_native_tls::TlsStream;
-use async_std::net::{TcpListener, TcpStream, UdpSocket};
-use async_std::task::spawn;
-use futures::{select, AsyncRead, AsyncReadExt, AsyncWrite, FutureExt};
 use std::net::SocketAddr;
+use std::sync::Arc;
+use tokio::io::{split, AsyncRead, AsyncReadExt, AsyncWrite};
+use tokio::net::{TcpListener, TcpStream, UdpSocket};
+use tokio::select;
+use tokio::task::spawn;
+use tokio_rustls::client::TlsStream;
+use tokio_rustls::TlsConnector;
 
 use crate::socks5::{negotiate_request, Address, ClientConnRequest, Command, ConnStatusCode};
 use crate::udp::{copy_frame_to_socks5_udp, copy_socks5_udp_to_frame};
 use crate::utils::copy_io;
 
 async fn negotiate_with_server(
+    cc: Arc<rustls::ClientConfig>,
     upstream_host: &str,
     upstream_addr: &str,
     protocol: &str,
     address: &Address,
 ) -> anyhow::Result<(http::Response, TlsStream<TcpStream>)> {
     log::info!("Connecting to {}", upstream_addr);
-    let mut upstream =
-        async_native_tls::connect(upstream_host, TcpStream::connect(upstream_addr).await?).await?;
+    let upstream = TcpStream::connect(upstream_addr).await?;
+    let mut upstream = TlsConnector::from(cc)
+        .connect(upstream_host.try_into()?, upstream)
+        .await?;
     log::debug!("Connected to {}", upstream_addr);
 
     http::Request::write(protocol, address, upstream_addr, &mut upstream).await?;
@@ -38,6 +44,7 @@ async fn negotiate_with_server(
 }
 
 async fn serve_client_tcp(
+    cc: Arc<rustls::ClientConfig>,
     rx: impl AsyncRead + Unpin,
     mut tx: impl AsyncWrite + Unpin,
     upstream_host: &str,
@@ -45,7 +52,7 @@ async fn serve_client_tcp(
     address: Address,
 ) -> anyhow::Result<()> {
     let (bound, upstream) =
-        match negotiate_with_server(&upstream_host, &upstream_addr, "tcp", &address).await {
+        match negotiate_with_server(cc, &upstream_host, &upstream_addr, "tcp", &address).await {
             Ok(v) => v,
             Err(e) => {
                 ClientConnRequest::respond(&mut tx, ConnStatusCode::FAILED, &Default::default())
@@ -61,20 +68,21 @@ async fn serve_client_tcp(
     )
     .await?;
 
-    let (upstream_rx, upstream_tx) = upstream.split();
+    let (upstream_rx, upstream_tx) = split(upstream);
     select! {
-        r1 = copy_io(rx, upstream_tx).fuse() => r1,
-        r2 = copy_io(upstream_rx, tx).fuse() => r2,
+        r1 = copy_io(rx, upstream_tx) => r1,
+        r2 = copy_io(upstream_rx, tx) => r2,
     }
 }
 
 async fn prepare_client_udp(
+    cc: Arc<rustls::ClientConfig>,
     upstream_host: &str,
     upstream_addr: &str,
     address: &Address,
 ) -> anyhow::Result<(UdpSocket, TlsStream<TcpStream>, SocketAddr)> {
     let (_, upstream) =
-        negotiate_with_server(&upstream_host, &upstream_addr, "udp", address).await?;
+        negotiate_with_server(cc, &upstream_host, &upstream_addr, "udp", address).await?;
 
     let socket = UdpSocket::bind("0.0.0.0:0").await?;
     let local_udp_addr = socket.local_addr()?;
@@ -82,13 +90,14 @@ async fn prepare_client_udp(
 }
 
 async fn serve_client_udp(
+    cc: Arc<rustls::ClientConfig>,
     mut tx: impl AsyncWrite + Unpin,
     upstream_host: &str,
     upstream_addr: &str,
     address: Address,
 ) -> anyhow::Result<()> {
     let (udp_socket, upstream, local_udp_addr) =
-        match prepare_client_udp(upstream_host, upstream_addr, &address).await {
+        match prepare_client_udp(cc, upstream_host, upstream_addr, &address).await {
             Ok(v) => v,
             Err(e) => {
                 ClientConnRequest::respond(&mut tx, ConnStatusCode::FAILED, &Default::default())
@@ -104,20 +113,21 @@ async fn serve_client_udp(
     )
     .await?;
 
-    let (mut upstream_rx, mut upstream_tx) = upstream.split();
+    let (mut upstream_rx, mut upstream_tx) = split(upstream);
 
     select! {
-        r1 = copy_socks5_udp_to_frame(&udp_socket, &address, &mut upstream_tx).fuse() => r1,
-        r2 = copy_frame_to_socks5_udp(&mut upstream_rx, &address, &udp_socket).fuse() => r2,
+        r1 = copy_socks5_udp_to_frame(&udp_socket, &address, &mut upstream_tx) => r1,
+        r2 = copy_frame_to_socks5_udp(&mut upstream_rx, &address, &udp_socket) => r2,
     }
 }
 
 async fn serve_client(
     sock: TcpStream,
+    cc: Arc<rustls::ClientConfig>,
     upstream_host: &str,
     upstream_addr: &str,
 ) -> anyhow::Result<()> {
-    let (mut rx, mut tx) = sock.split();
+    let (mut rx, mut tx) = sock.into_split();
 
     let ClientConnRequest { cmd, address } = match negotiate_request(&mut rx, &mut tx).await {
         Ok(r) => r,
@@ -131,10 +141,10 @@ async fn serve_client(
 
     match cmd {
         Command::CONNECT_TCP => {
-            serve_client_tcp(rx, tx, upstream_host, upstream_addr, address).await
+            serve_client_tcp(cc, rx, tx, upstream_host, upstream_addr, address).await
         }
 
-        Command::BIND_UDP => serve_client_udp(tx, upstream_host, upstream_addr, address).await,
+        Command::BIND_UDP => serve_client_udp(cc, tx, upstream_host, upstream_addr, address).await,
 
         _ => {
             ClientConnRequest::respond(
@@ -156,6 +166,21 @@ pub async fn run_client(
     log::info!("Start client at {}", bind_addr);
     let listener = TcpListener::bind(bind_addr).await?;
     let upstream_addr = format!("{upstream_host}:{upstream_port}");
+    let mut root_store = rustls::RootCertStore::empty();
+    root_store.add_server_trust_anchors(webpki_roots::TLS_SERVER_ROOTS.0.iter().map(|ta| {
+        rustls::OwnedTrustAnchor::from_subject_spki_name_constraints(
+            ta.subject,
+            ta.spki,
+            ta.name_constraints,
+        )
+    }));
+
+    let config = Arc::new(
+        rustls::ClientConfig::builder()
+            .with_safe_defaults()
+            .with_root_certificates(root_store)
+            .with_no_client_auth(),
+    );
 
     loop {
         let (sock, addr) = listener.accept().await?;
@@ -163,8 +188,9 @@ pub async fn run_client(
 
         let upstream_host = upstream_host.to_string();
         let upstream_addr = upstream_addr.clone();
+        let config = config.clone();
         spawn(async move {
-            if let Err(e) = serve_client(sock, &upstream_host, &upstream_addr).await {
+            if let Err(e) = serve_client(sock, config, &upstream_host, &upstream_addr).await {
                 log::error!("Error serving client {addr}: {e}");
             }
             log::info!("Client {addr} disconnected");

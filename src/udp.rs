@@ -1,12 +1,12 @@
 use crate::parse::{Parsable, ParseError, ParseResult, Writable};
 use crate::socks5::{Address, UdpPacket};
 use anyhow::anyhow;
-use async_std::net::UdpSocket;
 use bytes::{Buf, BufMut};
-use futures::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
 use std::borrow::Cow;
 use std::fmt::Debug;
 use std::net::SocketAddr;
+use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
+use tokio::net::UdpSocket;
 
 #[derive(Debug, Eq, PartialEq, Clone)]
 pub enum UdpFrame<'a> {
@@ -235,7 +235,7 @@ pub async fn copy_frame_to_socks5_udp(
 mod test {
     use super::*;
 
-    #[async_std::test]
+    #[tokio::test]
     async fn codec_works() {
         let mut buf: Vec<u8> = Default::default();
         let data = b"hello, world";

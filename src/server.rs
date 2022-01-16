@@ -3,10 +3,11 @@ use crate::http::Request;
 use crate::udp::{copy_frame_to_udp, copy_udp_to_frame};
 use crate::utils::copy_io;
 use anyhow::anyhow;
-use async_std::net::{TcpListener, TcpStream, UdpSocket};
-use async_std::task::spawn;
-use futures::{select, AsyncReadExt, FutureExt};
 use std::net::SocketAddr;
+use tokio::io::AsyncReadExt;
+use tokio::net::{TcpListener, TcpStream, UdpSocket};
+use tokio::select;
+use tokio::task::spawn;
 
 async fn prepare_client_tcp(upstream_addr: String) -> anyhow::Result<(TcpStream, SocketAddr)> {
     let upstream = TcpStream::connect(&upstream_addr).await?;
@@ -25,19 +26,20 @@ async fn serve_client_tcp(mut sock: TcpStream, address: String) -> anyhow::Resul
     };
 
     http::Response::write(&bound_addr, &mut sock).await?;
-    let (upstream_rx, upstream_tx) = upstream.split();
-    let (rx, tx) = sock.split();
+    let (upstream_rx, upstream_tx) = upstream.into_split();
+    let (rx, tx) = sock.into_split();
     select! {
-        r1 = copy_io(upstream_rx, tx).fuse() => r1,
-        r2 = copy_io(rx, upstream_tx).fuse() => r2,
+        r1 = copy_io(upstream_rx, tx) => r1,
+        r2 = copy_io(rx, upstream_tx) => r2,
     }
 }
 
 async fn prepare_client_udp(address: &str) -> anyhow::Result<(UdpSocket, SocketAddr)> {
     let socket = UdpSocket::bind("127.0.0.1:0").await?;
     socket.connect(address).await?;
+    let socket = socket.into_std()?;
     let remote_addr = socket.peer_addr()?;
-    Ok((socket, remote_addr))
+    Ok((UdpSocket::from_std(socket)?, remote_addr))
 }
 
 async fn serve_client_udp(mut sock: TcpStream, address: String) -> anyhow::Result<()> {
@@ -53,8 +55,8 @@ async fn serve_client_udp(mut sock: TcpStream, address: String) -> anyhow::Resul
     let (mut rx, mut tx) = sock.split();
 
     select! {
-        r1 = copy_frame_to_udp(&mut rx, &upstream).fuse() => r1,
-        r2 = copy_udp_to_frame(&upstream, &address, &mut tx).fuse() => r2,
+        r1 = copy_frame_to_udp(&mut rx, &upstream) => r1,
+        r2 = copy_udp_to_frame(&upstream, &address, &mut tx) => r2,
     }
 }
 

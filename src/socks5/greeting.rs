@@ -1,7 +1,7 @@
 use crate::parse::ParseError;
 use bytes::Buf;
-use futures::{AsyncWrite, AsyncWriteExt};
 use std::io::Cursor;
+use tokio::io::{AsyncWrite, AsyncWriteExt};
 
 type Auth = u8;
 

@@ -1,7 +1,7 @@
 use super::ClientConnRequest;
 use crate::parse::ParseError;
 use crate::socks5::greeting::{ClientGreeting, AUTH_NOT_ACCEPTED, AUTH_NO_PASSWORD};
-use futures::{AsyncRead, AsyncReadExt, AsyncWrite};
+use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite};
 
 pub async fn negotiate_request(
     rx: &mut (impl AsyncRead + Unpin + ?Sized),

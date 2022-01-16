@@ -1,6 +1,6 @@
 use crate::parse::{Parsable, ParseError, Writable};
 use bytes::Buf;
-use futures::{AsyncWrite, AsyncWriteExt};
+use tokio::io::{AsyncWrite, AsyncWriteExt};
 
 use super::Address;
 

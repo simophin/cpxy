@@ -1,5 +1,4 @@
 mod chunked;
-#[cfg(feature = "client")]
 mod client;
 mod http;
 mod parse;
@@ -30,7 +29,6 @@ enum Command {
         port: u16,
     },
 
-    #[cfg(feature = "client")]
     #[clap(setting(AppSettings::ArgRequiredElseHelp))]
     Client {
         /// The SOCKS5 host to listen on
@@ -51,14 +49,13 @@ enum Command {
     },
 }
 
-#[async_std::main]
+#[tokio::main]
 async fn main() -> anyhow::Result<()> {
     env_logger::init();
 
     let Cli { cmd } = Cli::parse();
     match cmd {
         Command::Server { host, port } => run_server(&format!("{host}:{port}")).await,
-        #[cfg(feature = "client")]
         Command::Client {
             socks5_host,
             socks5_port,

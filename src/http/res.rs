@@ -1,8 +1,8 @@
 use crate::parse::ParseError;
-use futures::{AsyncWrite, AsyncWriteExt};
 use httparse::{Status, EMPTY_HEADER};
 use std::net::{IpAddr, SocketAddr};
 use std::str::FromStr;
+use tokio::io::{AsyncWrite, AsyncWriteExt};
 
 #[derive(Debug, Eq, PartialEq)]
 pub struct Response {
@@ -98,7 +98,7 @@ impl Response {
 mod test {
     use super::*;
 
-    #[async_std::test]
+    #[tokio::test]
     async fn encoding_works() {
         let mut buf: Vec<u8> = Default::default();
         let sock_addr = SocketAddr::from_str("1.2.3.4:80").unwrap();
