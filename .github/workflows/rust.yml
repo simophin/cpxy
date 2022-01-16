@@ -13,8 +13,6 @@ jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-    - name: Add dependencies
-      run: apt update -y && apt install -y openssl-dev
     - uses: actions/checkout@v2
     - name: Cache
       uses: actions/cache@v2.1.7
