@@ -1,6 +1,6 @@
 <component name="ProjectRunConfigurationManager">
-  <configuration default="false" name="Watch server" type="CargoCommandRunConfiguration" factoryName="Cargo Command">
-    <option name="command" value="watch -x &quot;run --bin=proxy -- server --port=4200 --host=0.0.0.0&quot;" />
+  <configuration default="false" name="Watch client" type="CargoCommandRunConfiguration" factoryName="Cargo Command">
+    <option name="command" value="watch -x &quot;run --bin=proxy -- client --socks5-port 8081 --remote-host l.fanchao.dev&quot;" />
     <option name="workingDirectory" value="file://$PROJECT_DIR$" />
     <option name="channel" value="DEFAULT" />
     <option name="requiredFeatures" value="true" />

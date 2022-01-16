@@ -1,13 +1,5 @@
-mod chunked;
-mod client;
-mod http;
-mod parse;
-mod server;
-mod socks5;
-mod udp;
-mod utils;
-
-use crate::server::run_server;
+use cjk_proxy::client;
+use cjk_proxy::server::run_server;
 use clap::{AppSettings, Parser, Subcommand};
 
 /// SOCKS5 over HTTPs
