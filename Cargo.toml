@@ -6,7 +6,7 @@ edition = "2021"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-tokio = { version = "1", features = ["macros", "net", "rt-multi-thread", "io-util"] }
+tokio = { version = "1", features = ["macros", "net", "rt-multi-thread", "io-util", "time"] }
 tokio-rustls = "0"
 anyhow = "1"
 rustls = "0"
@@ -21,4 +21,3 @@ pin-project-lite = "0"
 rand = "0"
 base64 = "0"
 clap = { version = "3", features = ["derive"] }
-url = "2"

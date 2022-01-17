@@ -53,8 +53,8 @@ pub async fn send<T: AsyncRead + AsyncWrite + Unpin>(
     loop {
         match stream.read(buf.write_buf()).await? {
             0 => return Err(anyhow!("Unexpected EOF")),
-            _ => {}
-        }
+            v => buf.advance_write(v),
+        };
 
         let mut headers = [httparse::EMPTY_HEADER; 20];
         let mut res = httparse::Response::new(&mut headers);

@@ -41,18 +41,24 @@ impl<T: AsyncRead> AsyncRead for CipherStream<T> {
         buf: &mut ReadBuf<'_>,
     ) -> Poll<std::io::Result<()>> {
         let p = self.project();
-        match p.init_read_buf.as_mut() {
+        let has_init_result = match p.init_read_buf.as_mut() {
             Some(initial) if initial.remaining_read() > 0 => {
                 let len = min(initial.remaining_read(), buf.remaining());
                 buf.put_slice(&initial.read_buf()[..len]);
                 initial.advance_read(len);
-                return Poll::Ready(Ok(()));
+                if initial.remaining_read() > 0 {
+                    cx.waker().wake_by_ref();
+                    return Poll::Ready(Ok(()));
+                }
+                *p.init_read_buf = None;
+                true
             }
             Some(_) => {
                 *p.init_read_buf = None;
+                false
             }
-            _ => {}
-        }
+            _ => false,
+        };
 
         let prev_remaining = buf.remaining();
         match p.inner.poll_read(cx, buf) {
@@ -66,7 +72,8 @@ impl<T: AsyncRead> AsyncRead for CipherStream<T> {
                 }
                 return Poll::Ready(v);
             }
-            Poll::Pending => Poll::Pending,
+            Poll::Pending if !has_init_result => Poll::Pending,
+            _ => Poll::Ready(Ok(())),
         }
     }
 }

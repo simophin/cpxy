@@ -2,11 +2,13 @@ use super::client::URL_PREFIX;
 use super::CipherStream;
 use crate::utils::RWBuffer;
 use anyhow::anyhow;
+use base64::{decode_config_slice, URL_SAFE_NO_PAD};
 use chacha20::cipher::{NewCipher, StreamCipher};
 use chacha20::{ChaCha20, Key, Nonce};
 use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
 
 fn check_request(req: httparse::Request) -> Result<ChaCha20, (&'static str, &'static str)> {
+    log::debug!("Received request: {:?}", req);
     match req.method {
         Some(m) if m.eq_ignore_ascii_case("get") => {}
         _ => {
@@ -29,9 +31,7 @@ fn check_request(req: httparse::Request) -> Result<ChaCha20, (&'static str, &'st
             }
         })
         .and_then(|v| {
-            if base64::decode_config_slice(v, base64::URL_SAFE_NO_PAD, &mut key[..])
-                == Ok(key.len())
-            {
+            if decode_config_slice(v, URL_SAFE_NO_PAD, &mut key[..]) == Ok(key.len()) {
                 Some(())
             } else {
                 None
@@ -43,9 +43,7 @@ fn check_request(req: httparse::Request) -> Result<ChaCha20, (&'static str, &'st
         .iter()
         .find(|x| x.name.eq_ignore_ascii_case("X-Cache-Key"))
         .and_then(|h| {
-            if base64::decode_config_slice(h.value, base64::URL_SAFE_NO_PAD, &mut nonce[..])
-                == Ok(nonce.len())
-            {
+            if decode_config_slice(h.value, URL_SAFE_NO_PAD, &mut nonce[..]) == Ok(nonce.len()) {
                 Some(())
             } else {
                 None
@@ -96,6 +94,17 @@ pub async fn listen<T: AsyncRead + AsyncWrite + Unpin>(
 
     buf.advance_read(offset);
 
+    // Respond client with correct details
+    stream
+        .write_all(
+            b"HTTP/1.1 101 Switching Protocols\r\n\
+                    Upgrade: websocket\r\n\
+                    Connection: Upgrade\r\n\
+                    Sec-WebSocket-Accept: s3pPLMBiTxaQ9kYGzzhZRbK+xOo=\r\n\
+                    \r\n",
+        )
+        .await?;
+
     // Decrypt the initial data
     if buf.remaining_read() > 0 {
         cipher.apply_keystream(buf.read_buf_mut());
@@ -107,37 +116,48 @@ pub async fn listen<T: AsyncRead + AsyncWrite + Unpin>(
 #[cfg(test)]
 mod test {
     use super::*;
-    use std::io::Write;
-    use tokio::io::{split, AsyncBufReadExt, AsyncReadExt, AsyncWriteExt, BufReader};
-    use tokio::net::TcpSocket;
+    use std::io::{Read, Write};
+    use std::time::Duration;
+    use tokio::io::{duplex, split, AsyncBufReadExt, AsyncReadExt, AsyncWriteExt, BufReader};
     use tokio::spawn;
+    use tokio::task::JoinHandle;
+    use tokio::time::timeout;
 
     #[tokio::test]
-    async fn server_client_works() {
-        let server = TcpSocket::new_v4().unwrap();
-        server.bind("127.0.0.1:0".parse().unwrap()).unwrap();
-        let server_addr = server.local_addr().unwrap();
-        let server = spawn(async move { server.listen(1).unwrap().accept().await.unwrap().0 });
+    async fn server_client_works() -> anyhow::Result<()> {
+        let duration = Duration::from_secs(2000);
+        let (client, server) = duplex(4096);
 
-        let client = TcpSocket::new_v4().unwrap();
-        let client = client.connect(server_addr).await.unwrap();
+        let server: JoinHandle<anyhow::Result<()>> = spawn(async move {
+            let mut server = listen(server, Default::default()).await?;
+            let mut buf = RWBuffer::default();
+            loop {
+                match server.read(buf.write_buf()).await? {
+                    0 => return Ok(()),
+                    v => buf.advance_write(v),
+                };
 
-        let server = server.await.unwrap();
-        let server = spawn(async move { listen(server, Default::default()).await });
+                server.write_all(buf.read_buf()).await?;
+                buf.consume_read();
+            }
+        });
 
-        let mut input_buf = RWBuffer::with_capacity(8192);
-        input_buf.write_all(b"hello,").unwrap();
+        let mut init_buf = RWBuffer::default();
+        init_buf.write_all(b"hello,")?;
 
         let (client_r, mut client_w) =
-            split(super::super::client::send(client, input_buf).await.unwrap());
-        let (server_r, server_w) = split(server.await.unwrap().unwrap());
-
+            split(timeout(duration, super::super::client::send(client, init_buf)).await??);
         let mut client_r = BufReader::new(client_r);
-        let mut server_r = BufReader::new(server_r);
+        client_w.write_all(b"world\n").await?;
 
-        client_w.write_all(b"world\n").await.unwrap();
         let mut line = Default::default();
-        server_r.read_line(&mut line).await.unwrap();
-        assert_eq!(line, "hello,world");
+        timeout(duration, client_r.read_line(&mut line)).await??;
+
+        assert_eq!(line, "hello,world\n");
+
+        drop(client_r);
+        drop(client_w);
+
+        server.await?
     }
 }
