@@ -7,15 +7,34 @@
         {
             "type": "lldb",
             "request": "launch",
-            "name": "Debug executable 'cjk-proxy'",
+            "name": "Debug unit tests in library 'cjk-proxy'",
             "cargo": {
                 "args": [
-                    "build",
-                    "--bin=cjk-proxy",
+                    "test",
+                    "--no-run",
+                    "--lib",
                     "--package=cjk-proxy"
                 ],
                 "filter": {
                     "name": "cjk-proxy",
+                    "kind": "lib"
+                }
+            },
+            "args": [],
+            "cwd": "${workspaceFolder}"
+        },
+        {
+            "type": "lldb",
+            "request": "launch",
+            "name": "Debug executable 'proxy'",
+            "cargo": {
+                "args": [
+                    "build",
+                    "--bin=proxy",
+                    "--package=cjk-proxy"
+                ],
+                "filter": {
+                    "name": "proxy",
                     "kind": "bin"
                 }
             },
@@ -25,16 +44,16 @@
         {
             "type": "lldb",
             "request": "launch",
-            "name": "Debug unit tests in executable 'cjk-proxy'",
+            "name": "Debug unit tests in executable 'proxy'",
             "cargo": {
                 "args": [
                     "test",
                     "--no-run",
-                    "--bin=cjk-proxy",
+                    "--bin=proxy",
                     "--package=cjk-proxy"
                 ],
                 "filter": {
-                    "name": "cjk-proxy",
+                    "name": "proxy",
                     "kind": "bin"
                 }
             },

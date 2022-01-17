@@ -1,7 +1,7 @@
 use crate::utils::RWBuffer;
 use bytes::BufMut;
-use chacha20::cipher::{NewCipher, StreamCipher};
-use chacha20::{ChaCha20, Key, Nonce};
+use chacha20::cipher::StreamCipher;
+use chacha20::ChaCha20;
 use pin_project_lite::pin_project;
 use std::cmp::min;
 use std::io::Error;
@@ -14,7 +14,7 @@ pin_project! {
         #[pin]
         pub(super) inner: T,
         pub(super) cipher: ChaCha20,
-        pub(super) initial_encrypted_buf: Option<RWBuffer>,
+        pub(super) init_read_buf: Option<RWBuffer>,
         pub(super) write_buf: RWBuffer,
     }
 }
@@ -24,7 +24,7 @@ impl<T> CipherStream<T> {
         Self {
             inner,
             cipher,
-            initial_encrypted_buf: initial_buf,
+            init_read_buf: initial_buf,
             write_buf: RWBuffer::with_capacity(n),
         }
     }
@@ -40,20 +40,19 @@ impl<T: AsyncRead> AsyncRead for CipherStream<T> {
         cx: &mut Context<'_>,
         buf: &mut ReadBuf<'_>,
     ) -> Poll<std::io::Result<()>> {
-        match self.initial_encrypted_buf.as_mut() {
+        let p = self.project();
+        match p.init_read_buf.as_mut() {
             Some(initial) if initial.remaining_read() > 0 => {
                 let len = min(initial.remaining_read(), buf.remaining());
                 buf.put_slice(&initial.read_buf()[..len]);
                 initial.advance_read(len);
+                return Poll::Ready(Ok(()));
             }
-            Some(initial) => {
-                drop(initial);
-                self.initial_encrypted_buf = None;
+            Some(_) => {
+                *p.init_read_buf = None;
             }
             _ => {}
         }
-
-        let p = self.project();
 
         let prev_remaining = buf.remaining();
         match p.inner.poll_read(cx, buf) {
@@ -137,6 +136,8 @@ impl<T: AsyncWrite> AsyncWrite for CipherStream<T> {
 #[cfg(test)]
 mod test {
     use super::*;
+    use chacha20::cipher::NewCipher;
+    use chacha20::{Key, Nonce};
     use tokio::io::AsyncWriteExt;
 
     #[tokio::test]

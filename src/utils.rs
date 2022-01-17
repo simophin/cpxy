@@ -42,6 +42,12 @@ pub struct RWBuffer {
     write_cursor: usize,
 }
 
+impl Default for RWBuffer {
+    fn default() -> Self {
+        RWBuffer::with_capacity(8192)
+    }
+}
+
 impl RWBuffer {
     pub fn with_capacity(size: usize) -> Self {
         Self {
@@ -124,7 +130,7 @@ impl std::io::Write for RWBuffer {
 }
 
 impl std::io::Read for RWBuffer {
-    fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
+    fn read(&mut self, mut buf: &mut [u8]) -> std::io::Result<usize> {
         let len = min(buf.len(), self.remaining_read());
         if len > 0 {
             buf.put_slice(&self.read_buf()[..len]);
