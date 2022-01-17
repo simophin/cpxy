@@ -5,6 +5,7 @@ mod req;
 mod udp;
 
 pub use addr::*;
+pub use greeting::*;
 pub use handshake::*;
-pub use req::{ClientConnRequest, Command, ConnStatusCode};
+pub use req::*;
 pub use udp::*;

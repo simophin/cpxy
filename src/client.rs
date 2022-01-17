@@ -1,16 +1,22 @@
 use crate::http;
+use crate::parse::ParseError;
+use anyhow::anyhow;
+use httparse::{Request, EMPTY_HEADER};
 use std::net::SocketAddr;
 use std::sync::Arc;
-use tokio::io::{split, AsyncRead, AsyncReadExt, AsyncWrite};
+use tokio::io::{split, AsyncReadExt};
 use tokio::net::{TcpListener, TcpStream, UdpSocket};
 use tokio::select;
 use tokio::task::spawn;
 use tokio_rustls::client::TlsStream;
 use tokio_rustls::TlsConnector;
 
-use crate::socks5::{negotiate_request, Address, ClientConnRequest, Command, ConnStatusCode};
+use crate::socks5::{
+    Address, ClientConnRequest, ClientGreeting, Command, ConnStatusCode, AUTH_NOT_ACCEPTED,
+    AUTH_NO_PASSWORD,
+};
 use crate::udp::{copy_frame_to_socks5_udp, copy_socks5_udp_to_frame};
-use crate::utils::copy_io;
+use crate::utils::{copy_io, copy_io_with_buf, RWBuffer};
 
 async fn negotiate_with_server(
     cc: Arc<rustls::ClientConfig>,
@@ -28,25 +34,24 @@ async fn negotiate_with_server(
 
     http::Request::write(protocol, address, upstream_addr, &mut upstream).await?;
 
-    let mut n = 0;
-    let mut buf = vec![0u8; 4096];
+    let mut buf = RWBuffer::with_capacity(4096);
 
     loop {
-        match upstream.read(&mut buf.as_mut_slice()[n..]).await? {
+        match upstream.read(buf.write_buf()).await? {
             0 => return Err(anyhow::anyhow!("Unexpected EOF")),
-            v => n += v,
+            v => buf.advance_write(v),
         };
 
-        if let Some(v) = http::Response::parse(&buf.as_slice()[..n])? {
+        if let Some(v) = http::Response::parse(buf.read_buf())? {
             return Ok((v, upstream));
         }
     }
 }
 
 async fn serve_client_tcp(
+    mut sock: TcpStream,
+    buf: RWBuffer,
     cc: Arc<rustls::ClientConfig>,
-    rx: impl AsyncRead + Unpin,
-    mut tx: impl AsyncWrite + Unpin,
     upstream_host: &str,
     upstream_addr: &str,
     address: Address,
@@ -55,22 +60,23 @@ async fn serve_client_tcp(
         match negotiate_with_server(cc, &upstream_host, &upstream_addr, "tcp", &address).await {
             Ok(v) => v,
             Err(e) => {
-                ClientConnRequest::respond(&mut tx, ConnStatusCode::FAILED, &Default::default())
+                ClientConnRequest::respond(&mut sock, ConnStatusCode::FAILED, &Default::default())
                     .await?;
                 return Err(e.into());
             }
         };
 
     ClientConnRequest::respond(
-        &mut tx,
+        &mut sock,
         ConnStatusCode::GRANTED,
         &Address::IP(bound.bound_address),
     )
     .await?;
 
+    let (rx, tx) = split(sock);
     let (upstream_rx, upstream_tx) = split(upstream);
     select! {
-        r1 = copy_io(rx, upstream_tx) => r1,
+        r1 = copy_io_with_buf(rx, upstream_tx, buf) => r1,
         r2 = copy_io(upstream_rx, tx) => r2,
     }
 }
@@ -90,8 +96,9 @@ async fn prepare_client_udp(
 }
 
 async fn serve_client_udp(
+    mut sock: TcpStream,
+    buf: RWBuffer,
     cc: Arc<rustls::ClientConfig>,
-    mut tx: impl AsyncWrite + Unpin,
     upstream_host: &str,
     upstream_addr: &str,
     address: Address,
@@ -100,14 +107,14 @@ async fn serve_client_udp(
         match prepare_client_udp(cc, upstream_host, upstream_addr, &address).await {
             Ok(v) => v,
             Err(e) => {
-                ClientConnRequest::respond(&mut tx, ConnStatusCode::FAILED, &Default::default())
+                ClientConnRequest::respond(&mut sock, ConnStatusCode::FAILED, &Default::default())
                     .await?;
                 return Err(e);
             }
         };
 
     ClientConnRequest::respond(
-        &mut tx,
+        &mut sock,
         ConnStatusCode::GRANTED,
         &Address::IP(local_udp_addr),
     )
@@ -116,45 +123,144 @@ async fn serve_client_udp(
     let (mut upstream_rx, mut upstream_tx) = split(upstream);
 
     select! {
-        r1 = copy_socks5_udp_to_frame(&udp_socket, &address, &mut upstream_tx) => r1,
+        r1 = copy_socks5_udp_to_frame(&udp_socket, &address, &mut upstream_tx, buf) => r1,
         r2 = copy_frame_to_socks5_udp(&mut upstream_rx, &address, &udp_socket) => r2,
     }
 }
 
-async fn serve_client(
-    sock: TcpStream,
+async fn serve_client_socks5(
+    mut sock: TcpStream,
+    mut buf: RWBuffer,
     cc: Arc<rustls::ClientConfig>,
     upstream_host: &str,
     upstream_addr: &str,
 ) -> anyhow::Result<()> {
-    let (mut rx, mut tx) = sock.into_split();
-
-    let ClientConnRequest { cmd, address } = match negotiate_request(&mut rx, &mut tx).await {
-        Ok(r) => r,
-        Err(e) if e.is::<ConnStatusCode>() => {
-            ClientConnRequest::respond(&mut tx, *e.downcast_ref().unwrap(), &Default::default())
+    loop {
+        match ClientConnRequest::parse(buf.read_buf()) {
+            Ok(Some((offset, req))) if req.cmd == Command::CONNECT_TCP => {
+                let address = req.address;
+                buf.advance_read(offset);
+                return serve_client_tcp(sock, buf, cc, upstream_host, upstream_addr, address)
+                    .await;
+            }
+            Ok(Some((_, req))) if req.cmd == Command::BIND_UDP => {
+                return serve_client_udp(sock, buf, cc, upstream_host, upstream_addr, req.address)
+                    .await
+            }
+            Ok(Some((_, req))) => {
+                ClientConnRequest::respond(
+                    &mut sock,
+                    ConnStatusCode::UNSUPPORTED_COMMAND,
+                    &Default::default(),
+                )
                 .await?;
-            return Err(e.into());
+                return Err(ParseError::unexpected("command", req.cmd, "1 or 3").into());
+            }
+            Err(e) => return Err(e.into()),
+            _ => {}
         }
-        Err(e) => return Err(e.into()),
+
+        match sock.read(buf.write_buf()).await? {
+            0 => return Err(anyhow!("Unexpected EOF")),
+            v => buf.advance_write(v),
+        }
+    }
+}
+
+async fn serve_client_http_proxy(
+    mut sock: TcpStream,
+    req: HttpRequest,
+    mut buf: RWBuffer,
+    cc: Arc<rustls::ClientConfig>,
+    upstream_host: &str,
+    upstream_addr: &str,
+) -> anyhow::Result<()> {
+    unimplemented!()
+}
+
+struct HttpRequest {
+    method: Option<String>,
+    path: Option<String>,
+    headers: Vec<(String, String)>,
+}
+
+impl From<httparse::Request<'_, '_>> for HttpRequest {
+    fn from(req: Request<'_, '_>) -> Self {
+        HttpRequest {
+            method: req.method.map(|x| x.to_string()),
+            path: req.path.map(|x| x.to_string()),
+            headers: req
+                .headers
+                .iter()
+                .map(|x| {
+                    (
+                        x.name.to_string(),
+                        String::from_utf8_lossy(x.value).to_string(),
+                    )
+                })
+                .collect(),
+        }
+    }
+}
+
+async fn serve_client(
+    mut sock: TcpStream,
+    cc: Arc<rustls::ClientConfig>,
+    upstream_host: &str,
+    upstream_addr: &str,
+) -> anyhow::Result<()> {
+    let mut buf = RWBuffer::with_capacity(65536);
+
+    let http_request = loop {
+        match sock.read(buf.write_buf()).await? {
+            0 => return Err(anyhow!("Unexpected EOF")),
+            v => buf.advance_write(v),
+        };
+
+        let mut headers = [EMPTY_HEADER; 20];
+        let mut req = httparse::Request::new(&mut headers);
+
+        match (
+            ClientGreeting::parse(buf.read_buf()),
+            req.parse(buf.read_buf()),
+        ) {
+            (Err(e1), Err(e2)) => {
+                return Err(ParseError::unexpected(
+                    "greeting message",
+                    format!("{e1} and {e2}"),
+                    "Valid socks5 or http",
+                )
+                .into())
+            }
+            (Ok(Some((offset, greeting))), _) => {
+                if !greeting.auths.contains(&AUTH_NO_PASSWORD) {
+                    ClientGreeting::respond(AUTH_NOT_ACCEPTED, &mut sock).await?;
+                    return Err(ParseError::unexpected(
+                        "SOCK5 AUTH",
+                        greeting.auths.to_vec(),
+                        "0x00",
+                    )
+                    .into());
+                }
+
+                ClientGreeting::respond(AUTH_NO_PASSWORD, &mut sock).await?;
+                buf.advance_read(offset);
+                break None;
+            }
+            (_, Ok(httparse::Status::Complete(offset))) => {
+                let result = req.into();
+                buf.advance_read(offset);
+                break Some(result);
+            }
+            _ => continue,
+        }
     };
 
-    match cmd {
-        Command::CONNECT_TCP => {
-            serve_client_tcp(cc, rx, tx, upstream_host, upstream_addr, address).await
+    match http_request {
+        Some(req) => {
+            serve_client_http_proxy(sock, req, buf, cc, upstream_host, upstream_addr).await
         }
-
-        Command::BIND_UDP => serve_client_udp(cc, tx, upstream_host, upstream_addr, address).await,
-
-        _ => {
-            ClientConnRequest::respond(
-                &mut tx,
-                ConnStatusCode::UNSUPPORTED_COMMAND,
-                &Default::default(),
-            )
-            .await?;
-            Err(anyhow::anyhow!("Unsupported socks command"))
-        }
+        None => serve_client_socks5(sock, buf, cc, upstream_host, upstream_addr).await,
     }
 }
 

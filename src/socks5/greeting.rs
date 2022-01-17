@@ -8,13 +8,16 @@ type Auth = u8;
 pub const AUTH_NO_PASSWORD: Auth = 0x0;
 pub const AUTH_NOT_ACCEPTED: Auth = 0xFF;
 
-#[derive(Debug, Clone)]
-pub struct ClientGreeting {
-    pub auths: Vec<Auth>,
+#[derive(Debug)]
+pub struct ClientGreeting<'a> {
+    pub auths: &'a [Auth],
 }
 
-impl ClientGreeting {
-    pub fn parse(buf: &[u8]) -> Result<Option<Self>, ParseError> {
+impl<'a> ClientGreeting<'a> {
+    pub fn parse<'buf>(buf: &'buf [u8]) -> Result<Option<(usize, Self)>, ParseError>
+    where
+        'buf: 'a,
+    {
         let mut buf = Cursor::new(buf);
         if buf.remaining() < 2 {
             return Ok(None);
@@ -30,9 +33,13 @@ impl ClientGreeting {
             return Ok(None);
         }
 
-        let mut auths = vec![0; len];
-        buf.copy_to_slice(&mut auths);
-        Ok(Some(Self { auths }))
+        let offset = buf.position() as usize + len;
+        Ok(Some((
+            offset,
+            Self {
+                auths: &buf.into_inner()[..len],
+            },
+        )))
     }
 
     pub async fn respond(

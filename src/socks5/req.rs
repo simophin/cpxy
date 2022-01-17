@@ -36,7 +36,7 @@ pub struct ClientConnRequest {
 }
 
 impl ClientConnRequest {
-    pub fn parse(mut buf: &[u8]) -> Result<Option<Self>, ParseError> {
+    pub fn parse(mut buf: &[u8]) -> Result<Option<(usize, Self)>, ParseError> {
         if buf.remaining() < 3 {
             return Ok(None);
         }
@@ -52,15 +52,18 @@ impl ClientConnRequest {
             _ => {}
         };
 
-        let (_, address) = match Address::parse(buf)? {
+        let (offset, address) = match Address::parse(buf)? {
             None => return Ok(None),
             Some(addr) => addr,
         };
 
-        Ok(Some(Self {
-            cmd: Command(cmd),
-            address,
-        }))
+        Ok(Some((
+            3 + offset,
+            Self {
+                cmd: Command(cmd),
+                address,
+            },
+        )))
     }
 
     pub async fn respond(

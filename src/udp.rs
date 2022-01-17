@@ -1,5 +1,6 @@
 use crate::parse::{Parsable, ParseError, ParseResult, Writable};
 use crate::socks5::{Address, UdpPacket};
+use crate::utils::RWBuffer;
 use anyhow::anyhow;
 use bytes::{Buf, BufMut};
 use std::borrow::Cow;
@@ -158,19 +159,20 @@ pub async fn copy_socks5_udp_to_frame(
     src: &UdpSocket,
     socks_requested_address: &Address,
     target: &mut (impl AsyncWrite + Unpin + ?Sized),
+    mut buf: RWBuffer,
 ) -> anyhow::Result<()> {
-    let mut buf = vec![0u8; 65536];
     loop {
-        let n = match src.recv(buf.as_mut_slice()).await? {
+        buf.consume_read();
+        match src.recv(buf.write_buf()).await? {
             0 => return Ok(()),
-            v => v,
+            v => buf.advance_write(v),
         };
 
         let UdpPacket {
             frag_no,
             addr,
             data,
-        } = UdpPacket::parse(&buf.as_slice()[..n])?;
+        } = UdpPacket::parse(buf.read_buf())?;
         if frag_no != 0 {
             log::info!("Ignoring fragmented UDP packet sending to {addr}");
             continue;
