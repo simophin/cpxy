@@ -1,3 +1,4 @@
+mod cipher;
 pub mod client;
 mod http;
 mod parse;

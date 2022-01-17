@@ -1,3 +1,5 @@
+use bytes::BufMut;
+use std::cmp::min;
 use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
 
 pub async fn copy_io(
@@ -53,8 +55,20 @@ impl RWBuffer {
         &mut self.buf.as_mut_slice()[self.write_cursor..]
     }
 
+    pub fn remaining_write(&self) -> usize {
+        self.buf.len() - self.write_cursor
+    }
+
     pub fn read_buf(&self) -> &[u8] {
         &self.buf.as_slice()[self.read_cursor..self.write_cursor]
+    }
+
+    pub fn remaining_read(&self) -> usize {
+        return self.write_cursor - self.read_cursor;
+    }
+
+    pub fn read_buf_mut(&mut self) -> &mut [u8] {
+        &mut self.buf.as_mut_slice()[self.read_cursor..self.write_cursor]
     }
 
     pub fn advance_read(&mut self, cnt: usize) {
@@ -87,5 +101,35 @@ impl RWBuffer {
         } else {
             unreachable!()
         }
+    }
+}
+
+impl std::io::Write for RWBuffer {
+    fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
+        if self.remaining_write() < buf.len() {
+            self.compact();
+        }
+
+        let len = min(buf.len(), self.remaining_write());
+        if len > 0 {
+            self.write_buf().put_slice(&buf[..len]);
+            self.advance_write(len);
+        }
+        return Ok(len);
+    }
+
+    fn flush(&mut self) -> std::io::Result<()> {
+        Ok(())
+    }
+}
+
+impl std::io::Read for RWBuffer {
+    fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
+        let len = min(buf.len(), self.remaining_read());
+        if len > 0 {
+            buf.put_slice(&self.read_buf()[..len]);
+            self.advance_read(len);
+        }
+        return Ok(len);
     }
 }
