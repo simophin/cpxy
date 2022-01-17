@@ -4,12 +4,14 @@ pub async fn copy_io(
     mut r: impl AsyncRead + Unpin,
     mut w: impl AsyncWrite + Unpin,
 ) -> anyhow::Result<()> {
-    let mut buf = vec![0; 8192];
+    let mut buf = RWBuffer::with_capacity(8192);
     loop {
-        match r.read(buf.as_mut_slice()).await? {
+        match r.read(buf.write_buf()).await? {
             0 => return Ok(()),
             v => {
-                w.write_all(&buf.as_slice()[..v]).await?;
+                buf.advance_write(v);
+                w.write_all(buf.read_buf()).await?;
+                buf.consume_read();
             }
         }
     }

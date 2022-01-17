@@ -1,6 +1,8 @@
+use anyhow::anyhow;
 use std::fmt::{Debug, Formatter};
 use std::io::Cursor;
-use std::net::{Ipv4Addr, Ipv6Addr, SocketAddr, SocketAddrV4, SocketAddrV6};
+use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr, SocketAddrV4, SocketAddrV6};
+use std::str::FromStr;
 
 use bytes::{Buf, BufMut};
 
@@ -15,6 +17,25 @@ pub enum Address {
 impl<'a> Default for Address {
     fn default() -> Self {
         Self::IP(SocketAddr::V4(SocketAddrV4::new(Ipv4Addr::UNSPECIFIED, 0)))
+    }
+}
+
+impl FromStr for Address {
+    type Err = anyhow::Error;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match SocketAddr::from_str(s) {
+            Ok(v) => return Ok(Address::IP(v)),
+            _ => {}
+        };
+
+        let mut splits = s.split(":");
+        let host = splits.next().unwrap();
+        let port = splits
+            .next()
+            .and_then(|p| u16::from_str(p).ok())
+            .ok_or_else(|| anyhow!("Expecting a numeric port"))?;
+        Ok(Address::Name(host.to_string(), port))
     }
 }
 

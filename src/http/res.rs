@@ -5,11 +5,11 @@ use std::str::FromStr;
 use tokio::io::{AsyncWrite, AsyncWriteExt};
 
 #[derive(Debug, Eq, PartialEq)]
-pub struct Response {
+pub struct ProxyResponse {
     pub bound_address: SocketAddr,
 }
 
-impl Response {
+impl ProxyResponse {
     pub async fn write(
         bound: &SocketAddr,
         w: &mut (impl AsyncWrite + Unpin + ?Sized),
@@ -102,13 +102,13 @@ mod test {
     async fn encoding_works() {
         let mut buf: Vec<u8> = Default::default();
         let sock_addr = SocketAddr::from_str("1.2.3.4:80").unwrap();
-        Response::write(&sock_addr, &mut buf).await.unwrap();
+        ProxyResponse::write(&sock_addr, &mut buf).await.unwrap();
 
         assert_eq!(
-            Response {
+            ProxyResponse {
                 bound_address: sock_addr
             },
-            Response::parse(buf.as_slice()).unwrap().unwrap(),
+            ProxyResponse::parse(buf.as_slice()).unwrap().unwrap(),
         );
     }
 }

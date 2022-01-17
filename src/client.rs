@@ -2,9 +2,11 @@ use crate::http;
 use crate::parse::ParseError;
 use anyhow::anyhow;
 use httparse::{Request, EMPTY_HEADER};
+use std::borrow::Cow;
 use std::net::SocketAddr;
+use std::str::FromStr;
 use std::sync::Arc;
-use tokio::io::{split, AsyncReadExt};
+use tokio::io::{split, AsyncReadExt, AsyncWriteExt};
 use tokio::net::{TcpListener, TcpStream, UdpSocket};
 use tokio::select;
 use tokio::task::spawn;
@@ -24,7 +26,7 @@ async fn negotiate_with_server(
     upstream_addr: &str,
     protocol: &str,
     address: &Address,
-) -> anyhow::Result<(http::Response, TlsStream<TcpStream>)> {
+) -> anyhow::Result<(http::ProxyResponse, TlsStream<TcpStream>)> {
     log::info!("Connecting to {}", upstream_addr);
     let upstream = TcpStream::connect(upstream_addr).await?;
     let mut upstream = TlsConnector::from(cc)
@@ -32,7 +34,7 @@ async fn negotiate_with_server(
         .await?;
     log::debug!("Connected to {}", upstream_addr);
 
-    http::Request::write(protocol, address, upstream_addr, &mut upstream).await?;
+    http::ProxyRequest::write(protocol, address, upstream_addr, &mut upstream).await?;
 
     let mut buf = RWBuffer::with_capacity(4096);
 
@@ -42,13 +44,13 @@ async fn negotiate_with_server(
             v => buf.advance_write(v),
         };
 
-        if let Some(v) = http::Response::parse(buf.read_buf())? {
+        if let Some(v) = http::ProxyResponse::parse(buf.read_buf())? {
             return Ok((v, upstream));
         }
     }
 }
 
-async fn serve_client_tcp(
+async fn serve_socks5_client_tcp(
     mut sock: TcpStream,
     buf: RWBuffer,
     cc: Arc<rustls::ClientConfig>,
@@ -140,8 +142,15 @@ async fn serve_client_socks5(
             Ok(Some((offset, req))) if req.cmd == Command::CONNECT_TCP => {
                 let address = req.address;
                 buf.advance_read(offset);
-                return serve_client_tcp(sock, buf, cc, upstream_host, upstream_addr, address)
-                    .await;
+                return serve_socks5_client_tcp(
+                    sock,
+                    buf,
+                    cc,
+                    upstream_host,
+                    upstream_addr,
+                    address,
+                )
+                .await;
             }
             Ok(Some((_, req))) if req.cmd == Command::BIND_UDP => {
                 return serve_client_udp(sock, buf, cc, upstream_host, upstream_addr, req.address)
@@ -167,38 +176,61 @@ async fn serve_client_socks5(
     }
 }
 
-async fn serve_client_http_proxy(
+async fn serve_http_with_upstream(
     mut sock: TcpStream,
-    req: HttpRequest,
+    mut buf: RWBuffer,
+    cc: Arc<rustls::ClientConfig>,
+    upstream_host: &str,
+    upstream_addr: &str,
+    method: String,
+    path: String,
+    headers: Vec<(String, String)>,
+) -> anyhow::Result<()> {
+    unimplemented!()
+}
+
+async fn serve_http_client(
+    mut sock: TcpStream,
+    req: http::HttpRequest,
     mut buf: RWBuffer,
     cc: Arc<rustls::ClientConfig>,
     upstream_host: &str,
     upstream_addr: &str,
 ) -> anyhow::Result<()> {
-    unimplemented!()
-}
+    let http::HttpRequest {
+        mut method,
+        path,
+        headers,
+    } = req;
+    match (
+        method.map(|mut x| {
+            x.make_ascii_uppercase();
+            x
+        }),
+        path,
+    ) {
+        (Some(method), Some(path)) if method == "CONNECT" => {
+            let addr = match Address::from_str(&path) {
+                Ok(a) => a,
+                Err(e) => {
+                    sock.write_all(b"HTTP/1.1 400 Invalid address").await?;
+                    return Err(e);
+                }
+            };
+            let (resp, upstream) =
+                match negotiate_with_server(cc, upstream_host, upstream_addr, "tcp", &addr).await {
+                    Ok(v) => v,
+                    Err(e) => {
+                        sock.write_all(b"HTTP/1.1 500").await?;
+                        return Err(e);
+                    }
+                };
 
-struct HttpRequest {
-    method: Option<String>,
-    path: Option<String>,
-    headers: Vec<(String, String)>,
-}
-
-impl From<httparse::Request<'_, '_>> for HttpRequest {
-    fn from(req: Request<'_, '_>) -> Self {
-        HttpRequest {
-            method: req.method.map(|x| x.to_string()),
-            path: req.path.map(|x| x.to_string()),
-            headers: req
-                .headers
-                .iter()
-                .map(|x| {
-                    (
-                        x.name.to_string(),
-                        String::from_utf8_lossy(x.value).to_string(),
-                    )
-                })
-                .collect(),
+            Ok(())
+        }
+        _ => {
+            sock.write_all(b"HTTP/1.1 401 unsupported").await?;
+            Ok(())
         }
     }
 }
@@ -257,9 +289,7 @@ async fn serve_client(
     };
 
     match http_request {
-        Some(req) => {
-            serve_client_http_proxy(sock, req, buf, cc, upstream_host, upstream_addr).await
-        }
+        Some(req) => serve_http_client(sock, req, buf, cc, upstream_host, upstream_addr).await,
         None => serve_client_socks5(sock, buf, cc, upstream_host, upstream_addr).await,
     }
 }

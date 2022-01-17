@@ -5,12 +5,12 @@ use crate::parse::ParseError;
 use crate::socks5::Address;
 
 #[derive(Debug, Eq, PartialEq)]
-pub struct Request {
+pub struct ProxyRequest {
     pub protocol: String,
     pub address: String,
 }
 
-impl Request {
+impl ProxyRequest {
     pub async fn write(
         protocol: &str,
         address: &Address,
@@ -35,7 +35,7 @@ impl Request {
         Ok(())
     }
 
-    pub fn parse(buf: &[u8]) -> Result<Option<Request>, ParseError> {
+    pub fn parse(buf: &[u8]) -> Result<Option<ProxyRequest>, ParseError> {
         let mut headers = [httparse::EMPTY_HEADER; 20];
         let mut req = httparse::Request::new(&mut headers);
         match req.parse(buf) {
@@ -68,6 +68,31 @@ impl Request {
     }
 }
 
+pub struct HttpRequest {
+    pub method: Option<String>,
+    pub path: Option<String>,
+    pub headers: Vec<(String, String)>,
+}
+
+impl From<httparse::Request<'_, '_>> for HttpRequest {
+    fn from(req: httparse::Request<'_, '_>) -> Self {
+        HttpRequest {
+            method: req.method.map(|x| x.to_string()),
+            path: req.path.map(|x| x.to_string()),
+            headers: req
+                .headers
+                .iter()
+                .map(|x| {
+                    (
+                        x.name.to_string(),
+                        String::from_utf8_lossy(x.value).to_string(),
+                    )
+                })
+                .collect(),
+        }
+    }
+}
+
 #[cfg(test)]
 mod test {
     use super::*;
@@ -75,7 +100,7 @@ mod test {
     #[tokio::test]
     async fn encoding_works() {
         let mut buf: Vec<u8> = Vec::new();
-        Request::write(
+        ProxyRequest::write(
             "udp",
             &Address::Name("host".to_string(), 123),
             "localhost:456",
@@ -84,10 +109,10 @@ mod test {
         .await
         .unwrap();
 
-        let req = Request::parse(buf.as_ref()).unwrap().unwrap();
+        let req = ProxyRequest::parse(buf.as_ref()).unwrap().unwrap();
         assert_eq!(
             req,
-            Request {
+            ProxyRequest {
                 address: "host:123".to_string(),
                 protocol: "udp".to_string(),
             }

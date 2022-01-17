@@ -1,5 +1,5 @@
 use crate::http;
-use crate::http::Request;
+use crate::http::ProxyRequest;
 use crate::udp::{copy_frame_to_udp, copy_udp_to_frame};
 use crate::utils::copy_io;
 use anyhow::anyhow;
@@ -20,12 +20,12 @@ async fn serve_client_tcp(mut sock: TcpStream, address: String) -> anyhow::Resul
     let (upstream, bound_addr) = match prepare_client_tcp(address).await {
         Ok(v) => v,
         Err(e) => {
-            http::Response::write_rejection(e.to_string().as_str(), &mut sock).await?;
+            http::ProxyResponse::write_rejection(e.to_string().as_str(), &mut sock).await?;
             return Err(e.into());
         }
     };
 
-    http::Response::write(&bound_addr, &mut sock).await?;
+    http::ProxyResponse::write(&bound_addr, &mut sock).await?;
     let (upstream_rx, upstream_tx) = upstream.into_split();
     let (rx, tx) = sock.into_split();
     select! {
@@ -46,12 +46,12 @@ async fn serve_client_udp(mut sock: TcpStream, address: String) -> anyhow::Resul
     let (upstream, address) = match prepare_client_udp(&address).await {
         Ok(v) => v,
         Err(e) => {
-            http::Response::write_rejection(e.to_string().as_str(), &mut sock).await?;
+            http::ProxyResponse::write_rejection(e.to_string().as_str(), &mut sock).await?;
             return Err(e.into());
         }
     };
 
-    http::Response::write(&address, &mut sock).await?;
+    http::ProxyResponse::write(&address, &mut sock).await?;
     let (mut rx, mut tx) = sock.split();
 
     select! {
@@ -63,7 +63,7 @@ async fn serve_client_udp(mut sock: TcpStream, address: String) -> anyhow::Resul
 async fn serve_client(mut sock: TcpStream) -> anyhow::Result<()> {
     let mut buf = vec![0u8; 4096];
 
-    let Request { protocol, address } = {
+    let ProxyRequest { protocol, address } = {
         let mut n = 0;
         loop {
             match sock.read(&mut buf.as_mut_slice()[n..]).await? {
@@ -71,7 +71,7 @@ async fn serve_client(mut sock: TcpStream) -> anyhow::Result<()> {
                 v => n += v,
             };
 
-            if let Some(v) = http::Request::parse(&buf.as_slice()[..n])? {
+            if let Some(v) = http::ProxyRequest::parse(&buf.as_slice()[..n])? {
                 break v;
             }
         }
@@ -80,7 +80,7 @@ async fn serve_client(mut sock: TcpStream) -> anyhow::Result<()> {
     match protocol.as_ref() {
         "tcp" => serve_client_tcp(sock, address).await,
         "udp" => serve_client_udp(sock, address).await,
-        _ => http::Response::write_rejection("Unknown protocol", &mut sock).await,
+        _ => http::ProxyResponse::write_rejection("Unknown protocol", &mut sock).await,
     }
 }
 
