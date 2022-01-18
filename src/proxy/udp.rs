@@ -1,26 +1,58 @@
 use crate::utils::RWBuffer;
-use bytes::BufMut;
+use anyhow::anyhow;
+use bytes::{Buf, BufMut, Bytes};
 use pin_project_lite::pin_project;
-use std::borrow::Cow;
+use std::borrow::{Borrow, Cow};
 use std::cmp::min;
 use std::collections::VecDeque;
-use std::io::{Error, Write};
-use std::net::SocketAddr;
+use std::io::{Cursor, Error, Read, Write};
+use std::net::{Ipv4Addr, Ipv6Addr, SocketAddr, SocketAddrV4, SocketAddrV6};
 use std::pin::Pin;
 use std::task::{Context, Poll};
-use tokio::io::{AsyncRead, AsyncWrite, ReadBuf};
+use tokio::io::{AsyncRead, AsyncWrite, ReadBuf, Sink};
 use tokio::net::UdpSocket;
 use url::Url;
 
 #[derive(Clone)]
-pub struct Frame<'a>(pub SocketAddr, pub Cow<'a, [u8]>);
+pub struct Frame(pub SocketAddr, pub Bytes);
 
-impl<'a> Frame<'a> {
-    pub fn parse_stream<'buf>(b: &'buf [u8]) -> std::io::Result<Option<(usize, Self)>>
-    where
-        'buf: 'a,
-    {
-        todo!()
+impl Frame {
+    fn parse_stream(buf: &[u8]) -> anyhow::Result<Option<(usize, SocketAddr, &[u8])>> {
+        let mut buf = Cursor::new(buf);
+        let addr_type = if buf.remaining() < 1 {
+            return Ok(None);
+        } else {
+            buf.get_u8()
+        };
+
+        let addr = match addr_type {
+            0 if buf.remaining() >= 6 => {
+                let mut b = [0u8; 4];
+                buf.read_exact(&mut b)?;
+                SocketAddr::V4(SocketAddrV4::new(Ipv4Addr::from(b), buf.get_u16()))
+            }
+            1 if buf.remaining() >= 18 => {
+                let mut b = [0u8; 16];
+                buf.read_exact(&mut b)?;
+                SocketAddr::V6(SocketAddrV6::new(Ipv6Addr::from(b), buf.get_u16(), 0, 0))
+            }
+            0 | 1 => return Ok(None),
+            v => return Err(anyhow!("unexpected address type: {v}, expecting 0 or 1")),
+        };
+
+        let len = if buf.remaining() < 2 {
+            return Ok(None);
+        } else {
+            buf.get_u16() as usize
+        };
+
+        if buf.remaining() < len {
+            return Ok(None);
+        }
+
+        let buf_position = buf.position() as usize;
+        let buf = &buf.into_inner()[buf_position..buf_position + len];
+        Ok(Some((buf_position + len, addr, buf)))
     }
 }
 
@@ -30,7 +62,7 @@ pin_project! {
         inner: UdpSocket,
         rdbuf: RWBuffer,
         wrbuf: RWBuffer,
-        pending_writes: VecDeque<Frame<'_>>,
+        pending_writes: VecDeque<Frame>,
     }
 }
 
@@ -83,7 +115,7 @@ impl AsyncRead for UdpFrameStream {
 
         if self.rdbuf.remaining_read() > 0 {
             let len = min(buf.remaining(), self.rdbuf.remaining_read());
-            udp_buf.put_slice(&self.rdbuf.remaining_read()[..len]);
+            udp_buf.put_slice(&self.rdbuf.read_buf()[..len]);
             self.rdbuf.advance_read(len);
             if self.rdbuf.remaining_read() > 0 {
                 cx.waker().wake_by_ref();
@@ -122,15 +154,12 @@ impl AsyncWrite for UdpFrameStream {
                     // Partial frame, stop here
                     break;
                 }
-                Ok(Some((offset, frame))) => {
-                    match this
-                        .inner
-                        .as_mut()
-                        .poll_send_to(cx, frame.1.as_ref(), frame.0.clone())
-                    {
+                Ok(Some((offset, addr, data))) => {
+                    match this.inner.as_mut().poll_send_to(cx, data, addr.clone()) {
                         Poll::Pending => {
                             // The underlying socket can't accept this frame, push it to pending list
-                            this.pending_writes.push_back(frame.to_owned());
+                            this.pending_writes
+                                .push_back(Frame(addr, Bytes::copy_from_slice(data)));
                             this.wrbuf.advance_read(offset);
                             cx.waker().wake_by_ref();
                             break;
@@ -139,7 +168,7 @@ impl AsyncWrite for UdpFrameStream {
                         Poll::Ready(Err(e)) => return Poll::Ready(Err(e)),
                     }
                 }
-                Err(e) => return Poll::Ready(Err(e)),
+                Err(e) => return Poll::Ready(Err(e.into())),
             }
         }
 
@@ -151,7 +180,11 @@ impl AsyncWrite for UdpFrameStream {
 
         // Send pending writes
         while let Some(Frame(addr, data)) = this.pending_writes.front() {
-            match this.inner.as_mut().poll_send_to(cx, data, addr.clone()) {
+            match this
+                .inner
+                .as_mut()
+                .poll_send_to(cx, data.as_ref(), addr.clone())
+            {
                 Poll::Ready(_) => this.pending_writes.pop_front(),
                 Poll::Pending => {
                     cx.waker().wake_by_ref();
