@@ -15,7 +15,7 @@ fn check_server_response(res: httparse::Response<'_, '_>) -> anyhow::Result<()> 
 
 pub const URL_PREFIX: &'static str = "/shop/by-id/";
 
-pub async fn send<T: AsyncRead + AsyncWrite + Unpin>(
+pub async fn connect<T: AsyncRead + AsyncWrite + Unpin>(
     mut stream: T,
     // This buffer can contain initial data to send along with connection header
     mut buf: RWBuffer,

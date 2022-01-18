@@ -59,10 +59,16 @@ fn check_request(req: httparse::Request) -> Result<ChaCha20, (&'static str, &'st
 
 pub async fn listen<T: AsyncRead + AsyncWrite + Unpin>(
     mut stream: T,
-    mut buf: RWBuffer,
 ) -> anyhow::Result<impl AsyncRead + AsyncWrite + Unpin> {
+    let mut buf = RWBuffer::default();
+
     // Receive and check http request
     let (mut cipher, offset) = loop {
+        match stream.read(buf.write_buf()).await? {
+            0 => return Err(anyhow!("Unexpected EOF")),
+            v => buf.advance_write(v),
+        }
+
         let mut headers = [httparse::EMPTY_HEADER; 20];
         let mut req = httparse::Request::new(&mut headers);
 
@@ -84,11 +90,6 @@ pub async fn listen<T: AsyncRead + AsyncWrite + Unpin>(
                 return Err(e.into());
             }
             _ => {}
-        }
-
-        match stream.read(buf.write_buf()).await? {
-            0 => return Err(anyhow!("Unexpected EOF")),
-            v => buf.advance_write(v),
         }
     };
 
@@ -116,7 +117,7 @@ pub async fn listen<T: AsyncRead + AsyncWrite + Unpin>(
 #[cfg(test)]
 mod test {
     use super::*;
-    use std::io::{Read, Write};
+    use std::io::Write;
     use std::time::Duration;
     use tokio::io::{duplex, split, AsyncBufReadExt, AsyncReadExt, AsyncWriteExt, BufReader};
     use tokio::spawn;
@@ -129,7 +130,7 @@ mod test {
         let (client, server) = duplex(4096);
 
         let server: JoinHandle<anyhow::Result<()>> = spawn(async move {
-            let mut server = listen(server, Default::default()).await?;
+            let mut server = listen(server).await?;
             let mut buf = RWBuffer::default();
             loop {
                 match server.read(buf.write_buf()).await? {
@@ -146,7 +147,7 @@ mod test {
         init_buf.write_all(b"hello,")?;
 
         let (client_r, mut client_w) =
-            split(timeout(duration, super::super::client::send(client, init_buf)).await??);
+            split(timeout(duration, super::super::client::connect(client, init_buf)).await??);
         let mut client_r = BufReader::new(client_r);
         client_w.write_all(b"world\n").await?;
 
