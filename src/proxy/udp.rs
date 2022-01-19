@@ -1,3 +1,5 @@
+use crate::parse::{Parsable, ParseResult, Writable, WriteError};
+use crate::socks5::Address;
 use crate::utils::RWBuffer;
 use anyhow::anyhow;
 use bytes::{Buf, BufMut, Bytes};
@@ -9,50 +11,81 @@ use std::io::{Cursor, Error, Read, Write};
 use std::net::{Ipv4Addr, Ipv6Addr, SocketAddr, SocketAddrV4, SocketAddrV6};
 use std::pin::Pin;
 use std::task::{Context, Poll};
-use tokio::io::{AsyncRead, AsyncWrite, ReadBuf, Sink};
+use tokio::io::{AsyncRead, AsyncWrite, AsyncWriteExt, ReadBuf};
 use tokio::net::UdpSocket;
 use url::Url;
 
 #[derive(Clone)]
-pub struct Frame(pub SocketAddr, pub Bytes);
+pub struct Frame(pub Address, pub Bytes);
 
 impl Frame {
-    fn parse_stream(buf: &[u8]) -> anyhow::Result<Option<(usize, SocketAddr, &[u8])>> {
-        let mut buf = Cursor::new(buf);
-        let addr_type = if buf.remaining() < 1 {
-            return Ok(None);
-        } else {
-            buf.get_u8()
+    pub fn parse_from_stream(mut buf: &[u8]) -> anyhow::Result<Option<(usize, Address, &[u8])>> {
+        let mut total_offset = 0;
+        let addr = match Address::parse(buf)? {
+            None => return Ok(None),
+            Some((offset, v)) => {
+                total_offset += offset;
+                buf.advance(offset);
+                v
+            }
         };
 
-        let addr = match addr_type {
-            0 if buf.remaining() >= 6 => {
-                let mut b = [0u8; 4];
-                buf.read_exact(&mut b)?;
-                SocketAddr::V4(SocketAddrV4::new(Ipv4Addr::from(b), buf.get_u16()))
-            }
-            1 if buf.remaining() >= 18 => {
-                let mut b = [0u8; 16];
-                buf.read_exact(&mut b)?;
-                SocketAddr::V6(SocketAddrV6::new(Ipv6Addr::from(b), buf.get_u16(), 0, 0))
-            }
-            0 | 1 => return Ok(None),
-            v => return Err(anyhow!("unexpected address type: {v}, expecting 0 or 1")),
-        };
-
-        let len = if buf.remaining() < 2 {
+        if buf.remaining() < 2 {
             return Ok(None);
-        } else {
-            buf.get_u16() as usize
-        };
+        }
+
+        let len = buf.get_u8() as usize;
+        total_offset += 2;
 
         if buf.remaining() < len {
             return Ok(None);
         }
 
-        let buf_position = buf.position() as usize;
-        let buf = &buf.into_inner()[buf_position..buf_position + len];
-        Ok(Some((buf_position + len, addr, buf)))
+        total_offset += len;
+        return Ok(Some((total_offset, addr, buf)));
+    }
+
+    pub fn write_to_stream(
+        out: &mut impl BufMut,
+        address: &Address,
+        data: &[u8],
+    ) -> anyhow::Result<()> {
+        if data.len() > u16::MAX as usize {
+            return Err(WriteError::ProtocolError {
+                msg: "Data len can no exceed 65536",
+            }
+            .into());
+        }
+        address.write(out)?;
+
+        if out.remaining_mut() < 2 + data.len() {
+            return Err(
+                WriteError::not_enough_space("data", 2 + data.len(), out.remaining_mut()).into(),
+            );
+        }
+
+        out.put_u16(data.len() as u16);
+        out.put_slice(data);
+        Ok(())
+    }
+
+    pub async fn write_to_async_stream(
+        out: &mut (impl AsyncWrite + Unpin),
+        address: &Address,
+        data: &[u8],
+    ) -> anyhow::Result<()> {
+        if data.len() > u16::MAX as usize {
+            return Err(WriteError::ProtocolError {
+                msg: "Data len can no exceed 65536",
+            }
+            .into());
+        }
+        let mut hdr_buf = Vec::with_capacity(address.write_len() + 2);
+        address.write(&mut hdr_buf);
+        hdr_buf.put_u16(data.len() as u16);
+        out.write_all(&hdr_buf).await?;
+        out.write_all(data).await?;
+        Ok(())
     }
 }
 
@@ -134,7 +167,7 @@ impl AsyncWrite for UdpFrameStream {
         let mut this = self.project();
 
         // Send pending frames
-        while let Some(Frame(addr, data)) = this.pending_writes.front() {
+        while let Some(Frame(Address::IP(addr), data)) = this.pending_writes.front() {
             match this
                 .inner
                 .as_mut()

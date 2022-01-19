@@ -1,22 +1,15 @@
+use crate::handshake::ProxyRequest;
 use crate::utils::{copy_io, RWBuffer};
-use anyhow::anyhow;
-use bytes::{Buf, BufMut};
+use bytes::BufMut;
 use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
-use std::borrow::Cow;
 use std::future::Future;
-use std::io::{Cursor, Read, Write};
+use std::io::Cursor;
 use std::net::SocketAddr;
 use std::time::Duration;
 use tokio::io::{split, AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
 use tokio::select;
 use tokio::time::timeout;
-use url::Url;
-
-#[derive(Serialize, Deserialize)]
-struct ProxyRequest {
-    url: Url,
-}
 
 #[derive(Serialize, Deserialize, Debug)]
 #[serde(tag = "type")]
@@ -70,15 +63,15 @@ async fn read_json_async<T: DeserializeOwned>(
 
 pub async fn request_proxy<
     S: AsyncRead + AsyncWrite + Unpin,
-    Fut: Future<Output = anyhow::Result<S>> + Send + Sync + 'static,
+    Fut: Future<Output = anyhow::Result<S>> + Send + Sync,
 >(
-    url: Url,
-    connect_upstream: impl (FnOnce(RWBuffer) -> Fut) + Send + Sync + 'static,
+    proxy_req: &ProxyRequest,
+    connect_upstream: impl (FnOnce(RWBuffer) -> Fut) + Send + Sync,
 ) -> anyhow::Result<(SocketAddr, S)> {
-    let mut req = RWBuffer::default();
-    log::info!("Sending request {url}");
-    write_json(&mut req, &ProxyRequest { url })?;
-    let mut upstream = connect_upstream(req).await?;
+    let mut req_buf = RWBuffer::default();
+    log::info!("Sending request {proxy_req:?}");
+    write_json(&mut req_buf, proxy_req)?;
+    let mut upstream = connect_upstream(req_buf).await?;
     match read_json_async(&mut upstream).await? {
         ProxyResult::Granted { bound_address } => Ok((bound_address, upstream)),
         v => Err(v.into()),
@@ -90,12 +83,11 @@ pub async fn serve_proxy<
     ResourceFut: Future<Output = anyhow::Result<(SocketAddr, Stream)>> + Send + Sync + 'static,
 >(
     mut stream: impl AsyncRead + AsyncWrite + Unpin,
-    resource_fetcher: impl (FnOnce(Url) -> ResourceFut) + Send + Sync + 'static,
+    resource_fetcher: impl (FnOnce(ProxyRequest) -> ResourceFut) + Send + Sync + 'static,
 ) -> anyhow::Result<()> {
-    let ProxyRequest { url } = read_json_async(&mut stream).await?;
-
-    log::info!("Processing request {url}");
-    let (res_r, res_w) = match timeout(Duration::from_secs(2), resource_fetcher(url)).await {
+    let req = read_json_async(&mut stream).await?;
+    log::info!("Processing request {req:?}");
+    let (res_r, res_w) = match timeout(Duration::from_secs(2), resource_fetcher(req)).await {
         Ok(Ok((bound_address, v))) => {
             write_json_async(&mut stream, ProxyResult::Granted { bound_address }).await?;
             split(v)
@@ -125,17 +117,5 @@ mod test {
     use tokio::spawn;
 
     #[tokio::test]
-    async fn test_proxy() {
-        let (mut client, mut server) = duplex(4096);
-        let url: Url = "tcp://1.2.3.4:9090".parse().unwrap();
-
-        spawn(async move {});
-
-        let (bound_address, proxy_client) = request_proxy(url.clone(), move |buf| async move {
-            client.write_all(buf.read_buf()).await?;
-            Ok(client)
-        })
-        .await
-        .unwrap();
-    }
+    async fn test_proxy() {}
 }

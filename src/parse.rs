@@ -33,6 +33,36 @@ impl ParseError {
 
 impl std::error::Error for ParseError {}
 
+#[derive(Debug)]
+pub enum WriteError {
+    NotEnoughSpace {
+        name: &'static str,
+        required: usize,
+        has: usize,
+    },
+    ProtocolError {
+        msg: &'static str,
+    },
+}
+
+impl WriteError {
+    pub fn not_enough_space(name: &'static str, required: usize, has: usize) -> Self {
+        Self::NotEnoughSpace {
+            name,
+            required,
+            has,
+        }
+    }
+}
+
+impl Display for WriteError {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        <WriteError as Debug>::fmt(self, f)
+    }
+}
+
+impl std::error::Error for WriteError {}
+
 pub type ParseResult<T> = Result<Option<(usize, T)>, ParseError>;
 
 pub trait Parsable: Sized {
@@ -41,5 +71,5 @@ pub trait Parsable: Sized {
 
 pub trait Writable {
     fn write_len(&self) -> usize;
-    fn write(&self, buf: &mut impl BufMut) -> bool;
+    fn write(&self, buf: &mut impl BufMut) -> Result<(), WriteError>;
 }

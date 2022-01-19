@@ -1,5 +1,6 @@
 mod cipher;
 pub mod client;
+mod handshake;
 mod http;
 mod parse;
 mod proxy;

@@ -1,17 +1,19 @@
 use anyhow::anyhow;
+use serde::{Deserialize, Serialize};
 use std::fmt::{Debug, Formatter};
 use std::io::Cursor;
-use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr, SocketAddrV4, SocketAddrV6};
+use std::net::{Ipv4Addr, Ipv6Addr, SocketAddr, SocketAddrV4, SocketAddrV6};
 use std::str::FromStr;
 
 use bytes::{Buf, BufMut};
 
-use crate::parse::{Parsable, ParseError, ParseResult, Writable};
+use crate::parse::{Parsable, ParseError, ParseResult, Writable, WriteError};
 
-#[derive(Debug, Eq, PartialEq, Clone)]
+#[derive(Debug, Eq, PartialEq, Clone, Serialize, Deserialize)]
+#[serde(tag = "type")]
 pub enum Address {
     IP(SocketAddr),
-    Name(String, u16),
+    Name { host: String, port: u16 },
 }
 
 impl<'a> Default for Address {
@@ -29,13 +31,10 @@ impl FromStr for Address {
             _ => {}
         };
 
-        let mut splits = s.split(":");
-        let host = splits.next().unwrap();
-        let port = splits
-            .next()
-            .and_then(|p| u16::from_str(p).ok())
-            .ok_or_else(|| anyhow!("Expecting a numeric port"))?;
-        Ok(Address::Name(host.to_string(), port))
+        match sscanf::scanf!(s, "{}:{}", String, u16) {
+            Some((host, port)) => Ok(Address::Name { host, port }),
+            None => return Err(anyhow!("Invalid path {s} for a sock address")),
+        }
     }
 }
 
@@ -80,12 +79,12 @@ impl Parsable for Address {
                 let port = buf.get_u16();
                 Ok(Some((
                     buf.position() as usize,
-                    Self::Name(
-                        String::from_utf8(name_buf).map_err(|_| {
+                    Self::Name {
+                        host: String::from_utf8(name_buf).map_err(|_| {
                             ParseError::unexpected("domain name", "invalid utf-8", "valid utf-8")
                         })?,
                         port,
-                    ),
+                    },
                 )))
             }
 
@@ -118,19 +117,23 @@ impl Writable for Address {
         3 + match self {
             Address::IP(SocketAddr::V4(_)) => 4,
             Address::IP(SocketAddr::V6(_)) => 16,
-            Address::Name(name, _) => 1 + name.as_bytes().len(),
+            Address::Name { host, .. } => 1 + host.as_bytes().len(),
         }
     }
 
-    fn write(&self, buf: &mut impl BufMut) -> bool {
-        if !buf.has_remaining_mut() {
-            return false;
+    fn write(&self, buf: &mut impl BufMut) -> Result<(), WriteError> {
+        if buf.remaining_mut() < 1 {
+            return Err(WriteError::not_enough_space("addr_type", 1, 0));
         }
 
         match self {
             Address::IP(SocketAddr::V4(addr)) => {
                 if buf.remaining_mut() < 1 + 4 + 2 {
-                    return false;
+                    return Err(WriteError::not_enough_space(
+                        "v4+port",
+                        6,
+                        buf.remaining_mut(),
+                    ));
                 }
 
                 buf.put_u8(0x1);
@@ -139,20 +142,30 @@ impl Writable for Address {
             }
             Address::IP(SocketAddr::V6(addr)) => {
                 if buf.remaining_mut() < 1 + 16 + 2 {
-                    return false;
+                    return Err(WriteError::not_enough_space(
+                        "v6+port",
+                        18,
+                        buf.remaining_mut(),
+                    ));
                 }
 
                 buf.put_u8(0x4);
                 buf.put_slice(&addr.ip().octets());
                 buf.put_u16(addr.port());
             }
-            Address::Name(host, port) => {
+            Address::Name { host, port } => {
                 if buf.remaining_mut() < 1 + 1 + host.as_bytes().len() + 2 {
-                    return false;
+                    return Err(WriteError::not_enough_space(
+                        "name+port",
+                        1 + host.as_bytes().len() + 2,
+                        buf.remaining_mut(),
+                    ));
                 }
 
                 if host.len() > u8::MAX as usize {
-                    return false;
+                    return Err(WriteError::ProtocolError {
+                        msg: "host name exceeds 255 bytes",
+                    });
                 }
 
                 buf.put_u8(0x3);
@@ -162,7 +175,7 @@ impl Writable for Address {
             }
         }
 
-        true
+        Ok(())
     }
 }
 
