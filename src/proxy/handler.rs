@@ -1,5 +1,5 @@
-use crate::handshake::ProxyRequest;
-use crate::utils::{copy_io, RWBuffer};
+use crate::socks5::Address;
+use crate::utils::{copy_io, HttpRequest, RWBuffer};
 use bytes::BufMut;
 use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
@@ -10,6 +10,14 @@ use std::time::Duration;
 use tokio::io::{split, AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
 use tokio::select;
 use tokio::time::timeout;
+
+#[derive(Serialize, Deserialize, Debug)]
+#[serde(tag = "type")]
+pub enum ProxyRequest {
+    SocksTCP(Address),
+    SocksUDP(Address),
+    Http(HttpRequest),
+}
 
 #[derive(Serialize, Deserialize, Debug)]
 #[serde(tag = "type")]
@@ -67,15 +75,12 @@ pub async fn request_proxy<
 >(
     proxy_req: &ProxyRequest,
     connect_upstream: impl (FnOnce(RWBuffer) -> Fut) + Send + Sync,
-) -> anyhow::Result<(SocketAddr, S)> {
+) -> anyhow::Result<(ProxyResult, S)> {
     let mut req_buf = RWBuffer::default();
     log::info!("Sending request {proxy_req:?}");
     write_json(&mut req_buf, proxy_req)?;
     let mut upstream = connect_upstream(req_buf).await?;
-    match read_json_async(&mut upstream).await? {
-        ProxyResult::Granted { bound_address } => Ok((bound_address, upstream)),
-        v => Err(v.into()),
-    }
+    Ok((read_json_async(&mut upstream).await?, upstream))
 }
 
 pub async fn serve_proxy<
