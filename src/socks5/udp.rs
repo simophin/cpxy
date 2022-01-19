@@ -1,5 +1,5 @@
 use super::Address;
-use crate::parse::{Parsable, ParseError, Writable};
+use crate::parse::ParseError;
 use anyhow::anyhow;
 use bytes::{Buf, BufMut};
 use std::borrow::Cow;
@@ -57,7 +57,7 @@ impl<'a> UdpPacket<'a> {
 
         b.put_u16(0);
         b.put_u8(self.frag_no);
-        assert!(self.addr.write(b));
+        self.addr.write(b)?;
         b.put_slice(self.data.as_ref());
         Ok(())
     }

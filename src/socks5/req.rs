@@ -1,4 +1,4 @@
-use crate::parse::{Parsable, ParseError, Writable};
+use crate::parse::ParseError;
 use bytes::Buf;
 use tokio::io::{AsyncWrite, AsyncWriteExt};
 
@@ -73,7 +73,7 @@ impl ClientConnRequest {
     ) -> anyhow::Result<()> {
         let mut buf = Vec::with_capacity(3 + bound_addr.write_len());
         buf.extend_from_slice(&[0x5, code.0, 0x00]);
-        bound_addr.write(&mut buf);
+        bound_addr.write(&mut buf)?;
         w.write_all(&buf).await?;
         Ok(())
     }

@@ -1,20 +1,56 @@
+use crate::proxy::handler::ProxyResult;
+use crate::socks5::Address;
+use crate::utils::copy_io;
+use anyhow::anyhow;
 use std::net::SocketAddr;
-use tokio::io::{AsyncRead, AsyncWrite};
+use std::time::Duration;
+use tokio::io::{split, AsyncRead, AsyncWrite};
 use tokio::net::TcpStream;
-use url::Url;
+use tokio::select;
+use tokio::time::timeout;
 
-pub fn is_tcp(url: &Url) -> bool {
-    return url.scheme().eq_ignore_ascii_case("tcp") && url.has_host() && url.port().is_some();
+async fn prepare(target: &Address) -> anyhow::Result<(TcpStream, SocketAddr)> {
+    let socket = match target {
+        Address::IP(addr) => TcpStream::connect(addr).await?,
+        p => TcpStream::connect(p.to_string()).await?,
+    };
+
+    let addr = socket.local_addr()?;
+    Ok((socket, addr))
 }
 
-pub async fn tcp_fetcher(
-    url: Url,
-    _: String,
-) -> anyhow::Result<(SocketAddr, impl AsyncRead + AsyncWrite + Unpin)> {
-    assert!(is_tcp(&url));
-    let target = format!("{}:{}", url.host_str().unwrap(), url.port().unwrap());
-    log::info!("Connecting to tcp://{target}");
-    let stream = TcpStream::connect(target).await?;
-    let bound_address = stream.local_addr()?;
-    Ok((bound_address, stream))
+pub async fn serve_tcp_proxy(
+    target: Address,
+    mut src: impl AsyncRead + AsyncWrite + Unpin,
+) -> anyhow::Result<()> {
+    let (upstream_r, upstream_w) = match timeout(Duration::from_secs(3), prepare(&target)).await {
+        Ok(Ok((socket, addr))) => {
+            super::handler::send_proxy_result(
+                &mut src,
+                ProxyResult::Granted {
+                    bound_address: addr,
+                },
+            )
+            .await?;
+            split(socket)
+        }
+        Err(_) => {
+            super::handler::send_proxy_result(&mut src, ProxyResult::ErrTimeout).await?;
+            return Err(anyhow!("Timeout waiting {target}"));
+        }
+        Ok(Err(e)) => {
+            super::handler::send_proxy_result(
+                &mut src,
+                ProxyResult::ErrGeneric { msg: e.to_string() },
+            )
+            .await?;
+            return Err(e);
+        }
+    };
+
+    let (r, w) = split(src);
+    select! {
+        r1 = copy_io(r, upstream_w) => r1,
+        r2 = copy_io(upstream_r, w) => r2,
+    }
 }

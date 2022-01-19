@@ -1,7 +1,5 @@
 use std::fmt::{Debug, Display, Formatter};
 
-use bytes::BufMut;
-
 #[derive(Debug)]
 pub enum ParseError {
     Unexpected {
@@ -62,14 +60,3 @@ impl Display for WriteError {
 }
 
 impl std::error::Error for WriteError {}
-
-pub type ParseResult<T> = Result<Option<(usize, T)>, ParseError>;
-
-pub trait Parsable: Sized {
-    fn parse(buf: &[u8]) -> ParseResult<Self>;
-}
-
-pub trait Writable {
-    fn write_len(&self) -> usize;
-    fn write(&self, buf: &mut impl BufMut) -> Result<(), WriteError>;
-}

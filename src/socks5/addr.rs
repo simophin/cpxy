@@ -1,5 +1,5 @@
 use anyhow::anyhow;
-use serde::{Deserialize, Serialize};
+use serde_derive::{Deserialize, Serialize};
 use std::fmt::{Debug, Formatter};
 use std::io::Cursor;
 use std::net::{Ipv4Addr, Ipv6Addr, SocketAddr, SocketAddrV4, SocketAddrV6};
@@ -7,7 +7,7 @@ use std::str::FromStr;
 
 use bytes::{Buf, BufMut};
 
-use crate::parse::{Parsable, ParseError, ParseResult, Writable, WriteError};
+use crate::parse::{ParseError, WriteError};
 
 #[derive(Debug, Eq, PartialEq, Clone, Serialize, Deserialize)]
 #[serde(tag = "type")]
@@ -38,8 +38,8 @@ impl FromStr for Address {
     }
 }
 
-impl Parsable for Address {
-    fn parse(buf: &[u8]) -> ParseResult<Self> {
+impl Address {
+    pub fn parse(buf: &[u8]) -> Result<Option<(usize, Self)>, ParseError> {
         let mut buf = Cursor::new(buf);
         if !buf.has_remaining() {
             return Ok(None);
@@ -110,10 +110,8 @@ impl Parsable for Address {
             v => Err(ParseError::unexpected("IP address type", v, "1, 3 or 4")),
         }
     }
-}
 
-impl Writable for Address {
-    fn write_len(&self) -> usize {
+    pub fn write_len(&self) -> usize {
         3 + match self {
             Address::IP(SocketAddr::V4(_)) => 4,
             Address::IP(SocketAddr::V6(_)) => 16,
@@ -121,7 +119,7 @@ impl Writable for Address {
         }
     }
 
-    fn write(&self, buf: &mut impl BufMut) -> Result<(), WriteError> {
+    pub fn write(&self, buf: &mut impl BufMut) -> Result<(), WriteError> {
         if buf.remaining_mut() < 1 {
             return Err(WriteError::not_enough_space("addr_type", 1, 0));
         }
@@ -183,7 +181,7 @@ impl std::fmt::Display for Address {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         match self {
             Self::IP(addr) => std::fmt::Display::fmt(addr, f),
-            Self::Name(name, port) => f.write_fmt(format_args!("{}:{}", name, port)),
+            Self::Name { host, port } => f.write_fmt(format_args!("{host}:{port}")),
         }
     }
 }

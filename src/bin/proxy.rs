@@ -1,4 +1,4 @@
-use cjk_proxy::client_old;
+use cjk_proxy::client::run_client;
 use cjk_proxy::server::run_server;
 use clap::{AppSettings, Parser, Subcommand};
 
@@ -54,7 +54,7 @@ async fn main() -> anyhow::Result<()> {
             remote_host,
             remote_port,
         } => {
-            client_old::run_client(
+            run_client(
                 &format!("{socks5_host}:{socks5_port}"),
                 &remote_host,
                 remote_port,

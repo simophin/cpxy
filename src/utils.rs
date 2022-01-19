@@ -1,6 +1,6 @@
 use anyhow::anyhow;
 use bytes::BufMut;
-use serde::{Deserialize, Serialize};
+use serde_derive::{Deserialize, Serialize};
 use std::cmp::min;
 use std::io::{Read, Write};
 use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
@@ -88,14 +88,6 @@ impl<T> RWBuffer<T> {
     pub fn consume_read(&mut self) {
         self.read_cursor = 0;
         self.write_cursor = 0;
-    }
-
-    pub fn read_position(&self) -> usize {
-        return self.read_cursor;
-    }
-
-    pub fn write_position(&self) -> usize {
-        return self.write_cursor;
     }
 }
 

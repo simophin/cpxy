@@ -1,5 +1,5 @@
 use super::client::URL_PREFIX;
-use super::CipherStream;
+use super::stream::CipherStream;
 use crate::utils::RWBuffer;
 use anyhow::anyhow;
 use base64::{decode_config_slice, URL_SAFE_NO_PAD};

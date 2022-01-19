@@ -29,6 +29,7 @@ impl<T> CipherStream<T> {
         }
     }
 
+    #[cfg(test)]
     pub fn into_inner(self) -> T {
         self.inner
     }

@@ -1,15 +1,12 @@
 use crate::socks5::Address;
-use crate::utils::{copy_io, HttpRequest, RWBuffer};
+use crate::utils::{HttpRequest, RWBuffer};
 use bytes::BufMut;
 use serde::de::DeserializeOwned;
-use serde::{Deserialize, Serialize};
+use serde_derive::{Deserialize, Serialize};
 use std::future::Future;
 use std::io::Cursor;
 use std::net::SocketAddr;
-use std::time::Duration;
-use tokio::io::{split, AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
-use tokio::select;
-use tokio::time::timeout;
+use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
 
 #[derive(Serialize, Deserialize, Debug)]
 #[serde(tag = "type")]
@@ -36,7 +33,7 @@ impl std::fmt::Display for ProxyResult {
 
 impl std::error::Error for ProxyResult {}
 
-fn write_json(buf: &mut RWBuffer, o: &impl Serialize) -> anyhow::Result<()> {
+fn write_json(buf: &mut RWBuffer, o: &impl serde::Serialize) -> anyhow::Result<()> {
     let written = {
         let mut cursor = Cursor::new(&mut buf.write_buf()[2..]);
         serde_json::to_writer(&mut cursor, o)?;
@@ -50,7 +47,7 @@ fn write_json(buf: &mut RWBuffer, o: &impl Serialize) -> anyhow::Result<()> {
 
 async fn write_json_async(
     w: &mut (impl AsyncWrite + Unpin),
-    o: impl Serialize,
+    o: impl serde::Serialize,
 ) -> anyhow::Result<()> {
     let data = serde_json::to_string(&o)?;
     w.write_u16(data.as_bytes().len().try_into()?).await?;
@@ -83,44 +80,15 @@ pub async fn request_proxy<
     Ok((read_json_async(&mut upstream).await?, upstream))
 }
 
-pub async fn serve_proxy<
-    Stream: AsyncRead + AsyncWrite + Unpin,
-    ResourceFut: Future<Output = anyhow::Result<(SocketAddr, Stream)>> + Send + Sync + 'static,
->(
-    mut stream: impl AsyncRead + AsyncWrite + Unpin,
-    resource_fetcher: impl (FnOnce(ProxyRequest) -> ResourceFut) + Send + Sync + 'static,
-) -> anyhow::Result<()> {
-    let req = read_json_async(&mut stream).await?;
-    log::info!("Processing request {req:?}");
-    let (res_r, res_w) = match timeout(Duration::from_secs(2), resource_fetcher(req)).await {
-        Ok(Ok((bound_address, v))) => {
-            write_json_async(&mut stream, ProxyResult::Granted { bound_address }).await?;
-            split(v)
-        }
-        Ok(Err(e)) => {
-            write_json_async(&mut stream, ProxyResult::ErrGeneric { msg: e.to_string() }).await?;
-            return Err(e);
-        }
-        Err(e) => {
-            write_json_async(&mut stream, ProxyResult::ErrTimeout).await?;
-            return Err(e.into());
-        }
-    };
-
-    let (r, w) = split(stream);
-
-    select! {
-        r1 = copy_io(r, res_w) => r1,
-        r2 = copy_io(res_r, w) => r2,
-    }
+pub async fn receive_proxy_request(
+    stream: &mut (impl AsyncRead + Unpin),
+) -> anyhow::Result<ProxyRequest> {
+    read_json_async(stream).await
 }
 
-#[cfg(test)]
-mod test {
-    use super::*;
-    use tokio::io::{duplex, AsyncWriteExt};
-    use tokio::spawn;
-
-    #[tokio::test]
-    async fn test_proxy() {}
+pub async fn send_proxy_result(
+    stream: &mut (impl AsyncWrite + Unpin),
+    res: ProxyResult,
+) -> anyhow::Result<()> {
+    write_json_async(stream, res).await
 }
