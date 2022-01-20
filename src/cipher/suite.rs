@@ -2,7 +2,15 @@ use anyhow::anyhow;
 use cipher::{NewCipher, StreamCipher};
 use rand::Rng;
 
+#[cfg(any(target_arch = "x86_64", target_arch = "x86", target_arch = "aarch64"))]
 cpufeatures::new!(cpuid_aes, "aes");
+
+#[cfg(not(any(target_arch = "x86_64", target_arch = "x86", target_arch = "aarch64")))]
+mod cpuid_aes {
+    pub const fn get() -> bool {
+        false
+    }
+}
 
 pub type CipherType = u8;
 pub type CipherKey = Vec<u8>;

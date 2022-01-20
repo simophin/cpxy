@@ -9,7 +9,6 @@ use rand::Rng;
 use std::time::Duration;
 use tokio::io::{duplex, split, AsyncReadExt, AsyncWriteExt};
 use tokio::spawn;
-use tokio::time::timeout;
 
 #[tokio::test]
 async fn test_client_server() {
