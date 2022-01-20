@@ -25,6 +25,8 @@ jobs:
         key: ${{ runner.os }}-${{ hashFiles('**/Cargo.lock') }}
     - name: rust-toolchain
       uses: actions-rs/toolchain@v1.0.6
+      with:
+        toolchain: stable
     - name: Run tests
       run: cargo test --release
     - name: Build pacakges
