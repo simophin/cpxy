@@ -16,6 +16,7 @@ pub async fn copy_io(
             v => {
                 buf.advance_write(v);
                 w.write_all(buf.read_buf()).await?;
+                w.flush().await?;
                 buf.consume_read();
             }
         }

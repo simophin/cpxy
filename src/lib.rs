@@ -7,5 +7,6 @@ pub mod server;
 mod socks5;
 mod utils;
 
+mod http;
 #[cfg(test)]
 mod test;

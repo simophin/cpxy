@@ -1,10 +1,12 @@
 use std::fmt::Display;
+use std::time::Duration;
 use tokio::io::{split, AsyncRead, AsyncWrite};
 
 use crate::handshake::Handshaker;
 use crate::proxy::handler::ProxyRequest;
 use crate::utils::{copy_io, RWBuffer};
 use tokio::net::{TcpListener, TcpStream, ToSocketAddrs};
+use tokio::time::timeout;
 use tokio::{select, spawn};
 
 pub async fn run_client(
@@ -39,7 +41,7 @@ async fn serve_proxy_client(
     log::info!("Requesting to proxy {req:?}");
 
     let r = super::proxy::handler::request_proxy(&req, move |buf| async move {
-        let upstream = TcpStream::connect(upstream).await?;
+        let upstream = timeout(Duration::from_secs(2), TcpStream::connect(upstream)).await??;
         super::cipher::client::connect(upstream, buf).await
     })
     .await;

@@ -137,7 +137,10 @@ impl Handshaker {
                 Ok(())
             }
             false => match result {
-                Ok(ProxyResult::Granted { .. }) => Ok(()),
+                Ok(ProxyResult::Granted { .. }) => {
+                    stream.write_all(b"HTTP/1.1 200 OK\r\n\r\n").await?;
+                    Ok(())
+                }
                 _ => {
                     stream
                         .write_all(b"HTTP/1.1 500 Internal server error")

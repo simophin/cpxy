@@ -23,6 +23,7 @@ pub async fn serve_tcp_proxy(
     target: Address,
     mut src: impl AsyncRead + AsyncWrite + Unpin,
 ) -> anyhow::Result<()> {
+    log::info!("Proxying upstream: {target}");
     let (upstream_r, upstream_w) = match timeout(Duration::from_secs(3), prepare(&target)).await {
         Ok(Ok((socket, addr))) => {
             super::handler::send_proxy_result(

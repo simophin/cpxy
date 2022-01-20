@@ -1,5 +1,5 @@
 use anyhow::anyhow;
-use base64::{decode_config, decode_config_slice, URL_SAFE_NO_PAD};
+use base64::{decode_config, URL_SAFE_NO_PAD};
 use cipher::StreamCipher;
 use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
 
