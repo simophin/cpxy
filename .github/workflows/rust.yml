@@ -14,22 +14,6 @@ env:
 jobs:
   build:
     runs-on: ubuntu-latest
-    strategy:
-      matrix:
-        target:
-          - x86_64-unknown-linux-gnu
-          - aarch64-unknown-linux-gnu
-          - x86_64-apple-darwin
-          - aarch64-apple-darwin
-        include:
-          - target: aarch64-unknown-linux-gnu
-            cross: true
-          - target: x86_64-apple-darwin
-            cross: true
-          - target: aarch64-apple-darwin
-            cross: true
-          - target: x86_64-unknown-linux-gnu
-            cross: false
     steps:
     - uses: actions/checkout@v2
     - name: Cache
@@ -48,13 +32,9 @@ jobs:
       run: cargo test --release
     - name: Build package
       if: startsWith(github.ref, 'refs/tags/')
-      uses: actions-rs/cargo@v1
-      with:
-        command: build
-        args: --release --target=${{ matrix.target }}
-        use-cross: ${{ matrix.cross }}
+      run: ./build_all.sh
     - name: Release
       uses: softprops/action-gh-release@v1
       if: startsWith(github.ref, 'refs/tags/')
       with:
-        files: ./target/*/release/proxy
+        files: ./proxy*
