@@ -3,6 +3,8 @@ name: Rust
 on:
   push:
     branches: [ master ]
+    tags:
+      - "v*"
   pull_request:
     branches: [ master ]
 
@@ -21,7 +23,23 @@ jobs:
         path: target
         # An explicit key for restoring and saving the cache
         key: ${{ runner.os }}-${{ hashFiles('**/Cargo.lock') }}
-    - name: Build
-      run: cargo build
+    - name: rust-toolchain
+      uses: actions-rs/toolchain@v1.0.6
     - name: Run tests
-      run: cargo test
+      run: cargo test --release
+    - name: Build pacakges
+      if: ${{ github.event_name == 'push' && github.ref_type == 'tag' }}
+      run: >
+        for i in x86_64-unknown-linux-gnu x86_64-unknown-linux-musl aarch64-unknown-linux-gnu aarch64-unknown-linux-musl armv7-unknown-linux-gnueabihf \
+          armv7-unknown-linux-musleabihf; do
+          rustup target add $i
+          cargo build --release --target $i
+          mv -v target/$i/release/proxy proxy-`echo ${{ github.ref }} | sed -e "s#refs/tags/##"`-$i
+        end
+    - name: Upload release
+      if: ${{ github.event_name == 'push' && github.ref_type == 'tag' }}
+      with:
+        repo_token: "${{ secrets.GITHUB_TOKEN }}"
+        prerelease: false
+        files: |
+          proxy-*
