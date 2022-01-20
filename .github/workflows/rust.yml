@@ -28,16 +28,11 @@ jobs:
       with:
         toolchain: stable
     - name: Run tests
+      if: startsWith(github.ref, 'refs/heads/master')
       run: cargo test --release
     - name: Build pacakges
       if: startsWith(github.ref, 'refs/tags/')
-      run: >
-        for i in x86_64-unknown-linux-gnu x86_64-unknown-linux-musl aarch64-unknown-linux-gnu aarch64-unknown-linux-musl armv7-unknown-linux-gnueabihf \
-          armv7-unknown-linux-musleabihf; do
-          rustup target add $i
-          cargo build --release --target $i
-          mv -v target/$i/release/proxy proxy-$i
-        end
+      run: ./build_all.sh
     - name: Release
       uses: softprops/action-gh-release@v1
       if: startsWith(github.ref, 'refs/tags/')
