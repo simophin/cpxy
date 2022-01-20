@@ -1,7 +1,6 @@
 use crate::utils::RWBuffer;
 use bytes::BufMut;
-use chacha20::cipher::StreamCipher;
-use chacha20::ChaCha20;
+use cipher::StreamCipher;
 use pin_project_lite::pin_project;
 use std::cmp::min;
 use std::io::Error;
@@ -9,13 +8,15 @@ use std::pin::Pin;
 use std::task::{Context, Poll};
 use tokio::io::{AsyncRead, AsyncWrite, ReadBuf};
 
+type Cipher = Box<dyn StreamCipher + Send + Sync>;
+
 pin_project! {
     pub struct CipherStream<T> {
         #[pin]
         pub(super) inner: T,
         pub(super) name: String,
-        pub(super) rd_cipher: ChaCha20,
-        pub(super) wr_cipher: ChaCha20,
+        pub(super) rd_cipher: Cipher,
+        pub(super) wr_cipher: Cipher,
         pub(super) init_read_buf: Option<RWBuffer>,
         pub(super) write_buf: RWBuffer,
     }
@@ -26,8 +27,8 @@ impl<T> CipherStream<T> {
         name: String,
         n: usize,
         inner: T,
-        rd_cipher: ChaCha20,
-        wr_cipher: ChaCha20,
+        rd_cipher: Cipher,
+        wr_cipher: Cipher,
         initial_buf: Option<RWBuffer>,
     ) -> Self {
         Self {
@@ -197,46 +198,5 @@ impl<T: AsyncWrite> AsyncWrite for CipherStream<T> {
         };
 
         self.project().inner.as_mut().poll_shutdown(cx)
-    }
-}
-
-#[cfg(test)]
-mod test {
-    use super::*;
-    use chacha20::cipher::NewCipher;
-    use chacha20::{Key, Nonce};
-    use rand::RngCore;
-    use tokio::io::AsyncWriteExt;
-
-    #[tokio::test]
-    async fn test_encryption_works() {
-        let key = Key::default();
-        let nonce = Nonce::default();
-
-        let mut data = vec![0u8; 8192];
-        rand::thread_rng().fill_bytes(data.as_mut_slice());
-
-        let mut s1 = CipherStream::new(
-            "s1".to_string(),
-            4096,
-            Vec::<u8>::new(),
-            ChaCha20::new(&key, &nonce),
-            ChaCha20::new(&key, &nonce),
-            None,
-        );
-        let mut s2 = CipherStream::new(
-            "s2".to_string(),
-            4096,
-            Vec::<u8>::new(),
-            ChaCha20::new(&key, &nonce),
-            ChaCha20::new(&key, &nonce),
-            None,
-        );
-
-        s1.write_all(data.as_slice()).await.unwrap();
-        s1.flush().await.unwrap();
-        s2.write_all(&s1.into_inner()).await.unwrap();
-        s2.flush().await.unwrap();
-        assert_eq!(data.as_slice(), &s2.into_inner());
     }
 }

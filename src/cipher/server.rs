@@ -1,13 +1,24 @@
-use super::client::URL_PREFIX;
-use super::stream::CipherStream;
-use crate::utils::RWBuffer;
 use anyhow::anyhow;
-use base64::{decode_config_slice, URL_SAFE_NO_PAD};
-use chacha20::cipher::{NewCipher, StreamCipher};
-use chacha20::{ChaCha20, Key, Nonce};
+use base64::{decode_config, decode_config_slice, URL_SAFE_NO_PAD};
+use cipher::StreamCipher;
 use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
 
-fn check_request(req: httparse::Request) -> Result<(Key, Nonce), (&'static str, &'static str)> {
+use crate::utils::RWBuffer;
+
+use super::stream::CipherStream;
+use super::suite::{create_cipher, CipherIv, CipherKey, CipherType};
+
+fn check_request(
+    req: httparse::Request,
+) -> Result<
+    (
+        CipherType,
+        CipherKey,
+        CipherIv,
+        Box<dyn StreamCipher + Send + Sync>,
+    ),
+    (&'static str, &'static str),
+> {
     log::debug!("Received request: {:?}", req);
     match req.method {
         Some(m) if m.eq_ignore_ascii_case("get") => {}
@@ -19,39 +30,21 @@ fn check_request(req: httparse::Request) -> Result<(Key, Nonce), (&'static str, 
         }
     };
 
-    let mut key = [0u8; 32];
-    let mut nonce = [0u8; 12];
-
-    req.path
-        .and_then(|v| {
-            if v.starts_with(URL_PREFIX) {
-                Some(&v[URL_PREFIX.len()..])
-            } else {
-                None
-            }
+    let path = req.path.unwrap_or("");
+    let (key, iv, t) = sscanf::scanf!(path, "/shop/by-id/{}/{}/{}", String, String, u8)
+        .and_then(|(k, i, t)| {
+            Some((
+                decode_config(k, URL_SAFE_NO_PAD).ok()?,
+                decode_config(i, URL_SAFE_NO_PAD).ok()?,
+                t,
+            ))
         })
-        .and_then(|v| {
-            if decode_config_slice(v, URL_SAFE_NO_PAD, &mut key[..]) == Ok(key.len()) {
-                Some(())
-            } else {
-                None
-            }
-        })
-        .ok_or(("HTTP/1.1 201 OK\r\n\r\n", "Invalid URL"))?;
+        .ok_or_else(|| ("HTTP/1.1 201 OK\r\n\r\n", "Invalid URL"))?;
 
-    req.headers
-        .iter()
-        .find(|x| x.name.eq_ignore_ascii_case("X-Cache-Key"))
-        .and_then(|h| {
-            if decode_config_slice(h.value, URL_SAFE_NO_PAD, &mut nonce[..]) == Ok(nonce.len()) {
-                Some(())
-            } else {
-                None
-            }
-        })
-        .ok_or(("HTTP/1.1 200 OK\r\n\r\n", "Invalid nonce"))?;
+    let cipher = create_cipher(t, key.as_slice(), iv.as_slice())
+        .map_err(|_| ("HTTP/1.1 401 Invalid type\r\n\r\n", "Invalid cipher type"))?;
 
-    Ok((Key::from(key), Nonce::from(nonce)))
+    Ok((t, key, iv, cipher))
 }
 
 pub async fn listen<T: AsyncRead + AsyncWrite + Unpin>(
@@ -60,7 +53,7 @@ pub async fn listen<T: AsyncRead + AsyncWrite + Unpin>(
     let mut buf = RWBuffer::default();
 
     // Receive and check http request
-    let ((key, nonce), offset) = loop {
+    let ((cipher_type, key, iv, mut rd_cipher), offset) = loop {
         match stream.read(buf.write_buf()).await? {
             0 => return Err(anyhow!("Unexpected EOF")),
             v => buf.advance_write(v),
@@ -103,8 +96,6 @@ pub async fn listen<T: AsyncRead + AsyncWrite + Unpin>(
         )
         .await?;
 
-    let mut rd_cipher = ChaCha20::new(&key, &nonce);
-
     // Decrypt the initial data
     if buf.remaining_read() > 0 {
         rd_cipher.apply_keystream(buf.read_buf_mut());
@@ -115,7 +106,8 @@ pub async fn listen<T: AsyncRead + AsyncWrite + Unpin>(
         4096,
         stream,
         rd_cipher,
-        ChaCha20::new(&key, &nonce),
+        create_cipher(cipher_type, key.as_slice(), iv.as_slice())
+            .expect("To create same cipher as read cipher"),
         Some(buf),
     ))
 }

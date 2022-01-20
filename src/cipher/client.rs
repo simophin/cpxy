@@ -1,9 +1,6 @@
 use crate::cipher::stream::CipherStream;
 use crate::utils::RWBuffer;
 use anyhow::anyhow;
-use chacha20::cipher::{NewCipher, StreamCipher};
-use chacha20::{ChaCha20, Key, Nonce};
-use rand::Rng;
 use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
 
 fn check_server_response(res: httparse::Response<'_, '_>) -> anyhow::Result<()> {
@@ -13,36 +10,29 @@ fn check_server_response(res: httparse::Response<'_, '_>) -> anyhow::Result<()> 
     }
 }
 
-pub const URL_PREFIX: &'static str = "/shop/by-id/";
-
 pub async fn connect<T: AsyncRead + AsyncWrite + Unpin>(
     mut stream: T,
     // This buffer can contain initial data to send along with connection header
     mut buf: RWBuffer,
 ) -> anyhow::Result<impl AsyncRead + AsyncWrite + Unpin> {
-    let key: [u8; 32] = rand::thread_rng().gen();
-    let key = Key::from(key);
-    let nonce: [u8; 12] = rand::thread_rng().gen();
-    let nonce = Nonce::from(nonce);
+    let (cipher_type, mut wr_cipher, key, iv) = super::suite::pick_cipher();
 
     stream
         .write_all(
             format!(
-                "GET {URL_PREFIX}{} HTTP/1.1\r\n\
+                "GET /shop/by-id/{}/{}/{cipher_type} HTTP/1.1\r\n\
                       Connection: Upgrade;\r\n\
                       Upgrade: websocket\r\n\
                       Sec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==\r\n\
-                      Sec-WebSocket-Version: 13\r\n\
-                      X-Cache-Key: {}\r\n\r\n",
+                      Sec-WebSocket-Version: 13\r\n\r\n",
                 base64::encode_config(key.as_slice(), base64::URL_SAFE_NO_PAD),
-                base64::encode_config(nonce.as_slice(), base64::URL_SAFE_NO_PAD),
+                base64::encode_config(iv.as_slice(), base64::URL_SAFE_NO_PAD),
             )
             .as_bytes(),
         )
         .await?;
 
     // Send initial data encrypted
-    let mut wr_cipher = ChaCha20::new(&key, &nonce);
     if buf.remaining_read() > 0 {
         wr_cipher.apply_keystream(buf.read_buf_mut());
         stream.write_all(buf.read_buf()).await?;
@@ -68,7 +58,8 @@ pub async fn connect<T: AsyncRead + AsyncWrite + Unpin>(
         }
     }
 
-    let mut rd_cipher = ChaCha20::new(&key, &nonce);
+    let mut rd_cipher = super::suite::create_cipher(cipher_type, key.as_slice(), iv.as_slice())
+        .expect("To have created a same cipher as wr_cipher");
 
     // Decrypt the stream before handing over to CipherStream
     if buf.remaining_read() > 0 {
