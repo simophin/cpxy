@@ -30,11 +30,24 @@ jobs:
     - name: Run tests
       if: startsWith(github.ref, 'refs/heads/master')
       run: cargo test --release
-    - name: Build pacakges
+    - name: Build amd64 package
       if: startsWith(github.ref, 'refs/tags/')
-      run: ./build_all.sh
+      uses: actions-rs/cargo@v1
+      with:
+        command: build
+        args: --release --target=x86_64-unknown-linux-gnu
+        use-cross: false
+    - name: Build aarch64 package
+      if: startsWith(github.ref, 'refs/tags/')
+      uses: actions-rs/cargo@v1
+      with:
+        command: build
+        args: --release --target=aarch64-unknown-linux-gnu
+        use-cross: true
     - name: Release
       uses: softprops/action-gh-release@v1
       if: startsWith(github.ref, 'refs/tags/')
       with:
-        files: proxy-*
+        files: |
+          - target/release/proxy
+          - target/aarch64-unknown-linux-gnu/release/proxy
