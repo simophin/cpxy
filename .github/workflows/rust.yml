@@ -83,6 +83,8 @@ jobs:
         with:
           command: build
           args: --release --target=x86_64-apple-darwin
+      - name: Set up toolchain
+        run: rustup target add aarch64-apple-darwin
       - name: Build aarch64
         uses: actions-rs/cargo@v1
         with:
