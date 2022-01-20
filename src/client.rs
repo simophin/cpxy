@@ -34,15 +34,16 @@ pub async fn run_client(
 
 async fn serve_proxy_client(
     mut socks: impl AsyncRead + AsyncWrite + Unpin,
-    upstream: String,
+    upstream_addr: String,
 ) -> anyhow::Result<()> {
     let mut buf = RWBuffer::default();
     let (handshaker, req) = Handshaker::start(&mut socks, &mut buf).await?;
     log::info!("Requesting to proxy {req:?}");
 
     let r = super::proxy::handler::request_proxy(&req, move |buf| async move {
-        let upstream = timeout(Duration::from_secs(2), TcpStream::connect(upstream)).await??;
-        super::cipher::client::connect(upstream, buf).await
+        let upstream =
+            timeout(Duration::from_secs(2), TcpStream::connect(&upstream_addr)).await??;
+        super::cipher::client::connect(upstream, upstream_addr.as_str(), buf).await
     })
     .await;
 

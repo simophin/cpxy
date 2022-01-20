@@ -56,7 +56,7 @@ async fn test_client_server() {
 
     let (result, client) = request_proxy(
         &ProxyRequest::SocksTCP(Default::default()),
-        move |buf| async move { connect(client, buf).await },
+        move |buf| async move { connect(client, "localhost", buf).await },
     )
     .await
     .expect("To request proxy");

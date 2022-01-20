@@ -6,12 +6,13 @@ use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
 fn check_server_response(res: httparse::Response<'_, '_>) -> anyhow::Result<()> {
     match res.code {
         Some(101) => Ok(()),
-        v => Err(anyhow!("Expecting http code = 101, got {:?}", v)),
+        _ => Err(anyhow!("Expecting http code = 101, got {res:?}")),
     }
 }
 
 pub async fn connect<T: AsyncRead + AsyncWrite + Unpin>(
     mut stream: T,
+    host: &str,
     // This buffer can contain initial data to send along with connection header
     mut buf: RWBuffer,
 ) -> anyhow::Result<impl AsyncRead + AsyncWrite + Unpin> {
@@ -22,6 +23,7 @@ pub async fn connect<T: AsyncRead + AsyncWrite + Unpin>(
             format!(
                 "GET /shop/by-id/{}/{}/{cipher_type} HTTP/1.1\r\n\
                       Connection: Upgrade\r\n\
+                      Host: {host}\r\n\
                       Upgrade: websocket\r\n\
                       Sec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==\r\n\
                       Sec-WebSocket-Version: 13\r\n\r\n",
@@ -50,7 +52,10 @@ pub async fn connect<T: AsyncRead + AsyncWrite + Unpin>(
         let mut res = httparse::Response::new(&mut headers);
         match res.parse(buf.read_buf())? {
             httparse::Status::Complete(offset) => {
-                check_server_response(res)?;
+                if let Err(e) = check_server_response(res) {
+                    debug_http_error(stream, buf).await;
+                    return Err(e);
+                }
                 buf.advance_read(offset);
                 break;
             }
@@ -74,4 +79,15 @@ pub async fn connect<T: AsyncRead + AsyncWrite + Unpin>(
         wr_cipher,
         Some(buf),
     ))
+}
+
+async fn debug_http_error<T: AsyncRead + AsyncWrite + Unpin>(mut stream: T, buf: RWBuffer) {
+    let mut data = Vec::new();
+    data.extend_from_slice(buf.read_buf());
+    drop(buf);
+    let _ = stream.read_to_end(&mut data).await;
+    log::error!(
+        "Error response as: {}",
+        String::from_utf8_lossy(data.as_slice())
+    );
 }
