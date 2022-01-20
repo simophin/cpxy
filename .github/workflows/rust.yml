@@ -83,11 +83,13 @@ jobs:
         with:
           command: build
           args: --release --target=x86_64-apple-darwin
-      - name: Build aarch64
-        uses: actions-rs/cargo@v1
-        with:
-          command: build
-          args: --release --target=aarch64-apple-darwin
+#      - name: Set up toolchain
+#        run: rustup target add aarch64-apple-darwin
+#      - name: Build aarch64
+#        uses: actions-rs/cargo@v1
+#        with:
+#          command: build
+#          args: --release --target=aarch64-apple-darwin
       - name: Upload Artifact
         uses: actions/upload-artifact@v2
         with:
@@ -98,11 +100,15 @@ jobs:
     if: startsWith(github.ref, 'refs/tags/')
     needs: [build_linux]
     steps:
-    - name: Download artifacts
+    - name: Download apple artifacts
       uses: actions/download-artifact@v2
       with:
-        name: homework
+        name: apple_artifacts
+    - name: Download linux artifacts
+      uses: actions/download-artifact@v2
+      with:
+        name: linux_artifact
     - name: Create github release
       uses: softprops/action-gh-release@v1
       with:
-        files: target/**/release/proxy
+        files: ./**/release/proxy
