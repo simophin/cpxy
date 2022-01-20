@@ -21,7 +21,7 @@ pub async fn connect<T: AsyncRead + AsyncWrite + Unpin>(
         .write_all(
             format!(
                 "GET /shop/by-id/{}/{}/{cipher_type} HTTP/1.1\r\n\
-                      Connection: Upgrade;\r\n\
+                      Connection: Upgrade\r\n\
                       Upgrade: websocket\r\n\
                       Sec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==\r\n\
                       Sec-WebSocket-Version: 13\r\n\r\n",
