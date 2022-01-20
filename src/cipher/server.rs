@@ -7,7 +7,7 @@ use chacha20::cipher::{NewCipher, StreamCipher};
 use chacha20::{ChaCha20, Key, Nonce};
 use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
 
-fn check_request(req: httparse::Request) -> Result<ChaCha20, (&'static str, &'static str)> {
+fn check_request(req: httparse::Request) -> Result<(Key, Nonce), (&'static str, &'static str)> {
     log::debug!("Received request: {:?}", req);
     match req.method {
         Some(m) if m.eq_ignore_ascii_case("get") => {}
@@ -51,10 +51,7 @@ fn check_request(req: httparse::Request) -> Result<ChaCha20, (&'static str, &'st
         })
         .ok_or(("HTTP/1.1 200 OK\r\n\r\n", "Invalid nonce"))?;
 
-    Ok(ChaCha20::new(
-        Key::from_slice(&key),
-        Nonce::from_slice(&nonce),
-    ))
+    Ok((Key::from(key), Nonce::from(nonce)))
 }
 
 pub async fn listen<T: AsyncRead + AsyncWrite + Unpin>(
@@ -63,7 +60,7 @@ pub async fn listen<T: AsyncRead + AsyncWrite + Unpin>(
     let mut buf = RWBuffer::default();
 
     // Receive and check http request
-    let (mut cipher, offset) = loop {
+    let ((key, nonce), offset) = loop {
         match stream.read(buf.write_buf()).await? {
             0 => return Err(anyhow!("Unexpected EOF")),
             v => buf.advance_write(v),
@@ -106,59 +103,19 @@ pub async fn listen<T: AsyncRead + AsyncWrite + Unpin>(
         )
         .await?;
 
+    let mut rd_cipher = ChaCha20::new(&key, &nonce);
+
     // Decrypt the initial data
     if buf.remaining_read() > 0 {
-        cipher.apply_keystream(buf.read_buf_mut());
+        rd_cipher.apply_keystream(buf.read_buf_mut());
     }
 
-    Ok(CipherStream::new(4096, stream, cipher, Some(buf)))
-}
-
-#[cfg(test)]
-mod test {
-    use super::*;
-    use std::io::Write;
-    use std::time::Duration;
-    use tokio::io::{duplex, split, AsyncBufReadExt, AsyncReadExt, AsyncWriteExt, BufReader};
-    use tokio::spawn;
-    use tokio::task::JoinHandle;
-    use tokio::time::timeout;
-
-    #[tokio::test]
-    async fn server_client_works() -> anyhow::Result<()> {
-        let duration = Duration::from_secs(2000);
-        let (client, server) = duplex(4096);
-
-        let server: JoinHandle<anyhow::Result<()>> = spawn(async move {
-            let mut server = listen(server).await?;
-            let mut buf = RWBuffer::default();
-            loop {
-                match server.read(buf.write_buf()).await? {
-                    0 => return Ok(()),
-                    v => buf.advance_write(v),
-                };
-
-                server.write_all(buf.read_buf()).await?;
-                buf.consume_read();
-            }
-        });
-
-        let mut init_buf = RWBuffer::default();
-        init_buf.write_all(b"hello,")?;
-
-        let (client_r, mut client_w) =
-            split(timeout(duration, super::super::client::connect(client, init_buf)).await??);
-        let mut client_r = BufReader::new(client_r);
-        client_w.write_all(b"world\n").await?;
-
-        let mut line = Default::default();
-        timeout(duration, client_r.read_line(&mut line)).await??;
-
-        assert_eq!(line, "hello,world\n");
-
-        drop(client_r);
-        drop(client_w);
-
-        server.await?
-    }
+    Ok(CipherStream::new(
+        "server".to_string(),
+        4096,
+        stream,
+        rd_cipher,
+        ChaCha20::new(&key, &nonce),
+        Some(buf),
+    ))
 }

@@ -10,7 +10,6 @@ use bytes::{Buf, BufMut};
 use crate::parse::{ParseError, WriteError};
 
 #[derive(Debug, Eq, PartialEq, Clone, Serialize, Deserialize)]
-#[serde(tag = "type")]
 pub enum Address {
     IP(SocketAddr),
     Name { host: String, port: u16 },

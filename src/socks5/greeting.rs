@@ -1,6 +1,5 @@
 use crate::parse::ParseError;
 use bytes::Buf;
-use std::io::Cursor;
 use tokio::io::{AsyncWrite, AsyncWriteExt};
 
 type Auth = u8;
@@ -14,18 +13,18 @@ pub struct ClientGreeting<'a> {
 }
 
 impl<'a> ClientGreeting<'a> {
-    pub fn parse<'buf>(buf: &'buf [u8]) -> Result<Option<(usize, Self)>, ParseError>
+    pub fn parse<'buf>(mut buf: &'buf [u8]) -> Result<Option<(usize, Self)>, ParseError>
     where
         'buf: 'a,
     {
-        let mut buf = Cursor::new(buf);
+        let mut offset = 0;
         if buf.remaining() < 2 {
             return Ok(None);
         }
 
         match buf.get_u8() {
             v if v != 0x5 => return Err(ParseError::unexpected("protocol", v, "0x5")),
-            _ => {}
+            _ => offset += 1,
         };
 
         let len = buf.get_u8() as usize;
@@ -33,13 +32,9 @@ impl<'a> ClientGreeting<'a> {
             return Ok(None);
         }
 
-        let offset = buf.position() as usize + len;
-        Ok(Some((
-            offset,
-            Self {
-                auths: &buf.into_inner()[..len],
-            },
-        )))
+        offset += len + 1;
+
+        Ok(Some((offset, Self { auths: &buf[..len] })))
     }
 
     pub async fn respond(

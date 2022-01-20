@@ -9,7 +9,6 @@ use std::net::SocketAddr;
 use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
 
 #[derive(Serialize, Deserialize, Debug)]
-#[serde(tag = "type")]
 pub enum ProxyRequest {
     SocksTCP(Address),
     SocksUDP(Address),
@@ -17,7 +16,6 @@ pub enum ProxyRequest {
 }
 
 #[derive(Serialize, Deserialize, Debug)]
-#[serde(tag = "type")]
 pub enum ProxyResult {
     Granted { bound_address: SocketAddr },
     ErrHostNotFound,
@@ -63,7 +61,13 @@ async fn read_json_async<T: DeserializeOwned>(
     let len = u16::from_be_bytes(len_buf) as usize;
     let mut buf = vec![0; len];
     r.read_exact(buf.as_mut_slice()).await?;
-    Ok(serde_json::from_slice(buf.as_slice())?)
+    match serde_json::from_slice(buf.as_slice()) {
+        Ok(v) => Ok(v),
+        Err(e) => {
+            log::error!("Error decoding {} as json: {}", String::from_utf8_lossy(buf.as_slice()), e);
+            Err(e.into())
+        }
+    }
 }
 
 pub async fn request_proxy<

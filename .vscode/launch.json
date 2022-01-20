@@ -26,19 +26,54 @@
         {
             "type": "lldb",
             "request": "launch",
-            "name": "Debug executable 'proxy'",
+            "name": "Client",
             "cargo": {
                 "args": [
                     "build",
                     "--bin=proxy",
                     "--package=cjk-proxy"
+                    
                 ],
                 "filter": {
                     "name": "proxy",
                     "kind": "bin"
                 }
             },
-            "args": [],
+            "args": [
+                "client",
+                "--remote-host=127.0.0.1",
+                "--remote-port=4200",
+                "--socks5-port=8081"
+            ],
+            "env": {
+                "RUST_LOG": "debug"
+            },
+            "cwd": "${workspaceFolder}"
+        },
+        {
+            "type": "lldb",
+            "request": "launch",
+            "name": "Server",
+            "cargo": {
+                "args": [
+                    "build",
+                    "--bin=proxy",
+                    "--package=cjk-proxy"
+                    
+                ],
+                "filter": {
+                    "name": "proxy",
+                    "kind": "bin"
+                }
+            },
+            "args": [
+                "server",
+                "--host=127.0.0.1",
+                "--port=4200"
+            ],
+            "env": {
+                "RUST_LOG": "debug"
+            },
             "cwd": "${workspaceFolder}"
         },
         {

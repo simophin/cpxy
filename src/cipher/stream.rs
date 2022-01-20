@@ -13,17 +13,28 @@ pin_project! {
     pub struct CipherStream<T> {
         #[pin]
         pub(super) inner: T,
-        pub(super) cipher: ChaCha20,
+        pub(super) name: String,
+        pub(super) rd_cipher: ChaCha20,
+        pub(super) wr_cipher: ChaCha20,
         pub(super) init_read_buf: Option<RWBuffer>,
         pub(super) write_buf: RWBuffer,
     }
 }
 
 impl<T> CipherStream<T> {
-    pub fn new(n: usize, inner: T, cipher: ChaCha20, initial_buf: Option<RWBuffer>) -> Self {
+    pub fn new(
+        name: String,
+        n: usize,
+        inner: T,
+        rd_cipher: ChaCha20,
+        wr_cipher: ChaCha20,
+        initial_buf: Option<RWBuffer>,
+    ) -> Self {
         Self {
             inner,
-            cipher,
+            rd_cipher,
+            wr_cipher,
+            name,
             init_read_buf: initial_buf,
             write_buf: RWBuffer::with_capacity(n),
         }
@@ -42,59 +53,85 @@ impl<T: AsyncRead> AsyncRead for CipherStream<T> {
         buf: &mut ReadBuf<'_>,
     ) -> Poll<std::io::Result<()>> {
         let p = self.project();
-        let has_init_result = match p.init_read_buf.as_mut() {
+        match p.init_read_buf.as_mut() {
             Some(initial) if initial.remaining_read() > 0 => {
                 let len = min(initial.remaining_read(), buf.remaining());
                 buf.put_slice(&initial.read_buf()[..len]);
+                log::debug!("{}: Read {len} of initial data", p.name);
                 initial.advance_read(len);
-                if initial.remaining_read() > 0 {
-                    cx.waker().wake_by_ref();
-                    return Poll::Ready(Ok(()));
-                }
-                *p.init_read_buf = None;
-                true
+                cx.waker().wake_by_ref();
+                return Poll::Ready(Ok(()));
             }
-            Some(_) => {
-                *p.init_read_buf = None;
-                false
-            }
-            _ => false,
+            Some(_) => *p.init_read_buf = None,
+            _ => {}
         };
 
         let prev_remaining = buf.remaining();
+        log::debug!(
+            "{}: Read: polling for underlying data, cache size: {}",
+            p.name,
+            buf.remaining(),
+        );
+
         match p.inner.poll_read(cx, buf) {
-            Poll::Ready(v) => {
+            Poll::Ready(Ok(())) => {
+                log::debug!("{}: Read: data available", p.name);
                 if buf.remaining() < prev_remaining {
                     let total_filled_len = buf.filled().len();
                     let new_filled_len = prev_remaining - buf.remaining();
-                    p.cipher.apply_keystream(
+                    log::debug!(
+                        "{}: Read and encrypt {new_filled_len} from underlying stream",
+                        p.name
+                    );
+                    p.rd_cipher.apply_keystream(
                         &mut buf.filled_mut()[total_filled_len - new_filled_len..],
                     );
                 }
-                return Poll::Ready(v);
+                return Poll::Ready(Ok(()));
             }
-            Poll::Pending if !has_init_result => Poll::Pending,
-            _ => Poll::Ready(Ok(())),
+            Poll::Pending => Poll::Pending,
+            Poll::Ready(Err(e)) => Poll::Ready(Err(e)),
         }
     }
 }
 
 impl<T: AsyncWrite> AsyncWrite for CipherStream<T> {
     fn poll_write(
-        self: Pin<&mut Self>,
+        mut self: Pin<&mut Self>,
         cx: &mut Context<'_>,
         buf: &[u8],
     ) -> Poll<Result<usize, Error>> {
+        if self.write_buf.remaining_write() < buf.len() {
+            match self.as_mut().poll_flush(cx) {
+                Poll::Ready(v) => {
+                    v?;
+                }
+                Poll::Pending => return Poll::Pending,
+            }
+        };
+
         let mut this = self.project();
-        if this.write_buf.remaining_write() < buf.len() {
+        log::debug!(
+            "{}: Requesting to write {} bytes data to cipher",
+            this.name,
+            buf.len()
+        );
+        if this.write_buf.remaining_write() < this.write_buf.total_capacity() / 3 {
+            // log::debug!("Compacting write buf");
             this.write_buf.compact();
         }
 
         let write_len = min(this.write_buf.remaining_write(), buf.len());
+        // log::debug!("Admitting {write_len} bytes to cipher stream");
         if write_len > 0 {
             this.write_buf.write_buf().put_slice(&buf[..write_len]);
+            // log::debug!(
+            //     "Remaining write buffer: {}",
+            //     this.write_buf.remaining_write()
+            // );
+            this.wr_cipher
+                .apply_keystream(&mut this.write_buf.write_buf()[..write_len]);
             this.write_buf.advance_write(write_len);
-            this.cipher.apply_keystream(this.write_buf.read_buf_mut());
         }
         while this.write_buf.remaining_read() > 0 {
             match this
@@ -102,32 +139,48 @@ impl<T: AsyncWrite> AsyncWrite for CipherStream<T> {
                 .as_mut()
                 .poll_write(cx, this.write_buf.read_buf())
             {
-                Poll::Ready(Ok(offset)) => {
-                    this.write_buf.advance_read(offset);
+                Poll::Ready(Ok(n)) => {
+                    this.write_buf.advance_read(n);
+                    log::debug!(
+                        "{}: Wrote {n} bytes cipher stream into underlying. {} remained to be written",
+                        this.name,
+                        this.write_buf.remaining_read()
+                    );
                     if this.write_buf.remaining_read() == 0 {
                         break;
                     }
                 }
                 Poll::Ready(Err(e)) => return Poll::Ready(Err(e)),
                 Poll::Pending => {
-                    cx.waker().wake_by_ref();
                     break;
                 }
             }
         }
 
-        return Poll::Ready(Ok(write_len));
+        if write_len > 0 {
+            Poll::Ready(Ok(write_len))
+        } else {
+            Poll::Pending
+        }
     }
 
     fn poll_flush(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Result<(), Error>> {
         let mut this = self.project();
+        log::debug!("{}: Flushing cipher stream", this.name);
         while this.write_buf.remaining_read() > 0 {
             match this
                 .inner
                 .as_mut()
                 .poll_write(cx, this.write_buf.read_buf())
             {
-                Poll::Ready(Ok(n)) => this.write_buf.advance_read(n),
+                Poll::Ready(Ok(n)) => {
+                    this.write_buf.advance_read(n);
+                    log::debug!(
+                        "{}: Flushed {n} bytes. Remaining: {}",
+                        this.name,
+                        this.write_buf.remaining_read()
+                    );
+                }
                 Poll::Pending => return Poll::Pending,
                 Poll::Ready(Err(e)) => return Poll::Ready(Err(e)),
             }
@@ -136,7 +189,13 @@ impl<T: AsyncWrite> AsyncWrite for CipherStream<T> {
         this.inner.as_mut().poll_flush(cx)
     }
 
-    fn poll_shutdown(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Result<(), Error>> {
+    fn poll_shutdown(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Result<(), Error>> {
+        match self.as_mut().poll_flush(cx) {
+            Poll::Ready(Ok(())) => {}
+            Poll::Ready(Err(e)) => return Poll::Ready(Err(e)),
+            Poll::Pending => return Poll::Pending,
+        };
+
         self.project().inner.as_mut().poll_shutdown(cx)
     }
 }
@@ -146,17 +205,38 @@ mod test {
     use super::*;
     use chacha20::cipher::NewCipher;
     use chacha20::{Key, Nonce};
+    use rand::RngCore;
     use tokio::io::AsyncWriteExt;
 
     #[tokio::test]
     async fn test_encryption_works() {
         let key = Key::default();
         let nonce = Nonce::default();
-        let mut s1 = CipherStream::new(4096, Vec::<u8>::new(), ChaCha20::new(&key, &nonce), None);
-        let mut s2 = CipherStream::new(4096, Vec::<u8>::new(), ChaCha20::new(&key, &nonce), None);
 
-        s1.write_all(b"hello, world").await.unwrap();
+        let mut data = vec![0u8; 8192];
+        rand::thread_rng().fill_bytes(data.as_mut_slice());
+
+        let mut s1 = CipherStream::new(
+            "s1".to_string(),
+            4096,
+            Vec::<u8>::new(),
+            ChaCha20::new(&key, &nonce),
+            ChaCha20::new(&key, &nonce),
+            None,
+        );
+        let mut s2 = CipherStream::new(
+            "s2".to_string(),
+            4096,
+            Vec::<u8>::new(),
+            ChaCha20::new(&key, &nonce),
+            ChaCha20::new(&key, &nonce),
+            None,
+        );
+
+        s1.write_all(data.as_slice()).await.unwrap();
+        s1.flush().await.unwrap();
         s2.write_all(&s1.into_inner()).await.unwrap();
-        assert_eq!(b"hello, world".as_ref(), &s2.into_inner());
+        s2.flush().await.unwrap();
+        assert_eq!(data.as_slice(), &s2.into_inner());
     }
 }

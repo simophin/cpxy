@@ -22,23 +22,6 @@ pub async fn copy_io(
     }
 }
 
-pub async fn copy_io_with_buf<Buf: AsMut<[u8]> + AsRef<[u8]>>(
-    mut r: impl AsyncRead + Unpin,
-    mut w: impl AsyncWrite + Unpin,
-    mut buf: RWBuffer<Buf>,
-) -> anyhow::Result<()> {
-    loop {
-        match r.read(buf.write_buf()).await? {
-            0 => return Ok(()),
-            v => {
-                buf.advance_write(v);
-                w.write_all(buf.read_buf()).await?;
-                buf.consume_read();
-            }
-        }
-    }
-}
-
 pub struct RWBuffer<T = Vec<u8>> {
     buf: T,
     read_cursor: usize,
@@ -92,14 +75,6 @@ impl<T> RWBuffer<T> {
 }
 
 impl<T: AsMut<[u8]> + AsRef<[u8]>> RWBuffer<T> {
-    pub fn new(buf: T) -> Self {
-        RWBuffer {
-            buf,
-            read_cursor: 0,
-            write_cursor: 0,
-        }
-    }
-
     pub fn read_buf(&self) -> &[u8] {
         &self.buf.as_ref()[self.read_cursor..self.write_cursor]
     }
@@ -113,6 +88,10 @@ impl<T: AsMut<[u8]> + AsRef<[u8]>> RWBuffer<T> {
         self.buf.as_ref().len() - self.write_cursor
     }
 
+    pub fn total_capacity(&self) -> usize {
+        return self.buf.as_ref().len();
+    }
+
     pub fn write_buf(&mut self) -> &mut [u8] {
         &mut self.buf.as_mut()[self.write_cursor..]
     }
@@ -123,11 +102,13 @@ impl<T: AsMut<[u8]> + AsRef<[u8]>> RWBuffer<T> {
 
     pub fn compact(&mut self) {
         if self.read_cursor < self.write_cursor {
-            self.buf
-                .as_mut()
-                .copy_within(self.read_cursor..self.write_cursor, 0);
-            self.write_cursor = self.read_cursor;
-            self.read_cursor = 0;
+            if self.read_cursor > 0 {
+                self.buf
+                    .as_mut()
+                    .copy_within(self.read_cursor..self.write_cursor, 0);
+                self.write_cursor -= self.read_cursor;
+                self.read_cursor = 0;
+            }
         } else if self.read_cursor == self.write_cursor {
             self.read_cursor = 0;
             self.write_cursor = 0;

@@ -42,9 +42,9 @@ pub async fn connect<T: AsyncRead + AsyncWrite + Unpin>(
         .await?;
 
     // Send initial data encrypted
-    let mut cipher = ChaCha20::new(&key, &nonce);
+    let mut wr_cipher = ChaCha20::new(&key, &nonce);
     if buf.remaining_read() > 0 {
-        cipher.apply_keystream(buf.read_buf_mut());
+        wr_cipher.apply_keystream(buf.read_buf_mut());
         stream.write_all(buf.read_buf()).await?;
         buf.consume_read();
     }
@@ -68,10 +68,19 @@ pub async fn connect<T: AsyncRead + AsyncWrite + Unpin>(
         }
     }
 
+    let mut rd_cipher = ChaCha20::new(&key, &nonce);
+
     // Decrypt the stream before handing over to CipherStream
     if buf.remaining_read() > 0 {
-        cipher.apply_keystream(buf.read_buf_mut());
+        rd_cipher.apply_keystream(buf.read_buf_mut());
     }
 
-    Ok(CipherStream::new(4096, stream, cipher, Some(buf)))
+    Ok(CipherStream::new(
+        "client".to_string(),
+        4096,
+        stream,
+        rd_cipher,
+        wr_cipher,
+        Some(buf),
+    ))
 }

@@ -73,7 +73,7 @@ mod test {
 
         let pkt = UdpPacket {
             frag_no: 1,
-            addr: Address::Name("localhost".to_string(), 123),
+            addr: "localhost:123".parse().unwrap(),
             data: Cow::Borrowed(b"hello, world"),
         };
 

@@ -36,7 +36,7 @@ async fn serve_proxy_client(
 ) -> anyhow::Result<()> {
     let mut buf = RWBuffer::default();
     let (handshaker, req) = Handshaker::start(&mut socks, &mut buf).await?;
-    log::info!("Proxying {req:?}");
+    log::info!("Requesting to proxy {req:?}");
 
     let r = super::proxy::handler::request_proxy(&req, move |buf| async move {
         let upstream = TcpStream::connect(upstream).await?;

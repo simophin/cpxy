@@ -6,3 +6,6 @@ mod proxy;
 pub mod server;
 mod socks5;
 mod utils;
+
+#[cfg(test)]
+mod test;
