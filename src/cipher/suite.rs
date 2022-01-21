@@ -12,6 +12,8 @@ mod cpuid_aes {
     }
 }
 
+pub type BoxedStreamCipher = Box<dyn StreamCipher + Send + Sync>;
+
 pub type CipherType = u8;
 pub type CipherKey = Vec<u8>;
 pub type CipherIv = Vec<u8>;
@@ -20,7 +22,7 @@ pub fn create_cipher(
     cipher_type: CipherType,
     key: &[u8],
     iv: &[u8],
-) -> anyhow::Result<Box<dyn StreamCipher + Send + Sync>> {
+) -> anyhow::Result<BoxedStreamCipher> {
     match cipher_type {
         0 => Ok(Box::new(aes::Aes128Ctr::new_from_slices(key, iv).map_err(
             |_| anyhow!("Invalid key/iv lengths for AES cipher"),
@@ -33,16 +35,11 @@ pub fn create_cipher(
     }
 }
 
-pub fn pick_cipher() -> (
-    CipherType,
-    Box<dyn StreamCipher + Send + Sync>,
-    CipherKey,
-    CipherIv,
-) {
+pub fn pick_cipher() -> (CipherType, BoxedStreamCipher, CipherKey, CipherIv) {
     let mut key;
     let mut iv;
-    let mut cipher_type;
-    let cipher: Box<dyn StreamCipher + Send + Sync> = if cpuid_aes::get() {
+    let cipher_type;
+    let cipher: BoxedStreamCipher = if cpuid_aes::get() {
         key = vec![0u8; 16];
         iv = vec![0u8; 16];
         rand::thread_rng().fill(key.as_mut_slice());

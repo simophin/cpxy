@@ -25,7 +25,7 @@ async fn prepare(
                 v.host()
             ));
         }
-        Err(e) => {
+        Err(_) => {
             return Err(anyhow!("Invalid path {path}"));
         }
     };

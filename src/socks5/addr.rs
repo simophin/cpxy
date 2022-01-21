@@ -15,7 +15,16 @@ pub enum Address {
     Name { host: String, port: u16 },
 }
 
-impl<'a> Default for Address {
+impl Address {
+    pub fn get_port(&self) -> u16 {
+        match self {
+            Self::IP(addr) => addr.port(),
+            Self::Name { port, .. } => *port,
+        }
+    }
+}
+
+impl Default for Address {
     fn default() -> Self {
         Self::IP(SocketAddr::V4(SocketAddrV4::new(Ipv4Addr::UNSPECIFIED, 0)))
     }

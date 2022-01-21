@@ -1,4 +1,5 @@
-use crate::cipher::stream::CipherStream;
+use super::strategy::EncryptionStrategy;
+use super::stream::CipherStream;
 use crate::utils::RWBuffer;
 use anyhow::anyhow;
 use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
@@ -13,15 +14,18 @@ fn check_server_response(res: httparse::Response<'_, '_>) -> anyhow::Result<()> 
 pub async fn connect<T: AsyncRead + AsyncWrite + Unpin>(
     mut stream: T,
     host: &str,
+    send_strategy: EncryptionStrategy,
+    receive_strategy: EncryptionStrategy,
     // This buffer can contain initial data to send along with connection header
     mut buf: RWBuffer,
 ) -> anyhow::Result<impl AsyncRead + AsyncWrite + Unpin> {
     let (cipher_type, mut wr_cipher, key, iv) = super::suite::pick_cipher();
+    wr_cipher = send_strategy.wrap_cipher(wr_cipher);
 
     stream
         .write_all(
             format!(
-                "GET /shop/by-id/{}/{}/{cipher_type} HTTP/1.1\r\n\
+                "GET /shop/by-id/{}/{}/{send_strategy}/{receive_strategy}/{cipher_type} HTTP/1.1\r\n\
                       Connection: Upgrade\r\n\
                       Host: {host}\r\n\
                       Upgrade: websocket\r\n\
@@ -63,8 +67,10 @@ pub async fn connect<T: AsyncRead + AsyncWrite + Unpin>(
         }
     }
 
-    let mut rd_cipher = super::suite::create_cipher(cipher_type, key.as_slice(), iv.as_slice())
-        .expect("To have created a same cipher as wr_cipher");
+    let mut rd_cipher = receive_strategy.wrap_cipher(
+        super::suite::create_cipher(cipher_type, key.as_slice(), iv.as_slice())
+            .expect("To have created a same cipher as wr_cipher"),
+    );
 
     // Decrypt the stream before handing over to CipherStream
     if buf.remaining_read() > 0 {

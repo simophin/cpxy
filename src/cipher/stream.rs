@@ -1,6 +1,6 @@
+use super::suite::BoxedStreamCipher;
 use crate::utils::RWBuffer;
 use bytes::BufMut;
-use cipher::StreamCipher;
 use pin_project_lite::pin_project;
 use std::cmp::min;
 use std::io::Error;
@@ -8,15 +8,13 @@ use std::pin::Pin;
 use std::task::{Context, Poll};
 use tokio::io::{AsyncRead, AsyncWrite, ReadBuf};
 
-type Cipher = Box<dyn StreamCipher + Send + Sync>;
-
 pin_project! {
     pub struct CipherStream<T> {
         #[pin]
         pub(super) inner: T,
         pub(super) name: String,
-        pub(super) rd_cipher: Cipher,
-        pub(super) wr_cipher: Cipher,
+        pub(super) rd_cipher: BoxedStreamCipher,
+        pub(super) wr_cipher: BoxedStreamCipher,
         pub(super) init_read_buf: Option<RWBuffer>,
         pub(super) write_buf: RWBuffer,
     }
@@ -27,8 +25,8 @@ impl<T> CipherStream<T> {
         name: String,
         n: usize,
         inner: T,
-        rd_cipher: Cipher,
-        wr_cipher: Cipher,
+        rd_cipher: BoxedStreamCipher,
+        wr_cipher: BoxedStreamCipher,
         initial_buf: Option<RWBuffer>,
     ) -> Self {
         Self {
@@ -39,11 +37,6 @@ impl<T> CipherStream<T> {
             init_read_buf: initial_buf,
             write_buf: RWBuffer::with_capacity(n),
         }
-    }
-
-    #[cfg(test)]
-    pub fn into_inner(self) -> T {
-        self.inner
     }
 }
 

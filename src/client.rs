@@ -2,6 +2,7 @@ use std::fmt::Display;
 use std::time::Duration;
 use tokio::io::{split, AsyncRead, AsyncWrite};
 
+use crate::cipher::strategy::EncryptionStrategy;
 use crate::handshake::Handshaker;
 use crate::proxy::handler::ProxyRequest;
 use crate::utils::{copy_io, RWBuffer};
@@ -40,10 +41,14 @@ async fn serve_proxy_client(
     let (handshaker, req) = Handshaker::start(&mut socks, &mut buf).await?;
     log::info!("Requesting to proxy {req:?}");
 
+    let send_enc = EncryptionStrategy::pick_send(&req);
+    let receive_enc = EncryptionStrategy::pick_receive(&req);
+
     let r = super::proxy::handler::request_proxy(&req, move |buf| async move {
         let upstream =
             timeout(Duration::from_secs(2), TcpStream::connect(&upstream_addr)).await??;
-        super::cipher::client::connect(upstream, upstream_addr.as_str(), buf).await
+        super::cipher::client::connect(upstream, upstream_addr.as_str(), send_enc, receive_enc, buf)
+            .await
     })
     .await;
 

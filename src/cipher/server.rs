@@ -1,24 +1,17 @@
+use super::strategy::EncryptionStrategy;
 use anyhow::anyhow;
 use base64::{decode_config, URL_SAFE_NO_PAD};
-use cipher::StreamCipher;
+use std::str::FromStr;
 use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
 
 use crate::utils::RWBuffer;
 
 use super::stream::CipherStream;
-use super::suite::{create_cipher, CipherIv, CipherKey, CipherType};
+use super::suite::{create_cipher, BoxedStreamCipher};
 
 fn check_request(
     req: httparse::Request,
-) -> Result<
-    (
-        CipherType,
-        CipherKey,
-        CipherIv,
-        Box<dyn StreamCipher + Send + Sync>,
-    ),
-    (&'static str, &'static str),
-> {
+) -> Result<(BoxedStreamCipher, BoxedStreamCipher), (&'static str, &'static str)> {
     log::debug!("Received request: {:?}", req);
     match req.method {
         Some(m) if m.eq_ignore_ascii_case("get") => {}
@@ -31,20 +24,35 @@ fn check_request(
     };
 
     let path = req.path.unwrap_or("");
-    let (key, iv, t) = sscanf::scanf!(path, "/shop/by-id/{}/{}/{}", String, String, u8)
-        .and_then(|(k, i, t)| {
-            Some((
-                decode_config(k, URL_SAFE_NO_PAD).ok()?,
-                decode_config(i, URL_SAFE_NO_PAD).ok()?,
-                t,
-            ))
-        })
-        .ok_or_else(|| ("HTTP/1.1 201 OK\r\n\r\n", "Invalid URL"))?;
+    let (key, iv, client_send_strategy, client_receive_strategy, t) = sscanf::scanf!(
+        path,
+        "/shop/by-id/{}/{}/{}/{}/{}",
+        String,
+        String,
+        String,
+        String,
+        u8
+    )
+    .and_then(|(k, i, s1, s2, t)| {
+        Some((
+            decode_config(k, URL_SAFE_NO_PAD).ok()?,
+            decode_config(i, URL_SAFE_NO_PAD).ok()?,
+            EncryptionStrategy::from_str(s1.as_str()).ok()?,
+            EncryptionStrategy::from_str(s2.as_str()).ok()?,
+            t,
+        ))
+    })
+    .ok_or_else(|| ("HTTP/1.1 201 OK\r\n\r\n", "Invalid URL"))?;
 
-    let cipher = create_cipher(t, key.as_slice(), iv.as_slice())
-        .map_err(|_| ("HTTP/1.1 401 Invalid type\r\n\r\n", "Invalid cipher type"))?;
+    let rd_cipher = client_send_strategy.wrap_cipher(
+        create_cipher(t, key.as_slice(), iv.as_slice())
+            .map_err(|_| ("HTTP/1.1 401 Invalid type\r\n\r\n", "Invalid cipher type"))?,
+    );
 
-    Ok((t, key, iv, cipher))
+    let wr_cipher = client_receive_strategy
+        .wrap_cipher(create_cipher(t, key.as_slice(), iv.as_slice()).unwrap());
+
+    Ok((rd_cipher, wr_cipher))
 }
 
 pub async fn listen<T: AsyncRead + AsyncWrite + Unpin>(
@@ -53,7 +61,7 @@ pub async fn listen<T: AsyncRead + AsyncWrite + Unpin>(
     let mut buf = RWBuffer::default();
 
     // Receive and check http request
-    let ((cipher_type, key, iv, mut rd_cipher), offset) = loop {
+    let ((mut rd_cipher, wr_cipher), offset) = loop {
         match stream.read(buf.write_buf()).await? {
             0 => return Err(anyhow!("Unexpected EOF")),
             v => buf.advance_write(v),
@@ -106,8 +114,7 @@ pub async fn listen<T: AsyncRead + AsyncWrite + Unpin>(
         4096,
         stream,
         rd_cipher,
-        create_cipher(cipher_type, key.as_slice(), iv.as_slice())
-            .expect("To create same cipher as read cipher"),
+        wr_cipher,
         Some(buf),
     ))
 }

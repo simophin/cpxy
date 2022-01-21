@@ -1,12 +1,13 @@
 use crate::cipher::client::connect;
 use crate::cipher::server::listen;
+use crate::cipher::strategy::EncryptionStrategy;
 use crate::proxy::handler::{
     receive_proxy_request, request_proxy, send_proxy_result, ProxyRequest, ProxyResult,
 };
 use crate::socks5::Address;
 use crate::utils::RWBuffer;
 use rand::Rng;
-use std::time::Duration;
+use std::num::NonZeroUsize;
 use tokio::io::{duplex, split, AsyncReadExt, AsyncWriteExt};
 use tokio::spawn;
 
@@ -14,7 +15,9 @@ use tokio::spawn;
 async fn test_client_server() {
     env_logger::init();
     let (client, server) = duplex(512);
-    let duration = Duration::from_secs(10);
+
+    let client_send_enc = EncryptionStrategy::FirstN(NonZeroUsize::try_from(50).unwrap());
+    let client_receive_enc = EncryptionStrategy::Never;
 
     let server_task = spawn(async move {
         let mut server = listen(server).await.expect("To create cipher channel");
@@ -56,7 +59,16 @@ async fn test_client_server() {
 
     let (result, client) = request_proxy(
         &ProxyRequest::SocksTCP(Default::default()),
-        move |buf| async move { connect(client, "localhost", buf).await },
+        move |buf| async move {
+            connect(
+                client,
+                "localhost",
+                client_send_enc,
+                client_receive_enc,
+                buf,
+            )
+            .await
+        },
     )
     .await
     .expect("To request proxy");
