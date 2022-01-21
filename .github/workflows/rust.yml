@@ -67,7 +67,7 @@ jobs:
       uses: actions-rs/cargo@v1
       with:
         command: build
-        args: --release --target=mipsel-unknown-linux-musl
+        args: --release --target=mips-unknown-linux-musl
         use-cross: true
     - name: Upload Artifact
       uses: actions/upload-artifact@v2
@@ -156,7 +156,7 @@ jobs:
         mv x86_64-unknown-linux-gnu/release/proxy proxy.linux.x86_64
         mv aarch64-unknown-linux-gnu/release/proxy proxy.linux.aarch64
         mv armv7-unknown-linux-gnueabihf/release/proxy proxy.linux.armv7
-        mv mipsel-unknown-linux-musl/release/proxy proxy.linux.mips
+        mv mips-unknown-linux-musl/release/proxy proxy.linux.mips
         mv x86_64-pc-windows-msvc/release/proxy.exe proxy.win64.exe
     - name: Create github release
       uses: softprops/action-gh-release@v1
