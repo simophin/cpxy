@@ -14,10 +14,10 @@ enum Command {
     #[clap(setting(AppSettings::ArgRequiredElseHelp))]
     Server {
         /// The address to listen on
-        #[clap(default_value = "127.0.0.1", long)]
+        #[clap(default_value = "0.0.0.0", long)]
         host: String,
         /// The HTTP port to listen on
-        #[clap(default_value_t = 8000, long)]
+        #[clap(default_value_t = 80, long)]
         port: u16,
     },
 
@@ -36,7 +36,7 @@ enum Command {
         remote_host: String,
 
         /// The remote server's port
-        #[clap(default_value_t = 443, long)]
+        #[clap(default_value_t = 80, long)]
         remote_port: u16,
     },
 }
