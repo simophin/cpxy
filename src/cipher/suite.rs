@@ -54,7 +54,7 @@ pub fn pick_cipher() -> (
                 .expect("To create Aes128 cipher"),
         )
     } else {
-        key = vec![0u8; 16];
+        key = vec![0u8; 32];
         iv = vec![0u8; 12];
         log::info!("Use Chacha20 cipher");
         cipher_type = 1;
