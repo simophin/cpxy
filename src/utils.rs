@@ -9,8 +9,8 @@ use std::cmp::min;
 use std::io::{Read, Write};
 
 pub async fn copy_duplex(
-    d1: impl AsyncRead + AsyncWrite + Unpin,
-    d2: impl AsyncRead + AsyncWrite + Unpin,
+    d1: impl AsyncRead + AsyncWrite + Unpin + Send + Sync + 'static,
+    d2: impl AsyncRead + AsyncWrite + Unpin + Send + Sync + 'static,
 ) -> anyhow::Result<()> {
     let (d1r, d1w) = split(d1);
     let (d2r, d2w) = split(d2);

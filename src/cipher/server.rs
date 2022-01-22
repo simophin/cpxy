@@ -1,8 +1,8 @@
 use super::strategy::EncryptionStrategy;
 use anyhow::anyhow;
 use base64::{decode_config, URL_SAFE_NO_PAD};
+use futures_lite::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
 use std::str::FromStr;
-use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
 
 use crate::utils::RWBuffer;
 

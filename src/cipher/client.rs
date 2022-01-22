@@ -2,7 +2,7 @@ use super::strategy::EncryptionStrategy;
 use super::stream::CipherStream;
 use crate::utils::RWBuffer;
 use anyhow::anyhow;
-use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
+use futures_lite::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
 
 fn check_server_response(res: httparse::Response<'_, '_>) -> anyhow::Result<()> {
     match res.code {

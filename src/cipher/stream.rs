@@ -1,11 +1,12 @@
 use super::suite::BoxedStreamCipher;
 use crate::utils::RWBuffer;
+use bytes::BufMut;
+use futures_lite::{AsyncRead, AsyncWrite};
 use pin_project_lite::pin_project;
 use std::cmp::{max, min};
 use std::io::Error;
 use std::pin::Pin;
 use std::task::{Context, Poll};
-use tokio::io::{AsyncRead, AsyncWrite, ReadBuf};
 
 pin_project! {
     pub struct CipherStream<T> {
@@ -44,48 +45,36 @@ impl<T: AsyncRead> AsyncRead for CipherStream<T> {
     fn poll_read(
         self: Pin<&mut Self>,
         cx: &mut Context<'_>,
-        buf: &mut ReadBuf<'_>,
-    ) -> Poll<std::io::Result<()>> {
+        mut buf: &mut [u8],
+    ) -> Poll<std::io::Result<usize>> {
         let p = self.project();
         match p.init_read_buf.as_mut() {
             Some(initial) if initial.remaining_read() > 0 => {
-                let len = min(initial.remaining_read(), buf.remaining());
+                let len = min(initial.remaining_read(), buf.len());
                 buf.put_slice(&initial.read_buf()[..len]);
                 log::debug!("{}: Read {len} of initial data", p.name);
                 initial.advance_read(len);
                 cx.waker().wake_by_ref();
-                return Poll::Ready(Ok(()));
+                return Poll::Ready(Ok(len));
             }
             Some(_) => *p.init_read_buf = None,
             _ => {}
         };
 
-        let prev_remaining = buf.remaining();
         let result = p.inner.poll_read(cx, buf);
         log::debug!(
             "{}: Read: polling for underlying data, cache size: {}, result = {result:?}",
             p.name,
-            buf.remaining(),
+            buf.remaining_mut(),
         );
 
-        if let Poll::Ready(Ok(())) = &result {
-            log::debug!(
-                "{}: Read {} bytes",
-                p.name,
-                prev_remaining - buf.remaining()
-            );
-            if buf.remaining() < prev_remaining {
+        if let Poll::Ready(Ok(len)) = &result {
+            log::debug!("{}: Read {} bytes", p.name, len);
+            if *len > 0 {
                 match p.rd_cipher.as_mut() {
                     Some(c) if c.will_modify_data() => {
-                        let total_filled_len = buf.filled().len();
-                        let new_filled_len = prev_remaining - buf.remaining();
-                        log::debug!(
-                            "{}: Read and encrypt {new_filled_len} from underlying stream",
-                            p.name
-                        );
-                        c.apply_keystream(
-                            &mut buf.filled_mut()[total_filled_len - new_filled_len..],
-                        );
+                        log::debug!("{}: Read and encrypt {len} from underlying stream", p.name);
+                        c.apply_keystream(&mut buf[..*len]);
                     }
 
                     Some(_) => *p.rd_cipher = None,
@@ -163,7 +152,7 @@ impl<T: AsyncWrite> AsyncWrite for CipherStream<T> {
         self.project().inner.as_mut().poll_flush(cx)
     }
 
-    fn poll_shutdown(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Result<(), Error>> {
-        self.project().inner.as_mut().poll_shutdown(cx)
+    fn poll_close(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<std::io::Result<()>> {
+        self.project().inner.as_mut().poll_close(cx)
     }
 }

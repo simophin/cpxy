@@ -1,12 +1,12 @@
 use crate::socks5::Address;
 use crate::utils::{HttpRequest, RWBuffer};
 use bytes::BufMut;
+use futures_lite::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
 use serde::de::DeserializeOwned;
 use serde_derive::{Deserialize, Serialize};
 use std::future::Future;
 use std::io::Cursor;
 use std::net::SocketAddr;
-use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
 
 #[derive(Serialize, Deserialize, Debug)]
 pub enum ProxyRequest {
@@ -48,7 +48,8 @@ async fn write_json_async(
     o: impl serde::Serialize,
 ) -> anyhow::Result<()> {
     let data = serde_json::to_string(&o)?;
-    w.write_u16(data.as_bytes().len().try_into()?).await?;
+    let len: u16 = data.as_bytes().len().try_into()?;
+    w.write_all(len.to_be_bytes().as_ref()).await?;
     w.write_all(data.as_bytes()).await?;
     Ok(())
 }
@@ -64,7 +65,11 @@ async fn read_json_async<T: DeserializeOwned>(
     match serde_json::from_slice(buf.as_slice()) {
         Ok(v) => Ok(v),
         Err(e) => {
-            log::error!("Error decoding {} as json: {}", String::from_utf8_lossy(buf.as_slice()), e);
+            log::error!(
+                "Error decoding {} as json: {}",
+                String::from_utf8_lossy(buf.as_slice()),
+                e
+            );
             Err(e.into())
         }
     }

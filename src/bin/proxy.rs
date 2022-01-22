@@ -41,7 +41,7 @@ enum Command {
     },
 }
 
-#[tokio::main]
+#[async_std::main]
 async fn main() -> anyhow::Result<()> {
     if std::env::var_os("RUST_LOG").is_none() {
         std::env::set_var("RUST_LOG", "info");

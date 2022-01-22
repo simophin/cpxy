@@ -1,13 +1,12 @@
 use crate::proxy::handler::ProxyResult;
 use crate::socks5::Address;
-use crate::utils::copy_io;
+use crate::utils::copy_duplex;
 use anyhow::anyhow;
+use async_std::future::timeout;
+use async_std::net::TcpStream;
+use futures_lite::{AsyncRead, AsyncWrite};
 use std::net::SocketAddr;
 use std::time::Duration;
-use tokio::io::{split, AsyncRead, AsyncWrite};
-use tokio::net::TcpStream;
-use tokio::select;
-use tokio::time::timeout;
 
 async fn prepare(target: &Address) -> anyhow::Result<(TcpStream, SocketAddr)> {
     let socket = match target {
@@ -21,10 +20,10 @@ async fn prepare(target: &Address) -> anyhow::Result<(TcpStream, SocketAddr)> {
 
 pub async fn serve_tcp_proxy(
     target: Address,
-    mut src: impl AsyncRead + AsyncWrite + Unpin,
+    mut src: impl AsyncRead + AsyncWrite + Unpin + Send + Sync + 'static,
 ) -> anyhow::Result<()> {
     log::info!("Proxying upstream: {target}");
-    let (upstream_r, upstream_w) = match timeout(Duration::from_secs(3), prepare(&target)).await {
+    let upstream = match timeout(Duration::from_secs(3), prepare(&target)).await {
         Ok(Ok((socket, addr))) => {
             super::handler::send_proxy_result(
                 &mut src,
@@ -33,7 +32,7 @@ pub async fn serve_tcp_proxy(
                 },
             )
             .await?;
-            split(socket)
+            socket
         }
         Err(_) => {
             super::handler::send_proxy_result(&mut src, ProxyResult::ErrTimeout).await?;
@@ -49,9 +48,5 @@ pub async fn serve_tcp_proxy(
         }
     };
 
-    let (r, w) = split(src);
-    select! {
-        r1 = copy_io(r, upstream_w) => r1,
-        r2 = copy_io(upstream_r, w) => r2,
-    }
+    copy_duplex(upstream, src).await
 }

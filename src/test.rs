@@ -6,15 +6,34 @@ use crate::proxy::handler::{
 };
 use crate::socks5::Address;
 use crate::utils::RWBuffer;
+use async_std::net::{TcpListener, TcpStream};
+use async_std::task::spawn;
+use futures_lite::io::split;
+use futures_lite::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
 use rand::Rng;
 use std::num::NonZeroUsize;
-use tokio::io::{duplex, split, AsyncReadExt, AsyncWriteExt};
-use tokio::spawn;
 
-#[tokio::test]
+async fn duplex(
+    _: usize,
+) -> (
+    impl AsyncRead + AsyncWrite + Unpin + Send + Sync + 'static,
+    impl AsyncRead + AsyncWrite + Unpin + Send + Sync + 'static,
+) {
+    let listener = TcpListener::bind("127.0.0.1:0").await.expect("To listen");
+    let addr = listener.local_addr().expect("To have local addr");
+
+    let (client, server) =
+        futures_util::future::join(TcpStream::connect(addr), listener.accept()).await;
+    let client = client.expect("To connect");
+    let (server, _) = server.expect("To accept");
+
+    (client, server)
+}
+
+#[async_std::test]
 async fn test_client_server() {
     env_logger::init();
-    let (client, server) = duplex(512);
+    let (client, server) = duplex(512).await;
 
     let client_send_enc = EncryptionStrategy::FirstN(NonZeroUsize::try_from(50).unwrap());
     let client_receive_enc = EncryptionStrategy::Never;
@@ -110,5 +129,5 @@ async fn test_client_server() {
 
     assert_eq!(data_to_send.as_slice(), data_received.read_buf());
     drop(r);
-    server_task.await.unwrap();
+    server_task.await
 }

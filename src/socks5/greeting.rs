@@ -1,6 +1,6 @@
 use crate::parse::ParseError;
 use bytes::Buf;
-use tokio::io::{AsyncWrite, AsyncWriteExt};
+use futures_lite::{AsyncWrite, AsyncWriteExt};
 
 type Auth = u8;
 

@@ -14,7 +14,10 @@ async fn prepare(
         path,
         mut headers,
     }: HttpRequest,
-) -> anyhow::Result<(SocketAddr, impl AsyncRead + AsyncWrite + Unpin)> {
+) -> anyhow::Result<(
+    SocketAddr,
+    impl AsyncRead + AsyncWrite + Unpin + Send + Sync + 'static,
+)> {
     let url = match Url::parse(&path) {
         Ok(v) if v.scheme().eq_ignore_ascii_case("http") && v.has_host() => v,
         Ok(v) => {
@@ -69,7 +72,7 @@ async fn prepare(
 
 pub async fn serve_http_proxy(
     req: HttpRequest,
-    mut stream: impl AsyncRead + AsyncWrite + Unpin,
+    mut stream: impl AsyncRead + AsyncWrite + Unpin + Send + Sync + 'static,
 ) -> anyhow::Result<()> {
     let upstream = match prepare(req).await {
         Ok((addr, v)) => {
@@ -80,6 +83,7 @@ pub async fn serve_http_proxy(
                 },
             )
             .await?;
+            v
         }
         Err(e) => {
             send_proxy_result(&mut stream, ProxyResult::ErrGeneric { msg: e.to_string() }).await?;

@@ -4,13 +4,10 @@ use std::time::Duration;
 use crate::cipher::strategy::EncryptionStrategy;
 use crate::handshake::Handshaker;
 use crate::proxy::handler::ProxyRequest;
-use crate::utils::{copy_io, RWBuffer};
-use async_std::io::timeout;
+use crate::utils::{copy_duplex, RWBuffer};
+use async_std::future::timeout;
 use async_std::net::{TcpListener, TcpStream, ToSocketAddrs};
-use async_std::spawn;
 use async_std::task::spawn;
-use futures_lite::future::race;
-use futures_lite::io::split;
 use futures_lite::{AsyncRead, AsyncWrite};
 
 pub async fn run_client(
@@ -37,7 +34,7 @@ pub async fn run_client(
 }
 
 async fn serve_proxy_client(
-    mut socks: impl AsyncRead + AsyncWrite + Unpin,
+    mut socks: impl AsyncRead + AsyncWrite + Unpin + Send + Sync + 'static,
     upstream_addr: String,
 ) -> anyhow::Result<()> {
     let mut buf = RWBuffer::default();
@@ -55,11 +52,11 @@ async fn serve_proxy_client(
     })
     .await;
 
-    let (upstream_r, upstream_w) = match r {
+    let upstream = match r {
         Ok((proxy_r, upstream)) => {
             handshaker.respond(&mut socks, Ok(proxy_r)).await?;
             match req {
-                ProxyRequest::SocksTCP(_) | ProxyRequest::Http(_) => split(upstream),
+                ProxyRequest::SocksTCP(_) | ProxyRequest::Http(_) => upstream,
                 ProxyRequest::SocksUDP(_) => todo!(),
             }
         }
@@ -69,10 +66,5 @@ async fn serve_proxy_client(
         }
     };
 
-    let (r, w) = split(socks);
-
-    let copy_task_1 = spawn(async move { copy_io(r, upstream_w).await });
-    let copy_task_2 = spawn(async move { copy_io(upstream_r, w).await });
-
-    race(copy_task_1, copy_task_2).await
+    copy_duplex(upstream, socks).await
 }
