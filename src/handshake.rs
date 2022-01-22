@@ -6,8 +6,8 @@ use crate::socks5::{
 };
 use crate::utils::{HttpRequest, RWBuffer};
 use anyhow::anyhow;
+use futures_lite::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
 use std::str::FromStr;
-use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
 
 struct SocksState {
     auths: Vec<u8>,

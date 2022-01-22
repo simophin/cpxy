@@ -1,25 +1,25 @@
 use anyhow::anyhow;
+use async_std::task::spawn;
 use bytes::BufMut;
+use futures_lite::future::race;
+use futures_lite::io::{copy, split};
+use futures_lite::{AsyncRead, AsyncWrite};
 use serde_derive::{Deserialize, Serialize};
 use std::cmp::min;
 use std::io::{Read, Write};
-use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
 
-pub async fn copy_io(
-    mut r: impl AsyncRead + Unpin,
-    mut w: impl AsyncWrite + Unpin,
+pub async fn copy_duplex(
+    d1: impl AsyncRead + AsyncWrite + Unpin,
+    d2: impl AsyncRead + AsyncWrite + Unpin,
 ) -> anyhow::Result<()> {
-    let mut buf = RWBuffer::with_capacity(8192);
-    loop {
-        match r.read(buf.write_buf()).await? {
-            0 => return Ok(()),
-            v => {
-                buf.advance_write(v);
-                w.write_all(buf.read_buf()).await?;
-                buf.consume_read();
-            }
-        }
-    }
+    let (d1r, d1w) = split(d1);
+    let (d2r, d2w) = split(d2);
+    let task1 = spawn(async move { copy(d1r, d2w).await });
+
+    let task2 = spawn(async move { copy(d2r, d1w).await });
+
+    let _ = race(task1, task2).await;
+    Ok(())
 }
 
 pub struct RWBuffer<T = Vec<u8>> {

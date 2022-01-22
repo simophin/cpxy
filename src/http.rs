@@ -1,12 +1,11 @@
 use crate::proxy::handler::{send_proxy_result, ProxyResult};
-use crate::utils::{copy_io, HttpRequest};
+use crate::utils::{copy_duplex, HttpRequest};
 use anyhow::anyhow;
+use async_std::net::TcpStream;
 use bytes::BufMut;
+use futures_lite::{AsyncRead, AsyncWrite, AsyncWriteExt};
 use std::io::Write;
 use std::net::SocketAddr;
-use tokio::io::{split, AsyncRead, AsyncWrite, AsyncWriteExt};
-use tokio::net::TcpStream;
-use tokio::select;
 use url::Url;
 
 async fn prepare(
@@ -72,7 +71,7 @@ pub async fn serve_http_proxy(
     req: HttpRequest,
     mut stream: impl AsyncRead + AsyncWrite + Unpin,
 ) -> anyhow::Result<()> {
-    let (upstream_r, upstream_w) = match prepare(req).await {
+    let upstream = match prepare(req).await {
         Ok((addr, v)) => {
             send_proxy_result(
                 &mut stream,
@@ -81,7 +80,6 @@ pub async fn serve_http_proxy(
                 },
             )
             .await?;
-            split(v)
         }
         Err(e) => {
             send_proxy_result(&mut stream, ProxyResult::ErrGeneric { msg: e.to_string() }).await?;
@@ -89,9 +87,5 @@ pub async fn serve_http_proxy(
         }
     };
 
-    let (r, w) = split(stream);
-    select! {
-        r1 = copy_io(r, upstream_w) => r1,
-        r2 = copy_io(upstream_r, w) => r2,
-    }
+    copy_duplex(upstream, stream).await
 }

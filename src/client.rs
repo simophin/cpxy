@@ -1,14 +1,17 @@
 use std::fmt::Display;
 use std::time::Duration;
-use tokio::io::{split, AsyncRead, AsyncWrite};
 
 use crate::cipher::strategy::EncryptionStrategy;
 use crate::handshake::Handshaker;
 use crate::proxy::handler::ProxyRequest;
 use crate::utils::{copy_io, RWBuffer};
-use tokio::net::{TcpListener, TcpStream, ToSocketAddrs};
-use tokio::time::timeout;
-use tokio::{select, spawn};
+use async_std::io::timeout;
+use async_std::net::{TcpListener, TcpStream, ToSocketAddrs};
+use async_std::spawn;
+use async_std::task::spawn;
+use futures_lite::future::race;
+use futures_lite::io::split;
+use futures_lite::{AsyncRead, AsyncWrite};
 
 pub async fn run_client(
     listen_address: impl ToSocketAddrs + Display,
@@ -67,8 +70,9 @@ async fn serve_proxy_client(
     };
 
     let (r, w) = split(socks);
-    select! {
-        r1 = copy_io(r, upstream_w) => r1,
-        r2 = copy_io(upstream_r, w) => r2,
-    }
+
+    let copy_task_1 = spawn(async move { copy_io(r, upstream_w).await });
+    let copy_task_2 = spawn(async move { copy_io(upstream_r, w).await });
+
+    race(copy_task_1, copy_task_2).await
 }
