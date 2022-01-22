@@ -1,5 +1,5 @@
 use anyhow::anyhow;
-use cipher::{NewCipher, StreamCipher};
+use cipher::{NewCipher, StreamCipher, StreamCipherSeek};
 use rand::Rng;
 
 #[cfg(any(target_arch = "x86_64", target_arch = "x86", target_arch = "aarch64"))]
@@ -12,7 +12,33 @@ mod cpuid_aes {
     }
 }
 
-pub type BoxedStreamCipher = Box<dyn StreamCipher + Send + Sync>;
+pub trait StreamCipherExt: StreamCipher {
+    fn will_modify_data(&self) -> bool;
+
+    fn rewind(&mut self, cnt: usize);
+}
+
+impl StreamCipherExt for aes::Aes128Ctr {
+    fn will_modify_data(&self) -> bool {
+        true
+    }
+
+    fn rewind(&mut self, cnt: usize) {
+        self.seek(self.current_pos::<usize>() - cnt)
+    }
+}
+
+impl StreamCipherExt for chacha20::ChaCha20 {
+    fn will_modify_data(&self) -> bool {
+        true
+    }
+
+    fn rewind(&mut self, cnt: usize) {
+        self.seek(self.current_pos::<usize>() - cnt)
+    }
+}
+
+pub type BoxedStreamCipher = Box<dyn StreamCipherExt + Send + Sync>;
 
 pub type CipherType = u8;
 pub type CipherKey = Vec<u8>;

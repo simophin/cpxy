@@ -1,8 +1,7 @@
 use super::suite::BoxedStreamCipher;
 use crate::utils::RWBuffer;
-use bytes::BufMut;
 use pin_project_lite::pin_project;
-use std::cmp::min;
+use std::cmp::{max, min};
 use std::io::Error;
 use std::pin::Pin;
 use std::task::{Context, Poll};
@@ -14,28 +13,29 @@ pin_project! {
         pub(super) inner: T,
         pub(super) name: String,
         pub(super) rd_cipher: BoxedStreamCipher,
-        pub(super) wr_cipher: BoxedStreamCipher,
+        pub(super) wr_cipher: Option<BoxedStreamCipher>,
         pub(super) init_read_buf: Option<RWBuffer>,
-        pub(super) write_buf: RWBuffer,
+        pub(super) last_written_size: Option<usize>,
+        pub(super) wr_buf: Vec<u8>,
     }
 }
 
 impl<T> CipherStream<T> {
     pub fn new(
         name: String,
-        n: usize,
         inner: T,
         rd_cipher: BoxedStreamCipher,
         wr_cipher: BoxedStreamCipher,
-        initial_buf: Option<RWBuffer>,
+        init_read_buf: Option<RWBuffer>,
     ) -> Self {
         Self {
             inner,
             rd_cipher,
-            wr_cipher,
+            wr_cipher: Some(wr_cipher),
             name,
-            init_read_buf: initial_buf,
-            write_buf: RWBuffer::with_capacity(n),
+            init_read_buf,
+            last_written_size: None,
+            wr_buf: Default::default(),
         }
     }
 }
@@ -61,135 +61,92 @@ impl<T: AsyncRead> AsyncRead for CipherStream<T> {
         };
 
         let prev_remaining = buf.remaining();
+        let result = p.inner.poll_read(cx, buf);
         log::debug!(
-            "{}: Read: polling for underlying data, cache size: {}",
+            "{}: Read: polling for underlying data, cache size: {}, result = {result:?}",
             p.name,
             buf.remaining(),
         );
 
-        match p.inner.poll_read(cx, buf) {
-            Poll::Ready(Ok(())) => {
-                log::debug!("{}: Read: data available", p.name);
-                if buf.remaining() < prev_remaining {
-                    let total_filled_len = buf.filled().len();
-                    let new_filled_len = prev_remaining - buf.remaining();
-                    log::debug!(
-                        "{}: Read and encrypt {new_filled_len} from underlying stream",
-                        p.name
-                    );
-                    p.rd_cipher.apply_keystream(
-                        &mut buf.filled_mut()[total_filled_len - new_filled_len..],
-                    );
-                }
-                return Poll::Ready(Ok(()));
+        if let Poll::Ready(Ok(())) = &result {
+            log::debug!(
+                "{}: Read {} bytes",
+                p.name,
+                prev_remaining - buf.remaining()
+            );
+            if buf.remaining() < prev_remaining {
+                let total_filled_len = buf.filled().len();
+                let new_filled_len = prev_remaining - buf.remaining();
+                log::debug!(
+                    "{}: Read and encrypt {new_filled_len} from underlying stream",
+                    p.name
+                );
+                p.rd_cipher
+                    .apply_keystream(&mut buf.filled_mut()[total_filled_len - new_filled_len..]);
             }
-            Poll::Pending => Poll::Pending,
-            Poll::Ready(Err(e)) => Poll::Ready(Err(e)),
         }
+
+        result
     }
 }
 
 impl<T: AsyncWrite> AsyncWrite for CipherStream<T> {
     fn poll_write(
-        mut self: Pin<&mut Self>,
+        self: Pin<&mut Self>,
         cx: &mut Context<'_>,
         buf: &[u8],
     ) -> Poll<Result<usize, Error>> {
-        if self.write_buf.remaining_write() < buf.len() {
-            match self.as_mut().poll_flush(cx) {
-                Poll::Ready(v) => {
-                    v?;
+        let mut this = self.project();
+        match this.wr_cipher.as_mut() {
+            Some(c) if c.will_modify_data() => {
+                let desired_write_len =
+                    min(buf.len(), max(this.last_written_size.unwrap_or(4096), 512));
+                this.wr_buf.clear();
+                this.wr_buf.extend_from_slice(&buf[..desired_write_len]);
+                c.apply_keystream(this.wr_buf.as_mut());
+
+                let actual_written_len =
+                    match this.inner.as_mut().poll_write(cx, this.wr_buf.as_slice()) {
+                        Poll::Ready(Ok(v)) => v,
+                        v => return v,
+                    };
+
+                log::debug!(
+                    "{}: Cipher write, desired = {desired_write_len}, actual = {actual_written_len}, buf len = {}",
+                    this.name,
+                    buf.len(),
+                );
+
+                if actual_written_len < desired_write_len {
+                    c.rewind(desired_write_len - actual_written_len);
                 }
-                Poll::Pending => return Poll::Pending,
+
+                if actual_written_len <= buf.len() {
+                    log::debug!("{}: Cipher write, wake for next write", this.name);
+                    cx.waker().wake_by_ref();
+                }
+
+                *this.last_written_size = Some(actual_written_len);
+                return Poll::Ready(Ok(actual_written_len));
             }
+            Some(_) => *this.wr_cipher = None,
+            None => {}
         };
 
-        let mut this = self.project();
+        let result = this.inner.as_mut().poll_write(cx, buf);
         log::debug!(
-            "{}: Requesting to write {} bytes data to cipher",
+            "{}: Plain write, desired = {}, result = {result:?}",
             this.name,
-            buf.len()
+            buf.len(),
         );
-        if this.write_buf.remaining_write() < this.write_buf.total_capacity() / 3 {
-            // log::debug!("Compacting write buf");
-            this.write_buf.compact();
-        }
-
-        let write_len = min(this.write_buf.remaining_write(), buf.len());
-        // log::debug!("Admitting {write_len} bytes to cipher stream");
-        if write_len > 0 {
-            this.write_buf.write_buf().put_slice(&buf[..write_len]);
-            // log::debug!(
-            //     "Remaining write buffer: {}",
-            //     this.write_buf.remaining_write()
-            // );
-            this.wr_cipher
-                .apply_keystream(&mut this.write_buf.write_buf()[..write_len]);
-            this.write_buf.advance_write(write_len);
-        }
-        while this.write_buf.remaining_read() > 0 {
-            match this
-                .inner
-                .as_mut()
-                .poll_write(cx, this.write_buf.read_buf())
-            {
-                Poll::Ready(Ok(n)) => {
-                    this.write_buf.advance_read(n);
-                    log::debug!(
-                        "{}: Wrote {n} bytes cipher stream into underlying. {} remained to be written",
-                        this.name,
-                        this.write_buf.remaining_read()
-                    );
-                    if this.write_buf.remaining_read() == 0 {
-                        break;
-                    }
-                }
-                Poll::Ready(Err(e)) => return Poll::Ready(Err(e)),
-                Poll::Pending => {
-                    break;
-                }
-            }
-        }
-
-        if write_len > 0 {
-            Poll::Ready(Ok(write_len))
-        } else {
-            Poll::Pending
-        }
+        result
     }
 
     fn poll_flush(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Result<(), Error>> {
-        let mut this = self.project();
-        log::debug!("{}: Flushing cipher stream", this.name);
-        while this.write_buf.remaining_read() > 0 {
-            match this
-                .inner
-                .as_mut()
-                .poll_write(cx, this.write_buf.read_buf())
-            {
-                Poll::Ready(Ok(n)) => {
-                    this.write_buf.advance_read(n);
-                    log::debug!(
-                        "{}: Flushed {n} bytes. Remaining: {}",
-                        this.name,
-                        this.write_buf.remaining_read()
-                    );
-                }
-                Poll::Pending => return Poll::Pending,
-                Poll::Ready(Err(e)) => return Poll::Ready(Err(e)),
-            }
-        }
-
-        this.inner.as_mut().poll_flush(cx)
+        self.project().inner.as_mut().poll_flush(cx)
     }
 
-    fn poll_shutdown(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Result<(), Error>> {
-        match self.as_mut().poll_flush(cx) {
-            Poll::Ready(Ok(())) => {}
-            Poll::Ready(Err(e)) => return Poll::Ready(Err(e)),
-            Poll::Pending => return Poll::Pending,
-        };
-
+    fn poll_shutdown(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Result<(), Error>> {
         self.project().inner.as_mut().poll_shutdown(cx)
     }
 }

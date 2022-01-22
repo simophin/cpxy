@@ -79,7 +79,6 @@ pub async fn connect<T: AsyncRead + AsyncWrite + Unpin>(
 
     Ok(CipherStream::new(
         "client".to_string(),
-        4096,
         stream,
         rd_cipher,
         wr_cipher,

@@ -111,7 +111,6 @@ pub async fn listen<T: AsyncRead + AsyncWrite + Unpin>(
 
     Ok(CipherStream::new(
         "server".to_string(),
-        4096,
         stream,
         rd_cipher,
         wr_cipher,
