@@ -1,4 +1,4 @@
-use std::fmt::Display;
+use std::sync::mpsc::Receiver;
 use std::time::Duration;
 
 use crate::cipher::strategy::EncryptionStrategy;
@@ -6,28 +6,37 @@ use crate::handshake::Handshaker;
 use crate::proxy::handler::ProxyRequest;
 use crate::utils::{copy_duplex, RWBuffer};
 use async_std::future::timeout;
-use async_std::net::{TcpListener, TcpStream, ToSocketAddrs};
+use async_std::net::{TcpListener, TcpStream};
 use async_std::task::spawn;
 use futures_lite::{AsyncRead, AsyncWrite};
+use futures_util::{select, FutureExt};
 
 pub async fn run_client(
-    listen_address: impl ToSocketAddrs + Display,
+    listener: TcpListener,
     upstream_host: &str,
     upstream_port: u16,
+    mut quit_rx: async_broadcast::Receiver<()>,
 ) -> anyhow::Result<()> {
-    log::info!("Start client at {listen_address}");
-    let listener = TcpListener::bind(listen_address).await?;
     let upstream = format!("{upstream_host}:{upstream_port}");
 
     loop {
-        let (sock, addr) = listener.accept().await?;
+        let (sock, addr) = select! {
+            v = listener.accept().fuse() => v?,
+            _ = quit_rx.recv().fuse() => return Ok(()),
+        };
         log::info!("Accepted client from: {addr}");
 
         let upstream = upstream.clone();
+        let mut quit_rx = quit_rx.clone();
         spawn(async move {
-            if let Err(e) = serve_proxy_client(sock, upstream).await {
-                log::error!("Error serving client {addr}: {e}");
-            }
+            select! {
+                r1 = serve_proxy_client(sock, upstream, quit_rx.clone()).fuse() => {
+                    if let Err(e) = r1 {
+                         log::error!("Error serving client {addr}: {e}");
+                    }
+                },
+                _ = quit_rx.recv().fuse() => {},
+            };
             log::info!("Client {addr} disconnected");
         });
     }
@@ -36,6 +45,7 @@ pub async fn run_client(
 async fn serve_proxy_client(
     mut socks: impl AsyncRead + AsyncWrite + Unpin + Send + Sync + 'static,
     upstream_addr: String,
+    quit_rx: Receiver<()>,
 ) -> anyhow::Result<()> {
     let mut buf = RWBuffer::default();
     let (handshaker, req) = Handshaker::start(&mut socks, &mut buf).await?;

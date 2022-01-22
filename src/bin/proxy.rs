@@ -1,6 +1,8 @@
-use cjk_proxy::client::run_client;
-use cjk_proxy::server::run_server;
+use async_std::channel::bounded;
+use async_std::net::TcpListener;
 use clap::{AppSettings, Parser, Subcommand};
+use proxy::client::run_client;
+use proxy::server::run_server;
 
 /// SOCKS5 over HTTPs
 #[derive(Parser)]
@@ -58,10 +60,15 @@ async fn main() -> anyhow::Result<()> {
             remote_host,
             remote_port,
         } => {
+            let listen_address = format!("{socks5_host}:{socks5_port}");
+            log::info!("Start client at {listen_address}");
+            let (_, quit_rx) = bounded(1);
+
             run_client(
-                &format!("{socks5_host}:{socks5_port}"),
-                &remote_host,
+                TcpListener::bind(listen_address).await?,
+                remote_host.as_str(),
                 remote_port,
+                quit_rx,
             )
             .await
         }

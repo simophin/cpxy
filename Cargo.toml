@@ -9,6 +9,8 @@ edition = "2021"
 #tokio = { version = "1", features = ["macros", "net", "rt-multi-thread", "io-util", "time", "sync"] }
 async-std = { version = "1", features = ["attributes", "pin-project-lite", "futures-lite"] }
 futures-lite = "1"
+futures-util = "0"
+async-broadcast = "0"
 anyhow = "1"
 httparse = "1"
 log = "0"
@@ -25,15 +27,17 @@ serde_json = "1"
 aes = { version = "0", features = ["ctr"] }
 url = "2"
 clap = { version = "3", features = ["derive"] }
-jni = "0"
 regex = "1"
 lazy_static = "1"
 
+
 [target.'cfg(target_os = "android")'.dependencies]
+jni = "0"
 android_logger = "0"
 
-[dev-dependencies]
-futures-util = "0"
+[lib]
+crate-type = ["dylib"]
+name = "proxy"
 
 [target.'cfg(any(target_arch = "x86_64", target_arch = "x86", target_arch = "aarch64"))'.dependencies]
 cpufeatures = "0"
