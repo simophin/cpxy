@@ -2,6 +2,8 @@ use super::strategy::EncryptionStrategy;
 use anyhow::anyhow;
 use base64::{decode_config, URL_SAFE_NO_PAD};
 use futures_lite::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
+use lazy_static::lazy_static;
+use regex::Regex;
 use std::str::FromStr;
 
 use crate::utils::RWBuffer;
@@ -23,26 +25,27 @@ fn check_request(
         }
     };
 
+    lazy_static! {
+        static ref RE: Regex = Regex::new(r"/shop/by-id/(.+?)/(.+?)/(.+?)/(.+?)/(\d+?)").unwrap();
+    }
+
     let path = req.path.unwrap_or("");
-    let (key, iv, client_send_strategy, client_receive_strategy, t) = sscanf::scanf!(
-        path,
-        "/shop/by-id/{}/{}/{}/{}/{}",
-        String,
-        String,
-        String,
-        String,
-        u8
-    )
-    .and_then(|(k, i, s1, s2, t)| {
-        Some((
-            decode_config(k, URL_SAFE_NO_PAD).ok()?,
-            decode_config(i, URL_SAFE_NO_PAD).ok()?,
-            EncryptionStrategy::from_str(s1.as_str()).ok()?,
-            EncryptionStrategy::from_str(s2.as_str()).ok()?,
-            t,
-        ))
-    })
-    .ok_or_else(|| ("HTTP/1.1 201 OK\r\n\r\n", "Invalid URL"))?;
+
+    let (key, iv, client_send_strategy, client_receive_strategy, t) = RE
+        .captures(path)
+        .and_then(
+            |cap| match (cap.get(1), cap.get(2), cap.get(3), cap.get(4), cap.get(5)) {
+                (Some(k), Some(i), Some(s1), Some(s2), Some(t)) => Some((
+                    decode_config(k.as_str(), URL_SAFE_NO_PAD).ok()?,
+                    decode_config(i.as_str(), URL_SAFE_NO_PAD).ok()?,
+                    EncryptionStrategy::from_str(s1.as_str()).ok()?,
+                    EncryptionStrategy::from_str(s2.as_str()).ok()?,
+                    t.as_str().parse::<u8>().ok()?,
+                )),
+                _ => None,
+            },
+        )
+        .ok_or_else(|| ("HTTP/1.1 201 OK\r\n\r\n", "Invalid URL"))?;
 
     let rd_cipher = client_send_strategy.wrap_cipher(
         create_cipher(t, key.as_slice(), iv.as_slice())

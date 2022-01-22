@@ -6,6 +6,8 @@ use std::net::{Ipv4Addr, Ipv6Addr, SocketAddr, SocketAddrV4, SocketAddrV6};
 use std::str::FromStr;
 
 use bytes::{Buf, BufMut};
+use lazy_static::lazy_static;
+use regex::Regex;
 
 use crate::parse::{ParseError, WriteError};
 
@@ -39,10 +41,19 @@ impl FromStr for Address {
             _ => {}
         };
 
-        match sscanf::scanf!(s, "{}:{}", String, u16) {
-            Some((host, port)) => Ok(Address::Name { host, port }),
-            None => return Err(anyhow!("Invalid path {s} for a sock address")),
+        lazy_static! {
+            static ref RE: Regex = Regex::new(r"^(.+?):(\d+?)$").unwrap();
         }
+
+        RE.captures(s)
+            .and_then(|cap| match (cap.get(1), cap.get(2)) {
+                (Some(host), Some(port)) => Some(Address::Name {
+                    host: host.as_str().to_string(),
+                    port: port.as_str().parse().ok()?,
+                }),
+                _ => None,
+            })
+            .ok_or_else(|| anyhow!("Invalid path {s} for a sock address"))
     }
 }
 

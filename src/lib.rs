@@ -8,5 +8,6 @@ mod socks5;
 mod utils;
 
 mod http;
+mod jni_export;
 #[cfg(test)]
 mod test;
