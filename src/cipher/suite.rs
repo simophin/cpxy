@@ -24,6 +24,11 @@ impl StreamCipherExt for aes::Aes128Ctr {
     }
 
     fn rewind(&mut self, cnt: usize) {
+        log::debug!(
+            "Rewinding AES, current_pos = {}, cnt = {}",
+            self.current_pos::<usize>(),
+            cnt
+        );
         self.seek(self.current_pos::<usize>() - cnt)
     }
 }

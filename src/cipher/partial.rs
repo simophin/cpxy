@@ -36,7 +36,7 @@ impl StreamCipher for PartialStreamCipher {
         if self.n > 0 {
             let len = min(self.n as usize, data.len());
             self.inner.try_apply_keystream(&mut data[..len])?;
-            self.n = self.n.checked_sub(len.try_into().unwrap()).unwrap();
+            self.n = self.n.checked_sub(data.len().try_into().unwrap()).unwrap();
         }
 
         Ok(())

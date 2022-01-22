@@ -12,7 +12,7 @@ pin_project! {
         #[pin]
         pub(super) inner: T,
         pub(super) name: String,
-        pub(super) rd_cipher: BoxedStreamCipher,
+        pub(super) rd_cipher: Option<BoxedStreamCipher>,
         pub(super) wr_cipher: Option<BoxedStreamCipher>,
         pub(super) init_read_buf: Option<RWBuffer>,
         pub(super) last_written_size: Option<usize>,
@@ -30,7 +30,7 @@ impl<T> CipherStream<T> {
     ) -> Self {
         Self {
             inner,
-            rd_cipher,
+            rd_cipher: Some(rd_cipher),
             wr_cipher: Some(wr_cipher),
             name,
             init_read_buf,
@@ -75,14 +75,22 @@ impl<T: AsyncRead> AsyncRead for CipherStream<T> {
                 prev_remaining - buf.remaining()
             );
             if buf.remaining() < prev_remaining {
-                let total_filled_len = buf.filled().len();
-                let new_filled_len = prev_remaining - buf.remaining();
-                log::debug!(
-                    "{}: Read and encrypt {new_filled_len} from underlying stream",
-                    p.name
-                );
-                p.rd_cipher
-                    .apply_keystream(&mut buf.filled_mut()[total_filled_len - new_filled_len..]);
+                match p.rd_cipher.as_mut() {
+                    Some(c) if c.will_modify_data() => {
+                        let total_filled_len = buf.filled().len();
+                        let new_filled_len = prev_remaining - buf.remaining();
+                        log::debug!(
+                            "{}: Read and encrypt {new_filled_len} from underlying stream",
+                            p.name
+                        );
+                        c.apply_keystream(
+                            &mut buf.filled_mut()[total_filled_len - new_filled_len..],
+                        );
+                    }
+
+                    Some(_) => *p.rd_cipher = None,
+                    _ => {}
+                }
             }
         }
 
@@ -108,6 +116,10 @@ impl<T: AsyncWrite> AsyncWrite for CipherStream<T> {
                 let actual_written_len =
                     match this.inner.as_mut().poll_write(cx, this.wr_buf.as_slice()) {
                         Poll::Ready(Ok(v)) => v,
+                        Poll::Pending => {
+                            c.rewind(this.wr_buf.len());
+                            return Poll::Pending;
+                        }
                         v => return v,
                     };
 
@@ -118,7 +130,9 @@ impl<T: AsyncWrite> AsyncWrite for CipherStream<T> {
                 );
 
                 if actual_written_len < desired_write_len {
-                    c.rewind(desired_write_len - actual_written_len);
+                    let rewind_len = desired_write_len - actual_written_len;
+                    log::debug!("{}: Rewinding {rewind_len} bytes", this.name);
+                    c.rewind(rewind_len);
                 }
 
                 if actual_written_len <= buf.len() {
@@ -129,7 +143,10 @@ impl<T: AsyncWrite> AsyncWrite for CipherStream<T> {
                 *this.last_written_size = Some(actual_written_len);
                 return Poll::Ready(Ok(actual_written_len));
             }
-            Some(_) => *this.wr_cipher = None,
+            Some(_) => {
+                *this.wr_cipher = None;
+                *this.wr_buf = Vec::with_capacity(0);
+            }
             None => {}
         };
 
