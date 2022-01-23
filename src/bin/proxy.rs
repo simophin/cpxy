@@ -1,4 +1,3 @@
-use async_broadcast::broadcast;
 use clap::{AppSettings, Parser, Subcommand};
 use proxy::client::run_client;
 use proxy::server::run_server;
@@ -62,13 +61,11 @@ fn main() -> anyhow::Result<()> {
             } => {
                 let listen_address = format!("{socks5_host}:{socks5_port}");
                 log::info!("Start client at {listen_address}");
-                let (_, quit_rx) = broadcast(1);
 
                 run_client(
                     TcpListener::bind(listen_address).await?,
                     remote_host.as_str(),
                     remote_port,
-                    quit_rx,
                 )
                 .await
             }

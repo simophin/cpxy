@@ -1,5 +1,7 @@
 use anyhow::anyhow;
-use async_broadcast::Receiver;
+use std::collections::HashMap;
+use std::net::SocketAddr;
+use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use crate::cipher::strategy::EncryptionStrategy;
@@ -7,40 +9,43 @@ use crate::handshake::Handshaker;
 use crate::proxy::handler::ProxyRequest;
 use crate::utils::{copy_duplex, RWBuffer};
 use futures_lite::{AsyncRead, AsyncWrite};
-use futures_util::{select, FutureExt};
 use smol::net::{TcpListener, TcpStream};
-use smol::spawn;
+use smol::{spawn, Task};
 use smol_timeout::TimeoutExt;
 
 pub async fn run_client(
     listener: TcpListener,
     upstream_host: &str,
     upstream_port: u16,
-    mut quit_rx: Receiver<()>,
 ) -> anyhow::Result<()> {
     let upstream = format!("{upstream_host}:{upstream_port}");
 
+    let clients: Arc<Mutex<HashMap<SocketAddr, Task<anyhow::Result<()>>>>> = Default::default();
+
     loop {
-        let (sock, addr) = select! {
-            v = listener.accept().fuse() => v?,
-            _ = quit_rx.recv().fuse() => return Ok(()),
-        };
+        let (sock, addr) = listener.accept().await?;
         log::info!("Accepted client from: {addr}");
 
         let upstream = upstream.clone();
-        let mut quit_rx = quit_rx.clone();
-        spawn(async move {
-            select! {
-                r1 = serve_proxy_client(sock, upstream).fuse() => {
-                    if let Err(e) = r1 {
-                         log::error!("Error serving client {addr}: {e}");
+
+        if let Ok(mut m) = clients.lock() {
+            let task: Task<anyhow::Result<()>> = {
+                let addr = addr.clone();
+                let clients = clients.clone();
+                spawn(async move {
+                    if let Err(e) = serve_proxy_client(sock, upstream).await {
+                        log::error!("Error serving client {addr}: {e}");
                     }
-                },
-                _ = quit_rx.recv().fuse() => {},
+                    log::info!("Client {addr} disconnected");
+                    if let Ok(mut m) = clients.lock() {
+                        m.remove(&addr);
+                    }
+
+                    Ok(())
+                })
             };
-            log::info!("Client {addr} disconnected");
-        })
-        .detach();
+            m.insert(addr, task);
+        }
     }
 }
 

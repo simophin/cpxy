@@ -1,14 +1,11 @@
 use crate::client::run_client;
-use async_broadcast::{broadcast, Sender};
 use jni::objects::{JClass, JString};
 use jni::sys::{jlong, jshort};
 use jni::JNIEnv;
+use smol::{spawn, Async, Task};
 use std::net::TcpListener;
 
-struct Instance {
-    handle: JoinHandle<anyhow::Result<()>>,
-    quit_tx: Sender<()>,
-}
+struct Instance(Task<anyhow::Result<()>>);
 
 #[no_mangle]
 pub extern "system" fn Java_dev_fanchao_CJKProxy_start(
@@ -38,7 +35,7 @@ pub extern "system" fn Java_dev_fanchao_CJKProxy_start(
 
     let address = format!("{socks5_host}:{socks5_port}");
     let listener = match TcpListener::bind(&address) {
-        Ok(v) => smol::net::TcpListener::from(v),
+        Ok(v) => smol::net::TcpListener::from(Async::new(v).expect("Async")),
         Err(e) => {
             let _ = env.throw_new(
                 "java/lang/Exception",
@@ -48,20 +45,9 @@ pub extern "system" fn Java_dev_fanchao_CJKProxy_start(
         }
     };
 
-    let (quit_tx, quit_rx) = broadcast(10);
-
-    Box::leak(Box::new(Instance {
-        handle: spawn(async move {
-            run_client(
-                listener,
-                upstream_host.as_str(),
-                upstream_port as u16,
-                quit_rx,
-            )
-            .await
-        }),
-        quit_tx,
-    })) as *mut Instance as jlong
+    Box::leak(Box::new(Instance(spawn(async move {
+        run_client(listener, upstream_host.as_str(), upstream_port as u16).await
+    })))) as *mut Instance as jlong
 }
 
 #[no_mangle]
@@ -74,8 +60,5 @@ pub extern "system" fn Java_dev_fanchao_CJKProxy_stop(env: JNIEnv, _: JClass, in
         return;
     }
     let handle: Box<Instance> = unsafe { Box::from_raw(instance as *mut Instance) };
-    spawn(async move {
-        let _ = handle.quit_tx.broadcast(()).await;
-        let _ = handle.handle.await;
-    });
+    drop(handle)
 }
