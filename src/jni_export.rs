@@ -1,6 +1,6 @@
 use crate::client::run_client;
 use jni::objects::{JClass, JString};
-use jni::sys::{jlong, jshort};
+use jni::sys::{jint, jlong};
 use jni::JNIEnv;
 use smol::{spawn, Async, Task};
 use std::net::TcpListener;
@@ -12,9 +12,9 @@ pub extern "system" fn Java_dev_fanchao_CJKProxy_start(
     env: JNIEnv,
     _: JClass,
     upstream_host: JString,
-    upstream_port: jshort,
+    upstream_port: jint,
     socks5_host: JString,
-    socks5_port: jshort,
+    socks5_port: jint,
 ) -> jlong {
     #[cfg(target_os = "android")]
     android_logger::init_once(
@@ -46,7 +46,12 @@ pub extern "system" fn Java_dev_fanchao_CJKProxy_start(
     };
 
     Box::leak(Box::new(Instance(spawn(async move {
-        run_client(listener, upstream_host.as_str(), upstream_port as u16).await
+        run_client(
+            listener,
+            upstream_host.as_str(),
+            upstream_port.try_into().unwrap(),
+        )
+        .await
     })))) as *mut Instance as jlong
 }
 
