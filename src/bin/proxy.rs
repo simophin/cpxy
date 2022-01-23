@@ -1,8 +1,8 @@
-use async_std::channel::bounded;
-use async_std::net::TcpListener;
+use async_broadcast::broadcast;
 use clap::{AppSettings, Parser, Subcommand};
 use proxy::client::run_client;
 use proxy::server::run_server;
+use smol::net::TcpListener;
 
 /// SOCKS5 over HTTPs
 #[derive(Parser)]
@@ -43,34 +43,35 @@ enum Command {
     },
 }
 
-#[async_std::main]
-async fn main() -> anyhow::Result<()> {
-    if std::env::var_os("RUST_LOG").is_none() {
-        std::env::set_var("RUST_LOG", "info");
-    }
-
-    env_logger::init();
-
-    let Cli { cmd } = Cli::parse();
-    match cmd {
-        Command::Server { host, port } => run_server(&format!("{host}:{port}")).await,
-        Command::Client {
-            socks5_host,
-            socks5_port,
-            remote_host,
-            remote_port,
-        } => {
-            let listen_address = format!("{socks5_host}:{socks5_port}");
-            log::info!("Start client at {listen_address}");
-            let (_, quit_rx) = bounded(1);
-
-            run_client(
-                TcpListener::bind(listen_address).await?,
-                remote_host.as_str(),
-                remote_port,
-                quit_rx,
-            )
-            .await
+fn main() -> anyhow::Result<()> {
+    smol::block_on(async move {
+        if std::env::var_os("RUST_LOG").is_none() {
+            std::env::set_var("RUST_LOG", "info");
         }
-    }
+
+        env_logger::init();
+
+        let Cli { cmd } = Cli::parse();
+        match cmd {
+            Command::Server { host, port } => run_server(&format!("{host}:{port}")).await,
+            Command::Client {
+                socks5_host,
+                socks5_port,
+                remote_host,
+                remote_port,
+            } => {
+                let listen_address = format!("{socks5_host}:{socks5_port}");
+                log::info!("Start client at {listen_address}");
+                let (_, quit_rx) = broadcast(1);
+
+                run_client(
+                    TcpListener::bind(listen_address).await?,
+                    remote_host.as_str(),
+                    remote_port,
+                    quit_rx,
+                )
+                .await
+            }
+        }
+    })
 }

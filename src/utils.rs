@@ -1,11 +1,10 @@
 use anyhow::anyhow;
-use async_std::task::spawn;
 use bytes::BufMut;
-use futures_lite::future::race;
 use futures_lite::io::{copy, split};
 use futures_lite::{AsyncRead, AsyncWrite};
-use futures_util::future::join;
+use futures_util::join;
 use serde_derive::{Deserialize, Serialize};
+use smol::spawn;
 use std::cmp::min;
 use std::io::{Read, Write};
 
@@ -16,10 +15,9 @@ pub async fn copy_duplex(
     let (d1r, d1w) = split(d1);
     let (d2r, d2w) = split(d2);
     let task1 = spawn(async move { copy(d1r, d2w).await });
-
     let task2 = spawn(async move { copy(d2r, d1w).await });
 
-    let _ = race(task1, task2).await;
+    let _ = join!(task1, task2);
     Ok(())
 }
 
@@ -87,10 +85,6 @@ impl<T: AsMut<[u8]> + AsRef<[u8]>> RWBuffer<T> {
 
     pub fn remaining_write(&self) -> usize {
         self.buf.as_ref().len() - self.write_cursor
-    }
-
-    pub fn total_capacity(&self) -> usize {
-        return self.buf.as_ref().len();
     }
 
     pub fn write_buf(&mut self) -> &mut [u8] {

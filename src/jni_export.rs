@@ -1,6 +1,5 @@
 use crate::client::run_client;
 use async_broadcast::{broadcast, Sender};
-use async_std::task::{spawn, JoinHandle};
 use jni::objects::{JClass, JString};
 use jni::sys::{jlong, jshort};
 use jni::JNIEnv;
@@ -39,7 +38,7 @@ pub extern "system" fn Java_dev_fanchao_CJKProxy_start(
 
     let address = format!("{socks5_host}:{socks5_port}");
     let listener = match TcpListener::bind(&address) {
-        Ok(v) => async_std::net::TcpListener::from(v),
+        Ok(v) => smol::net::TcpListener::from(v),
         Err(e) => {
             let _ = env.throw_new(
                 "java/lang/Exception",

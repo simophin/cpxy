@@ -77,10 +77,10 @@ async fn read_json_async<T: DeserializeOwned>(
 
 pub async fn request_proxy<
     S: AsyncRead + AsyncWrite + Unpin,
-    Fut: Future<Output = anyhow::Result<S>> + Send + Sync,
+    Fut: Future<Output = anyhow::Result<S>> + Send,
 >(
     proxy_req: &ProxyRequest,
-    connect_upstream: impl (FnOnce(RWBuffer) -> Fut) + Send + Sync,
+    connect_upstream: impl (FnOnce(RWBuffer) -> Fut) + Send,
 ) -> anyhow::Result<(ProxyResult, S)> {
     let mut req_buf = RWBuffer::default();
     log::info!("Sending request {proxy_req:?}");

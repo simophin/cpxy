@@ -7,7 +7,8 @@ edition = "2021"
 
 [dependencies]
 #tokio = { version = "1", features = ["macros", "net", "rt-multi-thread", "io-util", "time", "sync"] }
-async-std = { version = "1", features = ["attributes", "pin-project-lite", "futures-lite"] }
+smol = "1"
+smol-timeout = "0"
 futures-lite = "1"
 futures-util = "0"
 async-broadcast = "0"
@@ -36,7 +37,7 @@ jni = "0"
 android_logger = "0"
 
 [lib]
-crate-type = ["dylib"]
+crate-type = ["rlib", "dylib"]
 name = "proxy"
 
 [target.'cfg(any(target_arch = "x86_64", target_arch = "x86", target_arch = "aarch64"))'.dependencies]

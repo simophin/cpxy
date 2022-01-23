@@ -1,9 +1,9 @@
 use crate::http::serve_http_proxy;
 use crate::proxy::handler::{receive_proxy_request, ProxyRequest};
 use crate::proxy::tcp::serve_tcp_proxy;
-use async_std::net::{TcpListener, ToSocketAddrs};
-use async_std::task::spawn;
 use futures_lite::{AsyncRead, AsyncWrite};
+use smol::net::{AsyncToSocketAddrs, TcpListener};
+use smol::spawn;
 use std::fmt::Display;
 
 pub async fn serve_client(
@@ -17,7 +17,7 @@ pub async fn serve_client(
     }
 }
 
-pub async fn run_server(listen_address: impl ToSocketAddrs + Display) -> anyhow::Result<()> {
+pub async fn run_server(listen_address: impl AsyncToSocketAddrs + Display) -> anyhow::Result<()> {
     log::info!("Server listening at {listen_address}");
     let listener = TcpListener::bind(listen_address).await?;
     loop {
@@ -28,6 +28,7 @@ pub async fn run_server(listen_address: impl ToSocketAddrs + Display) -> anyhow:
                 log::error!("Error serving client {addr}: {e}");
             }
             log::info!("Client {addr} disconnected");
-        });
+        })
+        .detach();
     }
 }

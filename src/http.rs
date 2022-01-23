@@ -1,9 +1,9 @@
 use crate::proxy::handler::{send_proxy_result, ProxyResult};
 use crate::utils::{copy_duplex, HttpRequest};
 use anyhow::anyhow;
-use async_std::net::TcpStream;
 use bytes::BufMut;
 use futures_lite::{AsyncRead, AsyncWrite, AsyncWriteExt};
+use smol::net::TcpStream;
 use std::io::Write;
 use std::net::SocketAddr;
 use url::Url;
