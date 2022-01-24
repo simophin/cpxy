@@ -1,10 +1,11 @@
+use futures_lite::{AsyncRead, AsyncWrite};
+use smol::net::TcpListener;
+use smol::spawn;
+
 use crate::http::serve_http_proxy;
 use crate::proxy::handler::{receive_proxy_request, ProxyRequest};
 use crate::proxy::tcp::serve_tcp_proxy;
-use futures_lite::{AsyncRead, AsyncWrite};
-use smol::net::{AsyncToSocketAddrs, TcpListener};
-use smol::spawn;
-use std::fmt::Display;
+use crate::proxy::udp::serve_udp_proxy;
 
 pub async fn serve_client(
     stream: impl AsyncRead + AsyncWrite + Unpin + Send + Sync + 'static,
@@ -13,13 +14,11 @@ pub async fn serve_client(
     match receive_proxy_request(&mut stream).await? {
         ProxyRequest::SocksTCP(addr) => serve_tcp_proxy(addr, stream).await,
         ProxyRequest::Http(req) => serve_http_proxy(req, stream).await,
-        _ => todo!(),
+        ProxyRequest::SocksUDP(addr) => serve_udp_proxy(addr, stream).await,
     }
 }
 
-pub async fn run_server(listen_address: impl AsyncToSocketAddrs + Display) -> anyhow::Result<()> {
-    log::info!("Server listening at {listen_address}");
-    let listener = TcpListener::bind(listen_address).await?;
+pub async fn run_server(listener: TcpListener) -> anyhow::Result<()> {
     loop {
         let (stream, addr) = listener.accept().await?;
         log::info!("Accepted client {addr}");

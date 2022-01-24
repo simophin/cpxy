@@ -1,15 +1,18 @@
 use anyhow::anyhow;
 use std::collections::HashMap;
 use std::net::SocketAddr;
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Mutex, RwLock};
 use std::time::Duration;
 
 use crate::cipher::strategy::EncryptionStrategy;
 use crate::handshake::Handshaker;
-use crate::proxy::handler::ProxyRequest;
+use crate::proxy::handler::{ProxyRequest, ProxyResult};
+use crate::proxy::udp::{copy_from_socks5_udp, copy_to_socks5_udp};
 use crate::utils::{copy_duplex, RWBuffer};
+use futures_lite::future::race;
+use futures_lite::io::split;
 use futures_lite::{AsyncRead, AsyncWrite};
-use smol::net::{TcpListener, TcpStream};
+use smol::net::{TcpListener, TcpStream, UdpSocket};
 use smol::{spawn, Task};
 use smol_timeout::TimeoutExt;
 
@@ -49,6 +52,57 @@ pub async fn run_client(
     }
 }
 
+async fn run_udp_proxy(
+    handshaker: Handshaker,
+    proxy_result: ProxyResult,
+    mut socks: impl AsyncRead + AsyncWrite + Unpin + Send + Sync + 'static,
+    upstream: impl AsyncRead + AsyncWrite + Unpin + Send + Sync + 'static,
+) -> anyhow::Result<()> {
+    match &proxy_result {
+        ProxyResult::Granted { .. } => {}
+        _ => {
+            let err = anyhow!("Received error from proxy: {proxy_result:?}");
+            handshaker.respond(&mut socks, proxy_result).await?;
+            return Err(err);
+        }
+    };
+
+    let socket = match UdpSocket::bind("localhost:0")
+        .await
+        .map_err(|e| anyhow::Error::from(e))
+        .and_then(|socket| Ok((socket.local_addr()?, socket)))
+    {
+        Ok((a, s)) => {
+            handshaker
+                .respond(&mut socks, ProxyResult::Granted { bound_address: a })
+                .await?;
+            Arc::new(s)
+        }
+        Err(e) => {
+            handshaker
+                .respond(&mut socks, ProxyResult::ErrGeneric { msg: e.to_string() })
+                .await?;
+            return Err(e);
+        }
+    };
+
+    let (r, w) = split(upstream);
+    let last_addr: Arc<RwLock<Option<SocketAddr>>> = Default::default();
+    let task1 = {
+        let socket = socket.clone();
+        let last_addr = last_addr.clone();
+        spawn(async move { copy_from_socks5_udp(&socket, w, last_addr).await })
+    };
+
+    let task2 = {
+        let socket = socket.clone();
+        let last_addr = last_addr.clone();
+        spawn(async move { copy_to_socks5_udp(r, &socket, last_addr).await })
+    };
+
+    race(task1, task2).await
+}
+
 async fn serve_proxy_client(
     mut socks: impl AsyncRead + AsyncWrite + Unpin + Send + Sync + 'static,
     upstream_addr: String,
@@ -71,15 +125,24 @@ async fn serve_proxy_client(
     .await;
 
     let upstream = match r {
-        Ok((proxy_r, upstream)) => {
-            handshaker.respond(&mut socks, Ok(proxy_r)).await?;
-            match req {
-                ProxyRequest::SocksTCP(_) | ProxyRequest::Http(_) => upstream,
-                ProxyRequest::SocksUDP(_) => todo!(),
+        Ok((proxy_r, upstream)) => match req {
+            ProxyRequest::SocksTCP(_) | ProxyRequest::Http(_) => {
+                handshaker.respond(&mut socks, proxy_r).await?;
+                upstream
             }
-        }
+            ProxyRequest::SocksUDP(_) => {
+                return run_udp_proxy(handshaker, proxy_r, socks, upstream).await;
+            }
+        },
         Err(err) => {
-            handshaker.respond(&mut socks, Err(())).await?;
+            handshaker
+                .respond(
+                    &mut socks,
+                    ProxyResult::ErrGeneric {
+                        msg: err.to_string(),
+                    },
+                )
+                .await?;
             return Err(err);
         }
     };

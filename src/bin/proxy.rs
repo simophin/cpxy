@@ -52,7 +52,11 @@ fn main() -> anyhow::Result<()> {
 
         let Cli { cmd } = Cli::parse();
         match cmd {
-            Command::Server { host, port } => run_server(&format!("{host}:{port}")).await,
+            Command::Server { host, port } => {
+                let listen_address = format!("{host}:{port}");
+                log::info!("Start server at {listen_address}");
+                run_server(TcpListener::bind(listen_address).await?).await
+            }
             Command::Client {
                 socks5_host,
                 socks5_port,

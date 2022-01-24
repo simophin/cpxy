@@ -30,33 +30,3 @@ impl ParseError {
 }
 
 impl std::error::Error for ParseError {}
-
-#[derive(Debug)]
-pub enum WriteError {
-    NotEnoughSpace {
-        name: &'static str,
-        required: usize,
-        has: usize,
-    },
-    ProtocolError {
-        msg: &'static str,
-    },
-}
-
-impl WriteError {
-    pub fn not_enough_space(name: &'static str, required: usize, has: usize) -> Self {
-        Self::NotEnoughSpace {
-            name,
-            required,
-            has,
-        }
-    }
-}
-
-impl Display for WriteError {
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        <WriteError as Debug>::fmt(self, f)
-    }
-}
-
-impl std::error::Error for WriteError {}

@@ -5,11 +5,12 @@ use std::io::Cursor;
 use std::net::{Ipv4Addr, Ipv6Addr, SocketAddr, SocketAddrV4, SocketAddrV6};
 use std::str::FromStr;
 
-use bytes::{Buf, BufMut};
+use bytes::Buf;
+use futures_lite::{AsyncWrite, AsyncWriteExt};
 use lazy_static::lazy_static;
 use regex::Regex;
 
-use crate::parse::{ParseError, WriteError};
+use crate::parse::ParseError;
 
 #[derive(Debug, Eq, PartialEq, Clone, Serialize, Deserialize)]
 pub enum Address {
@@ -130,65 +131,26 @@ impl Address {
         }
     }
 
-    pub fn write_len(&self) -> usize {
-        3 + match self {
-            Address::IP(SocketAddr::V4(_)) => 4,
-            Address::IP(SocketAddr::V6(_)) => 16,
-            Address::Name { host, .. } => 1 + host.as_bytes().len(),
-        }
-    }
-
-    pub fn write(&self, buf: &mut impl BufMut) -> Result<(), WriteError> {
-        if buf.remaining_mut() < 1 {
-            return Err(WriteError::not_enough_space("addr_type", 1, 0));
-        }
-
+    pub async fn write(
+        &self,
+        buf: &mut (impl AsyncWrite + Unpin + Send + Sync),
+    ) -> anyhow::Result<()> {
         match self {
             Address::IP(SocketAddr::V4(addr)) => {
-                if buf.remaining_mut() < 1 + 4 + 2 {
-                    return Err(WriteError::not_enough_space(
-                        "v4+port",
-                        6,
-                        buf.remaining_mut(),
-                    ));
-                }
-
-                buf.put_u8(0x1);
-                buf.put_slice(&addr.ip().octets());
-                buf.put_u16(addr.port());
+                buf.write_all(&[0x1]).await?;
+                buf.write_all(&addr.ip().octets()).await?;
+                buf.write_all(addr.port().to_be_bytes().as_slice()).await?;
             }
             Address::IP(SocketAddr::V6(addr)) => {
-                if buf.remaining_mut() < 1 + 16 + 2 {
-                    return Err(WriteError::not_enough_space(
-                        "v6+port",
-                        18,
-                        buf.remaining_mut(),
-                    ));
-                }
-
-                buf.put_u8(0x4);
-                buf.put_slice(&addr.ip().octets());
-                buf.put_u16(addr.port());
+                buf.write_all(&[0x4]).await?;
+                buf.write_all(&addr.ip().octets()).await?;
+                buf.write_all(addr.port().to_be_bytes().as_slice()).await?;
             }
             Address::Name { host, port } => {
-                if buf.remaining_mut() < 1 + 1 + host.as_bytes().len() + 2 {
-                    return Err(WriteError::not_enough_space(
-                        "name+port",
-                        1 + host.as_bytes().len() + 2,
-                        buf.remaining_mut(),
-                    ));
-                }
-
-                if host.len() > u8::MAX as usize {
-                    return Err(WriteError::ProtocolError {
-                        msg: "host name exceeds 255 bytes",
-                    });
-                }
-
-                buf.put_u8(0x3);
-                buf.put_u8(host.as_bytes().len() as u8);
-                buf.put_slice(host.as_bytes());
-                buf.put_u16(*port);
+                let host_len: u8 = host.as_bytes().len().try_into()?;
+                buf.write_all(&[0x3, host_len]).await?;
+                buf.write_all(host.as_bytes()).await?;
+                buf.write_all(port.to_be_bytes().as_slice()).await?;
             }
         }
 

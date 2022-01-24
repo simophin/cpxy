@@ -53,7 +53,7 @@ pub struct Handshaker {
 
 impl Handshaker {
     pub async fn start(
-        stream: &mut (impl AsyncRead + AsyncWrite + Unpin),
+        stream: &mut (impl AsyncRead + AsyncWrite + Send + Sync + Unpin),
         buf: &mut RWBuffer,
     ) -> anyhow::Result<(Handshaker, ProxyRequest)> {
         let mut parse_state = ParseState::Init;
@@ -122,13 +122,13 @@ impl Handshaker {
 
     pub async fn respond(
         self,
-        stream: &mut (impl AsyncWrite + Unpin),
-        result: Result<ProxyResult, ()>,
+        stream: &mut (impl AsyncWrite + Send + Sync + Unpin),
+        result: ProxyResult,
     ) -> anyhow::Result<()> {
         match self.is_socks {
             true => {
                 let (addr, code) = match result {
-                    Ok(ProxyResult::Granted { bound_address }) => {
+                    ProxyResult::Granted { bound_address } => {
                         (Address::IP(bound_address), ConnStatusCode::GRANTED)
                     }
                     _ => (Default::default(), ConnStatusCode::FAILED),
@@ -137,7 +137,7 @@ impl Handshaker {
                 Ok(())
             }
             false => match result {
-                Ok(ProxyResult::Granted { .. }) => {
+                ProxyResult::Granted { .. } => {
                     stream.write_all(b"HTTP/1.1 200 OK\r\n\r\n").await?;
                     Ok(())
                 }
@@ -172,7 +172,7 @@ async fn handshake_http(
 }
 
 async fn handshake_socks5(
-    socket: &mut (impl AsyncRead + AsyncWrite + Unpin),
+    socket: &mut (impl AsyncRead + AsyncWrite + Send + Sync + Unpin),
     buf: &mut RWBuffer,
     state: SocksState,
 ) -> anyhow::Result<ProxyRequest> {

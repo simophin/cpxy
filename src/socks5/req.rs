@@ -67,14 +67,12 @@ impl ClientConnRequest {
     }
 
     pub async fn respond(
-        w: &mut (impl AsyncWrite + Unpin + ?Sized),
+        w: &mut (impl AsyncWrite + Unpin + Send + Sync),
         code: ConnStatusCode,
         bound_addr: &Address,
     ) -> anyhow::Result<()> {
-        let mut buf = Vec::with_capacity(3 + bound_addr.write_len());
-        buf.extend_from_slice(&[0x5, code.0, 0x00]);
-        bound_addr.write(&mut buf)?;
-        w.write_all(&buf).await?;
+        w.write_all(&[0x5, code.0, 0x00]).await?;
+        bound_addr.write(w).await?;
         Ok(())
     }
 }
