@@ -154,7 +154,8 @@ jobs:
       - name: Build native libs
         run: ./build_android_libs.sh
       - name: Build with Gradle
-        run: ./android/gradlew assembleDebug
+        working-directory: ./android
+        run: ./gradlew app:assembleDebug
       - name: Upload Artifact
         uses: actions/upload-artifact@v2
         with:
