@@ -1,4 +1,4 @@
-name: Rust
+name: Build and release
 
 on:
   push:
@@ -133,6 +133,33 @@ jobs:
         with:
           name: apple_artifacts
           path: target/**/release/proxy
+
+  build_android:
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/')
+    steps:
+      - uses: actions/checkout@v2
+      - name: set up JDK 11
+        uses: actions/setup-java@v2
+        with:
+          java-version: '11'
+          distribution: 'temurin'
+          cache: gradle
+      - name: rust-toolchain
+        uses: actions-rs/toolchain@v1.0.6
+        with:
+          toolchain: stable
+      - name: Install cross
+        run: cargo install cross
+      - name: Build native libs
+        run: ./build_android_libs.sh
+      - name: Build with Gradle
+        run: ./gradlew assembleDebug
+      - name: Upload Artifact
+        uses: actions/upload-artifact@v2
+        with:
+          name: android_artifact
+          path: android/app/build/outputs/apk/debug/app-debug.apk
   release:
     runs-on: ubuntu-latest
     if: startsWith(github.ref, 'refs/tags/')
@@ -150,8 +177,13 @@ jobs:
       uses: actions/download-artifact@v2
       with:
         name: windows_artifacts
+    - name: Download android artifacts
+      uses: actions/download-artifact@v2
+      with:
+        name: android_artifact
     - name: Rename artifacts
       run: |
+        mv android/app/build/outputs/apk/debug/app-debug.apk cjk-proxy.apk
         mv x86_64-apple-darwin/release/proxy proxy.darwin.x86_64
         mv x86_64-unknown-linux-gnu/release/proxy proxy.linux.x86_64
         mv aarch64-unknown-linux-gnu/release/proxy proxy.linux.aarch64
@@ -161,4 +193,6 @@ jobs:
     - name: Create github release
       uses: softprops/action-gh-release@v1
       with:
-        files: ./proxy.*
+        files: |
+          ./proxy.*
+          ./*.apk
