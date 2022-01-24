@@ -15,7 +15,8 @@ data class ProxyConfiguration(
 
 
 @Serializable
+@Parcelize
 data class ProxyConfigurationPersisted(
     val name: String,
     val config: ProxyConfiguration
-)
+) : Parcelable

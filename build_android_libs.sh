@@ -4,7 +4,7 @@ configs=(
   armv7-linux-androideabi armeabi-v7a
   aarch64-linux-android arm64-v8a
   i686-linux-android x86
-  x86_64-linux-android x86-64
+  x86_64-linux-android x86_64
 )
 
 LIBS_ROOT=android/app/src/main/jniLibs
