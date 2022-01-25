@@ -1,8 +1,8 @@
 use anyhow::anyhow;
 use bytes::BufMut;
+use futures_lite::future::race;
 use futures_lite::io::{copy, split};
 use futures_lite::{AsyncRead, AsyncWrite};
-use futures_util::future::join;
 use serde_derive::{Deserialize, Serialize};
 use smol::spawn;
 use std::cmp::min;
@@ -17,7 +17,7 @@ pub async fn copy_duplex(
     let task1 = spawn(async move { copy(d1r, d2w).await });
     let task2 = spawn(async move { copy(d2r, d1w).await });
 
-    let _ = join(task1, task2).await;
+    let _ = race(task1, task2).await;
     Ok(())
 }
 

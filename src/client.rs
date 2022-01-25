@@ -9,9 +9,9 @@ use crate::handshake::Handshaker;
 use crate::proxy::handler::{ProxyRequest, ProxyResult};
 use crate::proxy::udp::{copy_socks5_udp_to_stream, copy_stream_to_socks5_udp};
 use crate::utils::{copy_duplex, RWBuffer};
-use futures_lite::future::race;
 use futures_lite::io::split;
-use futures_lite::{AsyncRead, AsyncWrite};
+use futures_lite::{AsyncRead, AsyncReadExt, AsyncWrite};
+use futures_util::{select, FutureExt};
 use smol::net::{TcpListener, TcpStream, UdpSocket};
 use smol::{spawn, Task};
 use smol_timeout::TimeoutExt;
@@ -105,7 +105,22 @@ async fn run_udp_proxy_relay(
         spawn(async move { copy_stream_to_socks5_udp(r, &socket, last_addr).await })
     };
 
-    race(task1, task2).await
+    let task3: Task<anyhow::Result<()>> = spawn(async move {
+        let mut buf = vec![0u8; 24];
+        loop {
+            match socks.read(buf.as_mut_slice()).await? {
+                0 => break,
+                _ => {}
+            }
+        }
+        Ok(())
+    });
+
+    select! {
+        r1 = task1.fuse() => r1,
+        r2 = task2.fuse() => r2,
+        r3 = task3.fuse() => r3,
+    }
 }
 
 async fn serve_proxy_client(

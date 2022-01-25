@@ -188,7 +188,7 @@ pub async fn serve_udp_proxy(
         let socket = socket.clone();
         spawn(async move {
             if let Err(e) = copy_udp_to_stream(&socket, w).await {
-                log::error!("Error serving UDP downstrem: {e}")
+                log::error!("Error serving UDP downstream: {e}")
             }
             log::info!("Finished serving UDP upstream");
             Ok(())
