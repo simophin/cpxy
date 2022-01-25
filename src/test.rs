@@ -39,7 +39,6 @@ async fn duplex(
 #[test]
 fn test_client_server_tcp() {
     smol::block_on(async move {
-        env_logger::init();
         let (client, server) = duplex(512).await;
 
         let client_send_enc = EncryptionStrategy::FirstN(NonZeroUsize::try_from(50).unwrap());
@@ -151,7 +150,6 @@ async fn read_exact_n<T: AsyncRead + Unpin + Send + Sync, const N: usize>(
 
 #[test]
 fn test_client_server_udp() {
-    env_logger::init();
     smol::block_on(async move {
         let udp_upstream = UdpSocket::bind("localhost:0").await.unwrap();
         let udp_upstream_addr = udp_upstream.local_addr().unwrap();
