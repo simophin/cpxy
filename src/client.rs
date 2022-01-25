@@ -6,13 +6,14 @@ use std::time::Duration;
 
 use crate::cipher::strategy::EncryptionStrategy;
 use crate::handshake::Handshaker;
+use crate::io::{TcpStream, UdpSocket};
 use crate::proxy::handler::{ProxyRequest, ProxyResult};
 use crate::proxy::udp::{copy_socks5_udp_to_stream, copy_stream_to_socks5_udp};
 use crate::utils::{copy_duplex, RWBuffer};
 use futures_lite::io::split;
 use futures_lite::{AsyncRead, AsyncReadExt, AsyncWrite};
 use futures_util::{select, FutureExt};
-use smol::net::{TcpListener, TcpStream, UdpSocket};
+use smol::net::{TcpListener, TcpStream as AsyncTcpStream, UdpSocket as AsyncUdpSocket};
 use smol::{spawn, Task};
 use smol_timeout::TimeoutExt;
 
@@ -71,10 +72,10 @@ async fn run_udp_proxy_relay(
         }
     };
 
-    let socket = match UdpSocket::bind(format!("{relay_host}:0"))
+    let socket = match AsyncUdpSocket::bind(format!("{relay_host}:0"))
         .await
         .map_err(|e| anyhow::Error::from(e))
-        .and_then(|socket| Ok((socket.local_addr()?, socket)))
+        .and_then(|socket| Ok((socket.local_addr()?, UdpSocket::from(socket))))
     {
         Ok((a, s)) => {
             log::debug!("Socks5-Relay-Udp listening on {a}");
@@ -136,10 +137,12 @@ async fn serve_proxy_client(
     let receive_enc = EncryptionStrategy::pick_receive(&req);
 
     let r = super::proxy::handler::request_proxy(&req, move |buf| async move {
-        let upstream = TcpStream::connect(upstream_addr.as_str())
-            .timeout(Duration::from_secs(2))
-            .await
-            .ok_or_else(|| anyhow!("Timeout"))??;
+        let upstream = TcpStream::from(
+            AsyncTcpStream::connect(upstream_addr.as_str())
+                .timeout(Duration::from_secs(2))
+                .await
+                .ok_or_else(|| anyhow!("Timeout"))??,
+        );
         super::cipher::client::connect(upstream, upstream_addr.as_str(), send_enc, receive_enc, buf)
             .await
     })
