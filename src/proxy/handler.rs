@@ -11,7 +11,7 @@ use std::net::SocketAddr;
 #[derive(Serialize, Deserialize, Debug)]
 pub enum ProxyRequest {
     SocksTCP(Address),
-    SocksUDP(Address),
+    SocksUDP,
     Http(HttpRequest),
 }
 

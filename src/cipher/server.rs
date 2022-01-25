@@ -14,7 +14,7 @@ use super::suite::{create_cipher, BoxedStreamCipher};
 fn check_request(
     req: httparse::Request,
 ) -> Result<(BoxedStreamCipher, BoxedStreamCipher), (&'static str, &'static str)> {
-    log::debug!("Received request: {:?}", req);
+    // log::debug!("Received request: {:?}", req);
     match req.method {
         Some(m) if m.eq_ignore_ascii_case("get") => {}
         _ => {

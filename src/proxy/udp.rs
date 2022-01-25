@@ -1,16 +1,19 @@
 use crate::proxy::handler::ProxyResult;
 use crate::socks5::{Address, UdpPacket};
 use crate::utils::RWBuffer;
+use anyhow::anyhow;
 use futures_lite::future::race;
 use futures_lite::io::split;
 use futures_lite::{AsyncRead, AsyncReadExt, AsyncWrite};
 use smol::net::UdpSocket;
 use smol::spawn;
+use smol_timeout::TimeoutExt;
 use std::fmt::Write;
 use std::net::SocketAddr;
 use std::sync::{Arc, RwLock};
+use std::time::Duration;
 
-pub async fn copy_from_socks5_udp(
+pub async fn copy_socks5_udp_to_stream(
     socket: &UdpSocket,
     mut dst: impl AsyncWrite + Unpin + Send + Sync + 'static,
     last_addr: Arc<RwLock<Option<SocketAddr>>>,
@@ -48,7 +51,7 @@ pub async fn copy_from_socks5_udp(
     }
 }
 
-pub async fn copy_to_socks5_udp(
+pub async fn copy_stream_to_socks5_udp(
     mut src: impl AsyncRead + Unpin + Send + Sync + 'static,
     socket: &UdpSocket,
     last_addr: Arc<RwLock<Option<SocketAddr>>>,
@@ -89,7 +92,7 @@ pub async fn copy_to_socks5_udp(
     }
 }
 
-async fn copy_packet_to_udp(
+async fn copy_stream_to_udp(
     mut src: impl AsyncRead + Unpin + Send + Sync + 'static,
     socket: &UdpSocket,
 ) -> anyhow::Result<()> {
@@ -118,25 +121,33 @@ async fn copy_packet_to_udp(
     }
 }
 
-async fn copy_packet_to_stream(
+async fn copy_udp_to_stream(
     socket: &UdpSocket,
     mut dst: impl AsyncWrite + Unpin + Send + Sync + 'static,
 ) -> anyhow::Result<()> {
     let mut buf = vec![0u8; 65536];
 
     loop {
-        let (n, addr) = socket.recv_from(buf.as_mut_slice()).await?;
+        let (n, addr) = match socket
+            .recv_from(buf.as_mut_slice())
+            .timeout(Duration::from_secs(120))
+            .await
+        {
+            Some(Ok(v)) => v,
+            None => return Err(anyhow!("UDP socket's idle timeout")),
+            Some(Err(e)) => return Err(e.into()),
+        };
+
         let buf = &buf.as_slice()[..n];
         UdpPacket::write_tcp(&mut dst, &Address::IP(addr), buf).await?;
     }
 }
 
 pub async fn serve_udp_proxy(
-    target: Address,
     mut src: impl AsyncRead + AsyncWrite + Unpin + Send + Sync + 'static,
 ) -> anyhow::Result<()> {
-    log::info!("Proxying UDP upstream: {target}");
-    let socket = match UdpSocket::bind("localhost:0").await {
+    log::info!("Proxying UDP upstream");
+    let socket = match UdpSocket::bind("0.0.0.0:0").await {
         Ok(v) => {
             super::handler::send_proxy_result(
                 &mut src,
@@ -165,7 +176,7 @@ pub async fn serve_udp_proxy(
     let task1 = {
         let socket = socket.clone();
         spawn(async move {
-            if let Err(e) = copy_packet_to_udp(r, &socket).await {
+            if let Err(e) = copy_stream_to_udp(r, &socket).await {
                 log::error!("Error serving UDP upstream: {e}")
             }
             log::info!("Finished serving UDP upstream");
@@ -176,7 +187,7 @@ pub async fn serve_udp_proxy(
     let task2 = {
         let socket = socket.clone();
         spawn(async move {
-            if let Err(e) = copy_packet_to_stream(&socket, w).await {
+            if let Err(e) = copy_udp_to_stream(&socket, w).await {
                 log::error!("Error serving UDP downstrem: {e}")
             }
             log::info!("Finished serving UDP upstream");

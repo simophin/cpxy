@@ -193,7 +193,7 @@ async fn handshake_socks5(
                 }
                 Command::BIND_UDP => {
                     buf.advance_read(offset);
-                    return Ok(ProxyRequest::SocksUDP(address));
+                    return Ok(ProxyRequest::SocksUDP);
                 }
                 _ => {
                     ClientConnRequest::respond(

@@ -15,6 +15,7 @@ pub extern "system" fn Java_dev_fanchao_CJKProxy_start(
     upstream_port: jint,
     socks5_host: JString,
     socks5_port: jint,
+    socks5_udp_host: JString,
 ) -> jlong {
     #[cfg(target_os = "android")]
     android_logger::init_once(
@@ -31,6 +32,11 @@ pub extern "system" fn Java_dev_fanchao_CJKProxy_start(
     let socks5_host: String = env
         .get_string(socks5_host)
         .expect("To get host string")
+        .into();
+
+    let socks5_udp_host: String = env
+        .get_string(socks5_udp_host)
+        .expect("To get socks5_udp_host")
         .into();
 
     let address = format!("{socks5_host}:{socks5_port}");
@@ -50,6 +56,7 @@ pub extern "system" fn Java_dev_fanchao_CJKProxy_start(
             listener,
             upstream_host.as_str(),
             upstream_port.try_into().unwrap(),
+            socks5_udp_host,
         )
         .await
     })))) as *mut Instance as jlong

@@ -14,7 +14,7 @@ pub async fn serve_client(
     match receive_proxy_request(&mut stream).await? {
         ProxyRequest::SocksTCP(addr) => serve_tcp_proxy(addr, stream).await,
         ProxyRequest::Http(req) => serve_http_proxy(req, stream).await,
-        ProxyRequest::SocksUDP(addr) => serve_udp_proxy(addr, stream).await,
+        ProxyRequest::SocksUDP => serve_udp_proxy(stream).await,
     }
 }
 

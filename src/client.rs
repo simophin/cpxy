@@ -7,7 +7,7 @@ use std::time::Duration;
 use crate::cipher::strategy::EncryptionStrategy;
 use crate::handshake::Handshaker;
 use crate::proxy::handler::{ProxyRequest, ProxyResult};
-use crate::proxy::udp::{copy_from_socks5_udp, copy_to_socks5_udp};
+use crate::proxy::udp::{copy_socks5_udp_to_stream, copy_stream_to_socks5_udp};
 use crate::utils::{copy_duplex, RWBuffer};
 use futures_lite::future::race;
 use futures_lite::io::split;
@@ -20,6 +20,7 @@ pub async fn run_client(
     listener: TcpListener,
     upstream_host: &str,
     upstream_port: u16,
+    socks5_udp_host: &str,
 ) -> anyhow::Result<()> {
     let upstream = format!("{upstream_host}:{upstream_port}");
 
@@ -35,8 +36,9 @@ pub async fn run_client(
             let task: Task<anyhow::Result<()>> = {
                 let addr = addr.clone();
                 let clients = clients.clone();
+                let socks5_udp_host = socks5_udp_host.to_string();
                 spawn(async move {
-                    if let Err(e) = serve_proxy_client(sock, upstream).await {
+                    if let Err(e) = serve_proxy_client(sock, upstream, socks5_udp_host).await {
                         log::error!("Error serving client {addr}: {e}");
                     }
                     log::info!("Client {addr} disconnected");
@@ -52,12 +54,14 @@ pub async fn run_client(
     }
 }
 
-async fn run_udp_proxy(
+async fn run_udp_proxy_relay(
     handshaker: Handshaker,
     proxy_result: ProxyResult,
     mut socks: impl AsyncRead + AsyncWrite + Unpin + Send + Sync + 'static,
     upstream: impl AsyncRead + AsyncWrite + Unpin + Send + Sync + 'static,
+    relay_host: String,
 ) -> anyhow::Result<()> {
+    log::debug!("Accepted UDP proxy with result = {proxy_result}");
     match &proxy_result {
         ProxyResult::Granted { .. } => {}
         _ => {
@@ -67,12 +71,13 @@ async fn run_udp_proxy(
         }
     };
 
-    let socket = match UdpSocket::bind("localhost:0")
+    let socket = match UdpSocket::bind(format!("{relay_host}:0"))
         .await
         .map_err(|e| anyhow::Error::from(e))
         .and_then(|socket| Ok((socket.local_addr()?, socket)))
     {
         Ok((a, s)) => {
+            log::debug!("Socks5-Relay-Udp listening on {a}");
             handshaker
                 .respond(&mut socks, ProxyResult::Granted { bound_address: a })
                 .await?;
@@ -91,13 +96,13 @@ async fn run_udp_proxy(
     let task1 = {
         let socket = socket.clone();
         let last_addr = last_addr.clone();
-        spawn(async move { copy_from_socks5_udp(&socket, w, last_addr).await })
+        spawn(async move { copy_socks5_udp_to_stream(&socket, w, last_addr).await })
     };
 
     let task2 = {
         let socket = socket.clone();
         let last_addr = last_addr.clone();
-        spawn(async move { copy_to_socks5_udp(r, &socket, last_addr).await })
+        spawn(async move { copy_stream_to_socks5_udp(r, &socket, last_addr).await })
     };
 
     race(task1, task2).await
@@ -106,6 +111,7 @@ async fn run_udp_proxy(
 async fn serve_proxy_client(
     mut socks: impl AsyncRead + AsyncWrite + Unpin + Send + Sync + 'static,
     upstream_addr: String,
+    socks5_udp_host: String,
 ) -> anyhow::Result<()> {
     let mut buf = RWBuffer::default();
     let (handshaker, req) = Handshaker::start(&mut socks, &mut buf).await?;
@@ -130,8 +136,9 @@ async fn serve_proxy_client(
                 handshaker.respond(&mut socks, proxy_r).await?;
                 upstream
             }
-            ProxyRequest::SocksUDP(_) => {
-                return run_udp_proxy(handshaker, proxy_r, socks, upstream).await;
+            ProxyRequest::SocksUDP => {
+                return run_udp_proxy_relay(handshaker, proxy_r, socks, upstream, socks5_udp_host)
+                    .await;
             }
         },
         Err(err) => {
