@@ -32,7 +32,7 @@ class ProxyInstances : Closeable {
             }
             else {
                 try {
-                    ProxyState.Running(CJKProxy.start(c.remoteHost, c.remotePort, c.socksHost, c.socksPort)).apply {
+                    ProxyState.Running(CJKProxy.start(c.remoteHost, c.remotePort, c.socksHost, c.socksPort, c.socksUdpHost)).apply {
                         Log.d("ProxyInstances", "Started $c")
                     }
                 } catch (ec: Throwable) {

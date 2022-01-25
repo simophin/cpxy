@@ -151,7 +151,7 @@ async fn read_exact_n<T: AsyncRead + Unpin + Send + Sync, const N: usize>(
 #[test]
 fn test_client_server_udp() {
     smol::block_on(async move {
-        let udp_upstream = UdpSocket::bind("localhost:0").await.unwrap();
+        let udp_upstream = UdpSocket::bind("0.0.0.0:0").await.unwrap();
         let udp_upstream_addr = udp_upstream.local_addr().unwrap();
         log::info!("Upstream server listened at {udp_upstream_addr}");
 
@@ -179,6 +179,7 @@ fn test_client_server_udp() {
                     socks5_server,
                     server_addr.ip().to_string().as_str(),
                     server_addr.port(),
+                    "0.0.0.0",
                 ),
                 run_server(server),
             )
@@ -228,7 +229,7 @@ fn test_client_server_udp() {
         assert_eq!(buf.remaining_read(), 0);
 
         // Write to UDP address
-        let udp_client = UdpSocket::bind("localhost:0").await.unwrap();
+        let udp_client = UdpSocket::bind("0.0.0.0:0").await.unwrap();
         let mut buf = Vec::<u8>::new();
 
         // Send first package

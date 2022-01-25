@@ -55,6 +55,7 @@ class EditConfigActivity : AppCompatActivity() {
                 binding.remotePort.checkNotEmpty()?.toInt() ?: return,
                 binding.socks5Host.checkNotEmpty() ?: return,
                 binding.socks5Port.checkNotEmpty()?.toInt() ?: return,
+                "0.0.0.0"
             )
         )))
         finish()

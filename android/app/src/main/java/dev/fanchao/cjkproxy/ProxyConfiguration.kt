@@ -11,6 +11,7 @@ data class ProxyConfiguration(
     val remotePort: Int,
     val socksHost: String,
     val socksPort: Int,
+    val socksUdpHost: String,
 ): Parcelable
 
 
