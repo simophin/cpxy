@@ -56,7 +56,7 @@ pub extern "system" fn Java_dev_fanchao_CJKProxy_start(
             listener,
             upstream_host.as_str(),
             upstream_port.try_into().unwrap(),
-            socks5_udp_host,
+            socks5_udp_host.as_str(),
         )
         .await
     })))) as *mut Instance as jlong
