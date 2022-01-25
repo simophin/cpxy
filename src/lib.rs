@@ -11,6 +11,7 @@ mod http;
 #[cfg(target_os = "android")]
 mod jni_export;
 
+mod geoip;
 mod io;
 #[cfg(test)]
 mod test;

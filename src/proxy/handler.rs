@@ -3,7 +3,7 @@ use crate::utils::{HttpRequest, RWBuffer};
 use bytes::BufMut;
 use futures_lite::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
 use serde::de::DeserializeOwned;
-use serde_derive::{Deserialize, Serialize};
+use serde::{Deserialize, Serialize};
 use std::future::Future;
 use std::io::Cursor;
 use std::net::SocketAddr;

@@ -3,7 +3,7 @@ use bytes::BufMut;
 use futures_lite::future::race;
 use futures_lite::io::{copy, split};
 use futures_lite::{AsyncRead, AsyncWrite};
-use serde_derive::{Deserialize, Serialize};
+use serde::{Deserialize, Serialize};
 use smol::spawn;
 use std::cmp::min;
 use std::io::{Read, Write};

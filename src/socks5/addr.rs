@@ -1,5 +1,5 @@
 use anyhow::anyhow;
-use serde_derive::{Deserialize, Serialize};
+use serde::{Deserialize, Serialize};
 use std::fmt::{Debug, Formatter};
 use std::io::Cursor;
 use std::net::{Ipv4Addr, Ipv6Addr, SocketAddr, SocketAddrV4, SocketAddrV6};

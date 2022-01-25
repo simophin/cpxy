@@ -21,8 +21,7 @@ cipher = "0"
 pin-project-lite = "0"
 rand = "0"
 base64 = "0"
-serde = "1"
-serde_derive = "1"
+serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 aes = { version = "0", features = ["ctr"] }
 url = "2"
@@ -30,6 +29,10 @@ clap = { version = "3", features = ["derive"] }
 regex = "1"
 lazy_static = "1"
 
+[build-dependencies]
+reqwest = { version = "0", features = ["blocking"] }
+num-traits = "0"
+cc = "1"
 
 [target.'cfg(target_os = "android")'.dependencies]
 jni = "0"
