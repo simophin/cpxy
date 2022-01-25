@@ -1,6 +1,6 @@
 <component name="ProjectRunConfigurationManager">
   <configuration default="false" name="Watch client" type="CargoCommandRunConfiguration" factoryName="Cargo Command">
-    <option name="command" value="watch -x &quot;run --bin=proxy -- client --remote-host localhost --remote-port 4200&quot;" />
+    <option name="command" value="watch -x &quot;run --bin=proxy -- client --remote-host localhost --remote-port 4200 --socks5-host 0.0.0.0&quot;" />
     <option name="workingDirectory" value="file://$PROJECT_DIR$" />
     <option name="channel" value="DEFAULT" />
     <option name="requiredFeatures" value="true" />
@@ -9,7 +9,7 @@
     <option name="withSudo" value="false" />
     <option name="backtrace" value="SHORT" />
     <envs>
-      <env name="RUST_LOG" value="info" />
+      <env name="RUST_LOG" value="debug" />
     </envs>
     <option name="isRedirectInput" value="false" />
     <option name="redirectInputPath" value="" />

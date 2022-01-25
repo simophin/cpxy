@@ -40,6 +40,10 @@ pub async fn copy_from_socks5_udp(
             continue;
         }
 
+        log::debug!(
+            "SOCKS5-UDP: Received data(bytes={}) sending to {addr}",
+            data.as_ref().len()
+        );
         UdpPacket::write_tcp(&mut dst, &addr, data.as_ref()).await?;
     }
 }
@@ -160,12 +164,24 @@ pub async fn serve_udp_proxy(
 
     let task1 = {
         let socket = socket.clone();
-        spawn(async move { copy_packet_to_udp(r, &socket).await })
+        spawn(async move {
+            if let Err(e) = copy_packet_to_udp(r, &socket).await {
+                log::error!("Error serving UDP upstream: {e}")
+            }
+            log::info!("Finished serving UDP upstream");
+            Ok(())
+        })
     };
 
     let task2 = {
         let socket = socket.clone();
-        spawn(async move { copy_packet_to_stream(&socket, w).await })
+        spawn(async move {
+            if let Err(e) = copy_packet_to_stream(&socket, w).await {
+                log::error!("Error serving UDP downstrem: {e}")
+            }
+            log::info!("Finished serving UDP upstream");
+            Ok(())
+        })
     };
 
     race(task1, task2).await

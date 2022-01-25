@@ -43,7 +43,8 @@
                 "client",
                 "--remote-host=127.0.0.1",
                 "--remote-port=4200",
-                "--socks5-port=8081"
+                "--socks5-host=0.0.0.0",
+                "--socks5-port=5000"
             ],
             "env": {
                 "RUST_LOG": "debug"

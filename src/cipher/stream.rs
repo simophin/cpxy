@@ -52,7 +52,7 @@ impl<T: AsyncRead> AsyncRead for CipherStream<T> {
             Some(initial) if initial.remaining_read() > 0 => {
                 let len = min(initial.remaining_read(), buf.len());
                 buf.put_slice(&initial.read_buf()[..len]);
-                log::debug!("{}: Read {len} of initial data", p.name);
+                // log::debug!("{}: Read {len} of initial data", p.name);
                 initial.advance_read(len);
                 cx.waker().wake_by_ref();
                 return Poll::Ready(Ok(len));
@@ -62,18 +62,18 @@ impl<T: AsyncRead> AsyncRead for CipherStream<T> {
         };
 
         let result = p.inner.poll_read(cx, buf);
-        log::debug!(
-            "{}: Read: polling for underlying data, cache size: {}, result = {result:?}",
-            p.name,
-            buf.remaining_mut(),
-        );
+        // log::debug!(
+        //     "{}: Read: polling for underlying data, cache size: {}, result = {result:?}",
+        //     p.name,
+        //     buf.remaining_mut(),
+        // );
 
         if let Poll::Ready(Ok(len)) = &result {
-            log::debug!("{}: Read {} bytes", p.name, len);
+            // log::debug!("{}: Read {} bytes", p.name, len);
             if *len > 0 {
                 match p.rd_cipher.as_mut() {
                     Some(c) if c.will_modify_data() => {
-                        log::debug!("{}: Read and encrypt {len} from underlying stream", p.name);
+                        // log::debug!("{}: Read and encrypt {len} from underlying stream", p.name);
                         c.apply_keystream(&mut buf[..*len]);
                     }
 
@@ -112,20 +112,20 @@ impl<T: AsyncWrite> AsyncWrite for CipherStream<T> {
                         v => return v,
                     };
 
-                log::debug!(
-                    "{}: Cipher write, desired = {desired_write_len}, actual = {actual_written_len}, buf len = {}",
-                    this.name,
-                    buf.len(),
-                );
+                // log::debug!(
+                //     "{}: Cipher write, desired = {desired_write_len}, actual = {actual_written_len}, buf len = {}",
+                //     this.name,
+                //     buf.len(),
+                // );
 
                 if actual_written_len < desired_write_len {
                     let rewind_len = desired_write_len - actual_written_len;
-                    log::debug!("{}: Rewinding {rewind_len} bytes", this.name);
+                    // log::debug!("{}: Rewinding {rewind_len} bytes", this.name);
                     c.rewind(rewind_len);
                 }
 
                 if actual_written_len <= buf.len() {
-                    log::debug!("{}: Cipher write, wake for next write", this.name);
+                    // log::debug!("{}: Cipher write, wake for next write", this.name);
                     cx.waker().wake_by_ref();
                 }
 
@@ -140,11 +140,11 @@ impl<T: AsyncWrite> AsyncWrite for CipherStream<T> {
         };
 
         let result = this.inner.as_mut().poll_write(cx, buf);
-        log::debug!(
-            "{}: Plain write, desired = {}, result = {result:?}",
-            this.name,
-            buf.len(),
-        );
+        // log::debug!(
+        //     "{}: Plain write, desired = {}, result = {result:?}",
+        //     this.name,
+        //     buf.len(),
+        // );
         result
     }
 
