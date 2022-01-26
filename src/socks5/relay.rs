@@ -133,14 +133,14 @@ pub async fn serve_socks5_udp_direct_relay(
                 };
 
                 if should_write {
-                    if let Ok(v) = last_addr.try_write() {
+                    if let Ok(mut v) = last_addr.try_write() {
                         *v = Some(addr);
                     }
                 }
 
                 match UdpPacket::parse_udp(&buf.as_slice()[..n]) {
                     Ok(UdpPacket { addr, data, .. }) => {
-                        upstream.send_to_addr(data.as_ref(), &addr).await?
+                        upstream.send_to_addr(data.as_ref(), &addr).await?;
                     }
 
                     Err(e) => {
@@ -163,7 +163,7 @@ pub async fn serve_socks5_udp_direct_relay(
                 let (n, src_addr) = upstream
                     .recv_from(&mut buf.as_mut_slice()[payload_start..])
                     .await?;
-                let dst_addr = match last_addr.try_read() {
+                let last_addr = match last_addr.try_read() {
                     Ok(v) if v.is_some() => v.clone().unwrap(),
                     _ => {
                         log::warn!("Received data without last addr");
@@ -171,16 +171,25 @@ pub async fn serve_socks5_udp_direct_relay(
                     }
                 };
 
-                let pkt = UdpPacket {
-                    frag_no: 0,
-                    addr: Address::IP(src_addr),
-                    data: Cow::Borrowed(&buf.as_slice()[payload_start..payload_start + n]),
+                let offset = {
+                    let (hdr, payload) = buf.as_mut_slice().split_at_mut(payload_start);
+                    let payload = &payload[..n];
+
+                    let pkt = UdpPacket {
+                        frag_no: 0,
+                        addr: Address::IP(src_addr),
+                        data: Cow::Borrowed(payload),
+                    };
+
+                    let hdr_start = hdr.len() - UdpPacket::udp_header_write_len(&pkt.addr);
+                    let mut hdr = &mut hdr[hdr_start..];
+                    pkt.write_udp_header_to(&mut hdr)?;
+                    hdr_start
                 };
-                pkt.write_udp(
-                    &mut &mut buf.as_mut_slice()
-                        [payload_start - UdpPacket::udp_header_write_len(&pkt.addr)..payload_start],
-                )
-                .await?;
+
+                socks5_sock
+                    .send_to(&buf.as_slice()[offset..payload_start + n], last_addr)
+                    .await?;
             }
         })
     };

@@ -1,6 +1,6 @@
 use super::Address;
 use crate::parse::ParseError;
-use bytes::Buf;
+use bytes::{Buf, BufMut};
 use futures_lite::{AsyncWrite, AsyncWriteExt};
 use std::borrow::Cow;
 
@@ -107,6 +107,12 @@ impl<'a> UdpPacket<'a> {
         b.write_all(&[0, 0, self.frag_no]).await?;
         self.addr.write(b).await?;
         b.write_all(self.data.as_ref()).await?;
+        Ok(())
+    }
+
+    pub fn write_udp_header_to(&self, b: &mut impl BufMut) -> anyhow::Result<()> {
+        b.put_slice(&[0, 0, self.frag_no]);
+        self.addr.write_to(b)?;
         Ok(())
     }
 }

@@ -1,8 +1,10 @@
 use clap::{AppSettings, Parser, Subcommand};
 use futures_lite::future::race;
-use proxy::client::run_client;
+use proxy::client::{run_client, ClientConfig};
 use proxy::server::run_server;
 use smol::net::TcpListener;
+use std::sync::Arc;
+use std::time::Duration;
 
 /// SOCKS5 over HTTPs
 #[derive(Parser)]
@@ -89,9 +91,15 @@ fn main() -> anyhow::Result<()> {
 
                 run_client(
                     TcpListener::bind(listen_address).await?,
-                    remote_host.as_str(),
-                    remote_port,
-                    socks5_udp_host.as_str(),
+                    Arc::new(ClientConfig {
+                        local_policy: Default::default(),
+                        socks5_udp_host,
+                        upstream_policy: Default::default(),
+                        upstream_timeout: Duration::from_secs(3),
+                        upstream: format!("{remote_host}:{remote_port}")
+                            .parse()
+                            .expect("To parse remote address:port"),
+                    }),
                 )
                 .await
             }
@@ -111,9 +119,13 @@ fn main() -> anyhow::Result<()> {
                     run_server(server),
                     run_client(
                         socks_server,
-                        "localhost",
-                        listen_address.port(),
-                        socks5_udp_host.as_str(),
+                        Arc::new(ClientConfig {
+                            local_policy: Default::default(),
+                            socks5_udp_host,
+                            upstream_policy: Default::default(),
+                            upstream_timeout: Duration::from_secs(3),
+                            upstream: listen_address.into(),
+                        }),
                     ),
                 )
                 .await

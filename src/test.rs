@@ -1,13 +1,13 @@
 use crate::cipher::client::connect;
 use crate::cipher::server::listen;
 use crate::cipher::strategy::EncryptionStrategy;
-use crate::client::run_client;
-use crate::proxy::protocol::{
-    receive_proxy_request, request_proxy, send_proxy_result, ProxyRequest, ProxyResult,
-};
+use crate::client::{run_client, ClientConfig};
+use crate::proxy::protocol::{ProxyRequest, ProxyRequestType, ProxyResult};
 use crate::server::run_server;
 use crate::socks5::{Address, UdpPacket};
-use crate::utils::RWBuffer;
+use crate::utils::{
+    read_json_lengthed_async, write_json_lengthed, write_json_lengthed_async, RWBuffer,
+};
 use futures_lite::future::race;
 use futures_lite::io::split;
 use futures_lite::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
@@ -17,6 +17,7 @@ use smol::spawn;
 use smol_timeout::TimeoutExt;
 use std::borrow::Cow;
 use std::num::NonZeroUsize;
+use std::sync::Arc;
 use std::time::Duration;
 
 async fn duplex(
@@ -46,13 +47,15 @@ fn test_client_server_tcp() {
 
         let server_task = spawn(async move {
             let mut server = listen(server).await.expect("To create cipher channel");
-            let req = receive_proxy_request(&mut server)
+            let req: ProxyRequest = read_json_lengthed_async(&mut server)
                 .await
                 .expect("To receive proxy request");
 
-            assert!(matches!(req, ProxyRequest::SocksTCP(addr) if addr == Address::default()));
+            assert!(
+                matches!(req.t, ProxyRequestType::SocksTCP(addr) if addr == Address::default())
+            );
 
-            send_proxy_result(
+            write_json_lengthed_async(
                 &mut server,
                 ProxyResult::Granted {
                     bound_address: "1.2.3.4:8080".parse().unwrap(),
@@ -82,21 +85,24 @@ fn test_client_server_tcp() {
             }
         });
 
-        let (result, client) = request_proxy(
-            &ProxyRequest::SocksTCP(Default::default()),
-            move |buf| async move {
-                connect(
-                    client,
-                    "localhost",
-                    client_send_enc,
-                    client_receive_enc,
-                    buf,
-                )
-                .await
-            },
+        let proxy_request = ProxyRequest {
+            t: ProxyRequestType::SocksTCP(Default::default()),
+            policy: Default::default(),
+        };
+
+        let mut req_buf = Vec::new();
+        write_json_lengthed(&mut req_buf, &proxy_request).unwrap();
+
+        let mut client = connect(
+            client,
+            "localhost",
+            client_send_enc,
+            client_receive_enc,
+            req_buf,
         )
         .await
-        .expect("To request proxy");
+        .unwrap();
+        let result: ProxyResult = read_json_lengthed_async(&mut client).await.unwrap();
 
         assert!(
             matches!(result, ProxyResult::Granted {bound_address} if bound_address.to_string() == "1.2.3.4:8080")
@@ -177,9 +183,13 @@ fn test_client_server_udp() {
             race(
                 run_client(
                     socks5_server,
-                    server_addr.ip().to_string().as_str(),
-                    server_addr.port(),
-                    "0.0.0.0",
+                    Arc::new(ClientConfig {
+                        upstream: Address::IP(server_addr),
+                        upstream_timeout: Duration::from_secs(3),
+                        upstream_policy: Default::default(),
+                        socks5_udp_host: "0.0.0.0".to_string(),
+                        local_policy: Default::default(),
+                    }),
                 ),
                 run_server(server),
             )

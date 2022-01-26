@@ -140,7 +140,7 @@ impl<T: AsMut<[u8]> + AsRef<[u8]>> Read for RWBuffer<T> {
     fn read(&mut self, mut buf: &mut [u8]) -> std::io::Result<usize> {
         let len = min(buf.len(), self.remaining_read());
         if len > 0 {
-            buf.put_slice(&self.read_buf()[..len]);
+            buf.put_slice(&RWBuffer::read_buf(self)[..len]);
             self.advance_read(len);
         }
         return Ok(len);

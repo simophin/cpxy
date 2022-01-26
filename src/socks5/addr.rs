@@ -6,7 +6,7 @@ use std::io::Cursor;
 use std::net::{Ipv4Addr, Ipv6Addr, SocketAddr, SocketAddrV4, SocketAddrV6};
 use std::str::FromStr;
 
-use bytes::Buf;
+use bytes::{Buf, BufMut};
 use futures_lite::{AsyncWrite, AsyncWriteExt};
 use lazy_static::lazy_static;
 use regex::Regex;
@@ -66,7 +66,22 @@ impl FromStr for Address {
     }
 }
 
+impl From<SocketAddr> for Address {
+    fn from(addr: SocketAddr) -> Self {
+        Self::IP(addr)
+    }
+}
+
 impl Address {
+    pub fn is_unspecified(&self) -> bool {
+        match self {
+            Self::IP(addr) => addr.ip().is_unspecified(),
+            Self::Name { host, .. } => {
+                host.eq_ignore_ascii_case("0.0.0.0") || host.eq_ignore_ascii_case("::/128")
+            }
+        }
+    }
+
     pub fn parse(buf: &[u8]) -> Result<Option<(usize, Self)>, ParseError> {
         let mut buf = Cursor::new(buf);
         if !buf.has_remaining() {
@@ -170,6 +185,29 @@ impl Address {
             }
         }
 
+        Ok(())
+    }
+
+    pub fn write_to(&self, buf: &mut impl BufMut) -> anyhow::Result<()> {
+        match self {
+            Address::IP(SocketAddr::V4(addr)) => {
+                buf.put_u8(0x1);
+                buf.put_slice(&addr.ip().octets());
+                buf.put_u16(addr.port());
+            }
+            Address::IP(SocketAddr::V6(addr)) => {
+                buf.put_u8(0x4);
+                buf.put_slice(&addr.ip().octets());
+                buf.put_u16(addr.port());
+            }
+            Address::Name { host, port } => {
+                let host_len: u8 = host.as_bytes().len().try_into()?;
+                buf.put_u8(0x3);
+                buf.put_u8(host_len);
+                buf.put_slice(host.as_bytes());
+                buf.put_u16(*port);
+            }
+        }
         Ok(())
     }
 }

@@ -80,7 +80,7 @@ pub async fn serve_udp_proxy(
                 },
             )
             .await?;
-            Arc::new(UdpSocket::from(v))
+            Arc::new(v)
         }
         Err(e) => {
             write_json_lengthed_async(&mut src, ProxyResult::ErrGeneric { msg: e.to_string() })

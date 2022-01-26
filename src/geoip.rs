@@ -1,16 +1,18 @@
 use crate::socks5::Address;
-use bytes::Buf;
+use bincode::{Decode, Encode};
 use smol::net::resolve;
-use std::borrow::Cow;
+use std::fmt::{Debug, Display, Formatter};
 use std::mem::size_of;
 use std::net::{IpAddr, SocketAddr};
+use std::num::NonZeroU8;
 use std::ptr::slice_from_raw_parts;
+use std::str::FromStr;
 
 #[repr(C)]
 struct Record<const N: usize> {
     ip_start: [u8; N],
     ip_end: [u8; N],
-    code: [u8; 2],
+    code: [NonZeroU8; 2],
 }
 
 impl Record<4> {
@@ -54,8 +56,46 @@ fn v6_records() -> &'static [V6Record] {
     unsafe { &*slice_from_raw_parts(GEO_IPV6_DATA.as_ptr() as *const V6Record, V6_RECORD_LEN) }
 }
 
-pub type CountryCode = Cow<'static, str>;
-pub type CountryCodeOwned = String;
+#[derive(Encode, Decode, Eq, PartialEq, Copy, Clone, Hash)]
+pub struct CountryCode([NonZeroU8; 2]);
+
+impl FromStr for CountryCode {
+    type Err = ();
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        if s.as_bytes().len() != 2 {
+            return Err(());
+        }
+
+        let mut transformed = s
+            .as_bytes()
+            .iter()
+            .map(|x| unsafe { NonZeroU8::new_unchecked(x.to_ascii_uppercase()) });
+
+        Ok(Self([
+            transformed.next().unwrap(),
+            transformed.next().unwrap(),
+        ]))
+    }
+}
+
+impl CountryCode {
+    fn as_slice(&self) -> &[u8] {
+        unsafe { &*(&self.0 as *const [NonZeroU8; 2] as *const [u8; 2]) }
+    }
+}
+
+impl Debug for CountryCode {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        Display::fmt(self, f)
+    }
+}
+
+impl Display for CountryCode {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        f.write_str(String::from_utf8_lossy(self.as_slice()).as_ref())
+    }
+}
 
 pub fn find_country_by_ip(addr: &IpAddr) -> Option<CountryCode> {
     match addr {
@@ -63,10 +103,10 @@ pub fn find_country_by_ip(addr: &IpAddr) -> Option<CountryCode> {
             let records = v4_records();
             let addr = u32::from_be_bytes(addr.octets());
             match records.binary_search_by_key(&addr, |r| r.get_ip_start()) {
-                Ok(index) => Some(String::from_utf8_lossy(records[index].code.as_slice())),
+                Ok(index) => Some(CountryCode(records[index].code)),
                 Err(index) => {
                     if index > 0 && addr <= records[index - 1].get_ip_end() {
-                        Some(String::from_utf8_lossy(records[index - 1].code.as_slice()))
+                        Some(CountryCode(records[index - 1].code))
                     } else {
                         None
                     }
@@ -78,10 +118,10 @@ pub fn find_country_by_ip(addr: &IpAddr) -> Option<CountryCode> {
             let records = v6_records();
             let addr = u128::from_be_bytes(addr.octets());
             match records.binary_search_by_key(&addr, |r| r.get_ip_start()) {
-                Ok(index) => Some(String::from_utf8_lossy(records[index].code.as_slice())),
+                Ok(index) => Some(CountryCode(records[index].code)),
                 Err(index) => {
                     if index > 0 && addr <= records[index - 1].get_ip_end() {
-                        Some(String::from_utf8_lossy(records[index - 1].code.as_slice()))
+                        Some(CountryCode(records[index - 1].code))
                     } else {
                         None
                     }
@@ -104,24 +144,9 @@ pub async fn resolve_with_countries(addr: &Address) -> Vec<(SocketAddr, Option<C
     }
 }
 
-pub fn choose_country(
-    test: Option<&CountryCode>,
-    accept: &[CountryCode],
-    reject: &[CountryCode],
-) -> bool {
-    match test {
-        Some(c) => {
-            (!accept.is_empty() && accept.contains(c))
-                && (!reject.is_empty() && !reject.contains(c))
-        }
-        None => accept.is_empty(),
-    }
-}
-
 #[cfg(test)]
 mod test {
     use super::*;
-    use std::borrow::Cow;
     use std::time::Instant;
 
     #[test]
@@ -129,8 +154,8 @@ mod test {
         let needle_nz: IpAddr = "122.61.248.102".parse().unwrap();
         let needle_us: IpAddr = "2603:c022:4000:5e00:dfd8:70ee:3b1:2e52".parse().unwrap();
         let start = Instant::now();
-        assert_eq!(find_country_by_ip(&needle_nz), Some(Cow::Borrowed("NZ")));
-        assert_eq!(find_country_by_ip(&needle_us), Some(Cow::Borrowed("US")));
+        assert_eq!(find_country_by_ip(&needle_nz), Some("NZ".parse().unwrap()));
+        assert_eq!(find_country_by_ip(&needle_us), Some("US".parse().unwrap()));
 
         println!("Lookup takes {} microseconds", start.elapsed().as_micros());
 
@@ -143,7 +168,7 @@ mod test {
             println!("Resolved addresses: {addresses:?}");
             assert!(addresses
                 .iter()
-                .find(|x| x.1 == Some(Cow::Borrowed("US")))
+                .find(|x| x.1 == Some("US".parse().unwrap()))
                 .is_some());
         });
     }

@@ -30,7 +30,7 @@ impl UdpSocket {
 
     pub async fn bind(v4: bool) -> smol::io::Result<Self> {
         Ok(Self::from(
-            AsyncUdpSocket::bind(if (v4) {
+            AsyncUdpSocket::bind(if v4 {
                 SocketAddr::new(IpAddr::V4(Ipv4Addr::UNSPECIFIED), 0)
             } else {
                 SocketAddr::new(IpAddr::V6(Ipv6Addr::UNSPECIFIED), 0)
