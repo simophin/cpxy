@@ -29,10 +29,15 @@ fn parse_line<N: NumTrait>(s: &str) -> Option<(N, N, &str)> {
 }
 
 fn generate_ip_dat<N: NumTrait>(url: &str, output_file_name: &str) {
-    let res = reqwest::blocking::get(url)
-        .expect("To get CSV file")
-        .error_for_status()
-        .expect("To get successful response for CSV file");
+    let res = match ureq::get(url).call() {
+        Ok(v) if v.status() == 200 => v.into_reader(),
+        Ok(v) => {
+            panic!("Invalid response: {} for {url}", v.status());
+        }
+        Err(e) => {
+            panic!("Error getting {url}: {e}");
+        }
+    };
 
     let mut reader = BufReader::new(res);
     let mut line = String::new();

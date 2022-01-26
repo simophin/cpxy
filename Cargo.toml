@@ -34,7 +34,7 @@ serde_json = "1"
 strip = "symbols"
 
 [build-dependencies]
-reqwest = { version = "0", features = ["blocking"] }
+ureq = "2"
 num-traits = "0"
 cc = "1"
 
