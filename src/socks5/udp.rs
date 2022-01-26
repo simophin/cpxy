@@ -96,9 +96,13 @@ impl<'a> UdpPacket<'a> {
         })
     }
 
+    pub fn udp_header_write_len(addr: &Address) -> usize {
+        3 + addr.write_len()
+    }
+
     pub async fn write_udp(
         &self,
-        b: &mut (impl AsyncWrite + Unpin + Send + Sync),
+        b: &mut (impl AsyncWrite + Unpin + Send + Sync + ?Sized),
     ) -> anyhow::Result<()> {
         b.write_all(&[0, 0, self.frag_no]).await?;
         self.addr.write(b).await?;

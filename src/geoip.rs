@@ -1,7 +1,9 @@
+use crate::socks5::Address;
 use bytes::Buf;
+use smol::net::resolve;
 use std::borrow::Cow;
 use std::mem::size_of;
-use std::net::IpAddr;
+use std::net::{IpAddr, SocketAddr};
 use std::ptr::slice_from_raw_parts;
 
 #[repr(C)]
@@ -52,7 +54,9 @@ fn v6_records() -> &'static [V6Record] {
     unsafe { &*slice_from_raw_parts(GEO_IPV6_DATA.as_ptr() as *const V6Record, V6_RECORD_LEN) }
 }
 
-pub fn find_country_by_ip(addr: IpAddr) -> Option<Cow<'static, str>> {
+pub type CountryCode = Cow<'static, str>;
+
+pub fn find_country_by_ip(addr: &IpAddr) -> Option<CountryCode> {
     match addr {
         IpAddr::V4(addr) => {
             let records = v4_records();
@@ -86,6 +90,33 @@ pub fn find_country_by_ip(addr: IpAddr) -> Option<Cow<'static, str>> {
     }
 }
 
+pub async fn resolve_with_countries(addr: &Address) -> Vec<(SocketAddr, Option<CountryCode>)> {
+    match addr {
+        Address::IP(addr) => vec![(addr.clone(), find_country_by_ip(&addr.ip()))],
+        Address::Name { host, port } => resolve((host.as_str(), *port))
+            .await
+            .ok()
+            .unwrap_or_default()
+            .into_iter()
+            .map(|addr| (addr, find_country_by_ip(&addr.ip())))
+            .collect(),
+    }
+}
+
+pub fn choose_ip_addr<'a, 'b>(
+    options: impl Iterator<Item = &'a (IpAddr, CountryCode)> + 'b,
+    accept: &'a [CountryCode],
+    reject: &'a [CountryCode],
+) -> impl Iterator<Item = &'a (IpAddr, CountryCode)> + 'b
+where
+    'a: 'b,
+{
+    options.filter(|p| {
+        (!accept.is_empty() && accept.contains(&p.1))
+            && (!reject.is_empty() && !reject.contains(&p.1))
+    })
+}
+
 #[cfg(test)]
 mod test {
     use super::*;
@@ -97,9 +128,22 @@ mod test {
         let needle_nz: IpAddr = "122.61.248.102".parse().unwrap();
         let needle_us: IpAddr = "2603:c022:4000:5e00:dfd8:70ee:3b1:2e52".parse().unwrap();
         let start = Instant::now();
-        assert_eq!(find_country_by_ip(needle_nz), Some(Cow::Borrowed("NZ")));
-        assert_eq!(find_country_by_ip(needle_us), Some(Cow::Borrowed("US")));
+        assert_eq!(find_country_by_ip(&needle_nz), Some(Cow::Borrowed("NZ")));
+        assert_eq!(find_country_by_ip(&needle_us), Some(Cow::Borrowed("US")));
 
-        println!("Lookup takes {} microseconds", start.elapsed().as_micros())
+        println!("Lookup takes {} microseconds", start.elapsed().as_micros());
+
+        smol::block_on(async move {
+            let addresses = resolve_with_countries(&Address::Name {
+                host: "www.google.com".to_string(),
+                port: 443,
+            })
+            .await;
+            println!("Resolved addresses: {addresses:?}");
+            assert!(addresses
+                .iter()
+                .find(|x| x.1 == Some(Cow::Borrowed("US")))
+                .is_some());
+        });
     }
 }

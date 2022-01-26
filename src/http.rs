@@ -1,4 +1,4 @@
-use crate::proxy::handler::{send_proxy_result, ProxyResult};
+use crate::proxy::protocol::{send_proxy_result, ProxyResult};
 use crate::utils::{copy_duplex, HttpRequest};
 use anyhow::anyhow;
 use bytes::BufMut;

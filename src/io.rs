@@ -1,6 +1,8 @@
+use crate::socks5::Address;
 use futures_lite::{AsyncRead, AsyncWrite};
-use smol::net::{TcpStream as AsyncTcpStream, UdpSocket as AsyncUdpSocket};
+use smol::net::{AsyncToSocketAddrs, TcpStream as AsyncTcpStream, UdpSocket as AsyncUdpSocket};
 use std::io::{IoSlice, IoSliceMut};
+use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr};
 use std::ops::{Deref, DerefMut};
 use std::pin::Pin;
 use std::sync::atomic::{AtomicUsize, Ordering};
@@ -15,6 +17,33 @@ impl From<AsyncUdpSocket> for UdpSocket {
     fn from(s: AsyncUdpSocket) -> Self {
         UDP_SOCKET_COUNT.fetch_add(1, Ordering::Acquire);
         Self(s)
+    }
+}
+
+impl UdpSocket {
+    pub fn is_v4(&self) -> bool {
+        match self.0.local_addr() {
+            Ok(v) => v.is_ipv4(),
+            _ => true,
+        }
+    }
+
+    pub async fn bind(v4: bool) -> smol::io::Result<Self> {
+        Ok(Self::from(
+            AsyncUdpSocket::bind(if (v4) {
+                SocketAddr::new(IpAddr::V4(Ipv4Addr::UNSPECIFIED), 0)
+            } else {
+                SocketAddr::new(IpAddr::V6(Ipv6Addr::UNSPECIFIED), 0)
+            })
+            .await?,
+        ))
+    }
+
+    pub async fn send_to_addr(&self, buf: &[u8], a: &Address) -> smol::io::Result<usize> {
+        match a {
+            Address::IP(addr) => self.send_to(buf, addr).await,
+            Address::Name { host, port } => self.send_to(buf, (host.as_str(), *port)).await,
+        }
     }
 }
 
@@ -40,6 +69,28 @@ impl Drop for UdpSocket {
 }
 
 pub struct TcpStream(AsyncTcpStream);
+
+impl TcpStream {
+    pub async fn connect_raw(a: impl AsyncToSocketAddrs) -> smol::io::Result<Self> {
+        Ok(Self::from(AsyncTcpStream::connect(a).await?))
+    }
+
+    pub async fn connect(a: &Address) -> smol::io::Result<Self> {
+        match a {
+            Address::IP(addr) => Ok(TcpStream::from(AsyncTcpStream::connect(addr).await?)),
+            Address::Name { host, port } => Ok(TcpStream::from(
+                AsyncTcpStream::connect((host.as_str(), *port)).await?,
+            )),
+        }
+    }
+
+    pub fn is_v4(&self) -> bool {
+        match self.0.local_addr() {
+            Ok(v) => v.is_ipv4(),
+            _ => true,
+        }
+    }
+}
 
 impl From<AsyncTcpStream> for TcpStream {
     fn from(s: AsyncTcpStream) -> Self {

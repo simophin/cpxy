@@ -2,7 +2,7 @@ use crate::cipher::client::connect;
 use crate::cipher::server::listen;
 use crate::cipher::strategy::EncryptionStrategy;
 use crate::client::run_client;
-use crate::proxy::handler::{
+use crate::proxy::protocol::{
     receive_proxy_request, request_proxy, send_proxy_result, ProxyRequest, ProxyResult,
 };
 use crate::server::run_server;

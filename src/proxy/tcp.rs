@@ -1,4 +1,4 @@
-use crate::proxy::handler::ProxyResult;
+use crate::proxy::protocol::ProxyResult;
 use crate::socks5::Address;
 use crate::utils::copy_duplex;
 use anyhow::anyhow;
@@ -25,7 +25,7 @@ pub async fn serve_tcp_proxy(
     log::info!("Proxying upstream: {target}");
     let upstream = match prepare(&target).timeout(Duration::from_secs(3)).await {
         Some(Ok((socket, addr))) => {
-            super::handler::send_proxy_result(
+            super::protocol::send_proxy_result(
                 &mut src,
                 ProxyResult::Granted {
                     bound_address: addr,
@@ -35,11 +35,11 @@ pub async fn serve_tcp_proxy(
             socket
         }
         None => {
-            super::handler::send_proxy_result(&mut src, ProxyResult::ErrTimeout).await?;
+            super::protocol::send_proxy_result(&mut src, ProxyResult::ErrTimeout).await?;
             return Err(anyhow!("Timeout waiting {target}"));
         }
         Some(Err(e)) => {
-            super::handler::send_proxy_result(
+            super::protocol::send_proxy_result(
                 &mut src,
                 ProxyResult::ErrGeneric { msg: e.to_string() },
             )

@@ -2,7 +2,8 @@ use anyhow::anyhow;
 use bytes::BufMut;
 use futures_lite::future::race;
 use futures_lite::io::{copy, split};
-use futures_lite::{AsyncRead, AsyncWrite};
+use futures_lite::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
+use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
 use smol::spawn;
 use std::cmp::min;
@@ -178,5 +179,53 @@ impl TryFrom<httparse::Request<'_, '_>> for HttpRequest {
                 })
                 .collect(),
         })
+    }
+}
+
+pub fn write_json_lengthed(
+    buf: &mut Vec<u8>,
+    o: &(impl serde::Serialize + std::fmt::Debug),
+) -> anyhow::Result<()> {
+    let prev_len = buf.len();
+    buf.put_u16(0);
+    serde_json::to_writer(buf, o)?;
+    let written_len = buf.len() - prev_len;
+    if written_len > u16::MAX as usize {
+        return Err(anyhow!(
+            "JSON for {o:?} is too big: {written_len} > {}",
+            u16::MAX
+        ));
+    }
+
+    (&mut buf.as_mut_slice()[prev_len..]).put_u16(written_len as u16);
+    Ok(())
+}
+
+pub async fn write_json_lengthed_async(
+    w: &mut (impl AsyncWrite + Unpin),
+    o: impl serde::Serialize,
+) -> anyhow::Result<()> {
+    let data = serde_json::to_string(&o)?;
+    let len: u16 = data.as_bytes().len().try_into()?;
+    w.write_all(len.to_be_bytes().as_ref()).await?;
+    w.write_all(data.as_bytes()).await?;
+    Ok(())
+}
+
+pub async fn read_json_lengthed_async<T: DeserializeOwned>(
+    r: &mut (impl AsyncRead + Unpin),
+) -> anyhow::Result<T> {
+    let mut buf = Vec::with_capacity(512);
+    buf.resize(2, 0);
+    r.read_exact(buf.as_mut_slice()).await?;
+    let len = u16::from_be_bytes([buf[0], buf[1]]) as usize;
+    buf.resize(len, 0);
+    r.read_exact(buf.as_mut_slice()).await?;
+    match serde_json::from_slice(buf.as_slice()) {
+        Ok(v) => Ok(v),
+        Err(e) => {
+            log::error!("Error decoding json: {e}");
+            Err(e.into())
+        }
     }
 }

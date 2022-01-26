@@ -1,5 +1,6 @@
 use anyhow::anyhow;
 use serde::{Deserialize, Serialize};
+use std::borrow::Cow;
 use std::fmt::{Debug, Formatter};
 use std::io::Cursor;
 use std::net::{Ipv4Addr, Ipv6Addr, SocketAddr, SocketAddrV4, SocketAddrV6};
@@ -23,6 +24,13 @@ impl Address {
         match self {
             Self::IP(addr) => addr.port(),
             Self::Name { port, .. } => *port,
+        }
+    }
+
+    pub fn get_host(&self) -> Cow<str> {
+        match self {
+            Self::IP(addr) => Cow::Owned(addr.ip().to_string()),
+            Self::Name { host, .. } => Cow::Borrowed(host.as_str()),
         }
     }
 }
@@ -131,9 +139,17 @@ impl Address {
         }
     }
 
+    pub fn write_len(&self) -> usize {
+        1 + match self {
+            Self::IP(SocketAddr::V4(_)) => 4,
+            Self::IP(SocketAddr::V6(_)) => 16,
+            Self::Name { host, .. } => 1 + host.as_bytes().len(),
+        } + 2
+    }
+
     pub async fn write(
         &self,
-        buf: &mut (impl AsyncWrite + Unpin + Send + Sync),
+        buf: &mut (impl AsyncWrite + Unpin + Send + Sync + ?Sized),
     ) -> anyhow::Result<()> {
         match self {
             Address::IP(SocketAddr::V4(addr)) => {

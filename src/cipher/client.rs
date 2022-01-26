@@ -16,8 +16,7 @@ pub async fn connect<T: AsyncRead + AsyncWrite + Unpin>(
     host: &str,
     send_strategy: EncryptionStrategy,
     receive_strategy: EncryptionStrategy,
-    // This buffer can contain initial data to send along with connection header
-    mut buf: RWBuffer,
+    mut initial_data: Vec<u8>,
 ) -> anyhow::Result<impl AsyncRead + AsyncWrite + Unpin> {
     let (cipher_type, mut wr_cipher, key, iv) = super::suite::pick_cipher();
     wr_cipher = send_strategy.wrap_cipher(wr_cipher);
@@ -39,13 +38,15 @@ pub async fn connect<T: AsyncRead + AsyncWrite + Unpin>(
         .await?;
 
     // Send initial data encrypted
-    if buf.remaining_read() > 0 {
-        wr_cipher.apply_keystream(buf.read_buf_mut());
-        stream.write_all(buf.read_buf()).await?;
-        buf.consume_read();
+    if initial_data.len() > 0 {
+        wr_cipher.apply_keystream(initial_data.as_mut_slice());
+        stream.write_all(initial_data.as_slice()).await?;
+        initial_data.clear();
     }
 
     // Parse and check response
+    initial_data.resize(1024, 0);
+    let mut buf = RWBuffer::from(initial_data);
     loop {
         match stream.read(buf.write_buf()).await? {
             0 => return Err(anyhow!("Unexpected EOF")),

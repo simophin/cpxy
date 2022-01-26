@@ -4,7 +4,7 @@ use smol::spawn;
 
 use crate::http::serve_http_proxy;
 use crate::io::TcpStream;
-use crate::proxy::handler::{receive_proxy_request, ProxyRequest};
+use crate::proxy::protocol::ProxyRequest;
 use crate::proxy::tcp::serve_tcp_proxy;
 use crate::proxy::udp::serve_udp_proxy;
 

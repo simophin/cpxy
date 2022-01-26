@@ -1,5 +1,5 @@
 use crate::parse::ParseError;
-use crate::proxy::handler::{ProxyRequest, ProxyResult};
+use crate::proxy::protocol::{ProxyRequest, ProxyResult};
 use crate::socks5::{
     Address, ClientConnRequest, ClientGreeting, Command, ConnStatusCode, AUTH_NOT_ACCEPTED,
     AUTH_NO_PASSWORD,
@@ -7,6 +7,8 @@ use crate::socks5::{
 use crate::utils::{HttpRequest, RWBuffer};
 use anyhow::anyhow;
 use futures_lite::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
+use futures_util::AsyncWriteExt;
+use std::net::SocketAddr;
 use std::str::FromStr;
 
 struct SocksState {
@@ -120,34 +122,31 @@ impl Handshaker {
         }
     }
 
-    pub async fn respond(
+    pub async fn respond_ok(
         self,
         stream: &mut (impl AsyncWrite + Send + Sync + Unpin),
-        result: ProxyResult,
+        bound_address: SocketAddr,
     ) -> anyhow::Result<()> {
-        match self.is_socks {
-            true => {
-                let (addr, code) = match result {
-                    ProxyResult::Granted { bound_address } => {
-                        (Address::IP(bound_address), ConnStatusCode::GRANTED)
-                    }
-                    _ => (Default::default(), ConnStatusCode::FAILED),
-                };
-                ClientConnRequest::respond(stream, code, &addr).await?;
-                Ok(())
-            }
-            false => match result {
-                ProxyResult::Granted { .. } => {
-                    stream.write_all(b"HTTP/1.1 200 OK\r\n\r\n").await?;
-                    Ok(())
-                }
-                _ => {
-                    stream
-                        .write_all(b"HTTP/1.1 500 Internal server error")
-                        .await?;
-                    Ok(())
-                }
-            },
+        if self.is_socks {
+            ClientConnRequest::respond(stream, ConnStatusCode::GRANTED, &Address::IP(bound_address))
+                .await
+        } else {
+            stream.write_all(b"HTTP/1.1 200 OK\r\n\r\n").await?;
+            Ok(())
+        }
+    }
+
+    pub async fn respond_err(
+        self,
+        stream: &mut (impl AsyncWrite + Send + Sync + Unpin),
+    ) -> anyhow::Result<()> {
+        if self.is_socks {
+            ClientConnRequest::respond(stream, ConnStatusCode::FAILED, &Default::default()).await
+        } else {
+            stream
+                .write_all(b"HTTP/1.1 500 Internal server error\r\n\r\n")
+                .await?;
+            Ok(())
         }
     }
 }
