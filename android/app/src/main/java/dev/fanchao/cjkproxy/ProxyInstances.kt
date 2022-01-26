@@ -13,20 +13,22 @@ sealed interface ProxyState {
     object Stopped : ProxyState
 }
 
+//language=json
 const val remotePolicy = """
     {
-        reject: [
+        "reject": [
             {
                 "type": "Country",
-                "codes": ["CN"],
+                "codes": ["CN"]
             },
             {
-                "type": "PrivateIP
+                "type": "PrivateIP"
             }
         ]
     }
 """
 
+//language=json
 const val localPolicy = """
     {
         "prefer": {
