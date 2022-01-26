@@ -1,17 +1,15 @@
 use crate::io::UdpSocket;
 use crate::proxy::protocol::ProxyResult;
 use crate::socks5::{Address, UdpPacket};
-use crate::utils::RWBuffer;
+use crate::utils::{write_json_lengthed_async, RWBuffer};
 use anyhow::anyhow;
 use futures_lite::future::race;
 use futures_lite::io::split;
 use futures_lite::{AsyncRead, AsyncReadExt, AsyncWrite};
-use smol::net::UdpSocket as AsyncUdpSocket;
 use smol::spawn;
 use smol_timeout::TimeoutExt;
 use std::fmt::Write;
-use std::net::SocketAddr;
-use std::sync::{Arc, RwLock};
+use std::sync::Arc;
 use std::time::Duration;
 
 async fn copy_stream_to_udp(
@@ -67,11 +65,12 @@ async fn copy_udp_to_stream(
 
 pub async fn serve_udp_proxy(
     mut src: impl AsyncRead + AsyncWrite + Unpin + Send + Sync + 'static,
+    is_v4: bool,
 ) -> anyhow::Result<()> {
     log::info!("Proxying UDP upstream");
-    let socket = match AsyncUdpSocket::bind("0.0.0.0:0").await {
+    let socket = match UdpSocket::bind(is_v4).await {
         Ok(v) => {
-            super::protocol::send_proxy_result(
+            write_json_lengthed_async(
                 &mut src,
                 ProxyResult::Granted {
                     bound_address: v
@@ -84,11 +83,8 @@ pub async fn serve_udp_proxy(
             Arc::new(UdpSocket::from(v))
         }
         Err(e) => {
-            super::protocol::send_proxy_result(
-                &mut src,
-                ProxyResult::ErrGeneric { msg: e.to_string() },
-            )
-            .await?;
+            write_json_lengthed_async(&mut src, ProxyResult::ErrGeneric { msg: e.to_string() })
+                .await?;
             return Err(e.into());
         }
     };

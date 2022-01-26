@@ -165,7 +165,7 @@ async fn serve_proxy_client(
             }
         }
         (Ok((ProxyResult::ErrHostRejected { resolved }, ..)), rt::SocksUDP(addr)) => {
-            log::info!("Connecting to udp://{addr} directly");
+            log::info!("Connecting to udp://{addr:?} directly");
             todo!()
         }
         (Err(e), _) => {

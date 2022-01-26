@@ -1,17 +1,16 @@
 use anyhow::anyhow;
 use std::net::{IpAddr, SocketAddr};
 
-use futures_lite::{AsyncWrite, AsyncWriteExt};
-use serde::{Deserialize, Serialize};
+use bincode::{Decode, Encode};
 use std::io::Write;
 use url::Url;
 
-use crate::geoip::CountryCode;
+use crate::geoip::{CountryCode, CountryCodeOwned};
 use crate::socks5::Address;
 
 type Headers = Vec<u8>;
 
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Encode, Decode, Debug)]
 pub enum ProxyRequestType {
     SocksTCP(Address),
     SocksUDP(Option<Address>),
@@ -72,20 +71,20 @@ impl ProxyRequestType {
     }
 }
 
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Encode, Decode, Debug)]
 pub struct ProxyRequest {
     pub t: ProxyRequestType,
-    pub reject: Vec<CountryCode>,
-    pub accept: Vec<CountryCode>,
+    pub reject: Vec<CountryCodeOwned>,
+    pub accept: Vec<CountryCodeOwned>,
 }
 
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Encode, Decode, Debug)]
 pub enum ProxyResult {
     Granted {
         bound_address: SocketAddr,
     },
     ErrHostRejected {
-        resolved: Vec<(IpAddr, CountryCode)>,
+        resolved: Vec<(IpAddr, Option<CountryCodeOwned>)>,
     },
     ErrHostNotFound,
     ErrTimeout,

@@ -55,6 +55,7 @@ fn v6_records() -> &'static [V6Record] {
 }
 
 pub type CountryCode = Cow<'static, str>;
+pub type CountryCodeOwned = String;
 
 pub fn find_country_by_ip(addr: &IpAddr) -> Option<CountryCode> {
     match addr {
@@ -103,18 +104,18 @@ pub async fn resolve_with_countries(addr: &Address) -> Vec<(SocketAddr, Option<C
     }
 }
 
-pub fn choose_ip_addr<'a, 'b>(
-    options: impl Iterator<Item = &'a (IpAddr, CountryCode)> + 'b,
-    accept: &'a [CountryCode],
-    reject: &'a [CountryCode],
-) -> impl Iterator<Item = &'a (IpAddr, CountryCode)> + 'b
-where
-    'a: 'b,
-{
-    options.filter(|p| {
-        (!accept.is_empty() && accept.contains(&p.1))
-            && (!reject.is_empty() && !reject.contains(&p.1))
-    })
+pub fn choose_country(
+    test: Option<&CountryCode>,
+    accept: &[CountryCode],
+    reject: &[CountryCode],
+) -> bool {
+    match test {
+        Some(c) => {
+            (!accept.is_empty() && accept.contains(c))
+                && (!reject.is_empty() && !reject.contains(c))
+        }
+        None => accept.is_empty(),
+    }
 }
 
 #[cfg(test)]

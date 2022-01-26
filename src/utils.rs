@@ -1,10 +1,9 @@
 use anyhow::anyhow;
+use bincode::{Decode, Encode};
 use bytes::BufMut;
 use futures_lite::future::race;
 use futures_lite::io::{copy, split};
 use futures_lite::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
-use serde::de::DeserializeOwned;
-use serde::{Deserialize, Serialize};
 use smol::spawn;
 use std::cmp::min;
 use std::io::{Read, Write};
@@ -148,53 +147,13 @@ impl<T: AsMut<[u8]> + AsRef<[u8]>> Read for RWBuffer<T> {
     }
 }
 
-#[derive(Serialize, Deserialize, Debug)]
-pub struct HttpRequest {
-    pub method: String,
-    pub path: String,
-    pub headers: Vec<(String, String)>,
-}
-
-impl TryFrom<httparse::Request<'_, '_>> for HttpRequest {
-    type Error = anyhow::Error;
-
-    fn try_from(req: httparse::Request<'_, '_>) -> Result<Self, Self::Error> {
-        Ok(HttpRequest {
-            method: req
-                .method
-                .map(|x| x.to_string())
-                .ok_or_else(|| anyhow!("Missing method"))?,
-            path: req
-                .path
-                .map(|x| x.to_string())
-                .ok_or_else(|| anyhow!("Missing path"))?,
-            headers: req
-                .headers
-                .iter()
-                .map(|x| {
-                    (
-                        x.name.to_string(),
-                        String::from_utf8_lossy(x.value).to_string(),
-                    )
-                })
-                .collect(),
-        })
-    }
-}
-
-pub fn write_json_lengthed(
-    buf: &mut Vec<u8>,
-    o: &(impl serde::Serialize + std::fmt::Debug),
-) -> anyhow::Result<()> {
+pub fn write_json_lengthed(buf: &mut Vec<u8>, o: impl Encode) -> anyhow::Result<()> {
     let prev_len = buf.len();
     buf.put_u16(0);
-    serde_json::to_writer(buf, o)?;
+    bincode::encode_into_std_write(o, buf, bincode::config::standard())?;
     let written_len = buf.len() - prev_len;
     if written_len > u16::MAX as usize {
-        return Err(anyhow!(
-            "JSON for {o:?} is too big: {written_len} > {}",
-            u16::MAX
-        ));
+        return Err(anyhow!("Object is too big: {written_len} > {}", u16::MAX));
     }
 
     (&mut buf.as_mut_slice()[prev_len..]).put_u16(written_len as u16);
@@ -203,16 +162,16 @@ pub fn write_json_lengthed(
 
 pub async fn write_json_lengthed_async(
     w: &mut (impl AsyncWrite + Unpin),
-    o: impl serde::Serialize,
+    o: impl Encode,
 ) -> anyhow::Result<()> {
-    let data = serde_json::to_string(&o)?;
-    let len: u16 = data.as_bytes().len().try_into()?;
+    let data = bincode::encode_to_vec(o, bincode::config::standard())?;
+    let len: u16 = data.len().try_into()?;
     w.write_all(len.to_be_bytes().as_ref()).await?;
-    w.write_all(data.as_bytes()).await?;
+    w.write_all(data.as_slice()).await?;
     Ok(())
 }
 
-pub async fn read_json_lengthed_async<T: DeserializeOwned>(
+pub async fn read_json_lengthed_async<T: Decode>(
     r: &mut (impl AsyncRead + Unpin),
 ) -> anyhow::Result<T> {
     let mut buf = Vec::with_capacity(512);
@@ -221,8 +180,8 @@ pub async fn read_json_lengthed_async<T: DeserializeOwned>(
     let len = u16::from_be_bytes([buf[0], buf[1]]) as usize;
     buf.resize(len, 0);
     r.read_exact(buf.as_mut_slice()).await?;
-    match serde_json::from_slice(buf.as_slice()) {
-        Ok(v) => Ok(v),
+    match bincode::decode_from_slice(buf.as_slice(), bincode::config::standard()) {
+        Ok((v, _)) => Ok(v),
         Err(e) => {
             log::error!("Error decoding json: {e}");
             Err(e.into())

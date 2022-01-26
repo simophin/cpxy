@@ -1,5 +1,5 @@
 use anyhow::anyhow;
-use serde::{Deserialize, Serialize};
+use bincode::{Decode, Encode};
 use std::borrow::Cow;
 use std::fmt::{Debug, Formatter};
 use std::io::Cursor;
@@ -13,7 +13,7 @@ use regex::Regex;
 
 use crate::parse::ParseError;
 
-#[derive(Debug, Eq, PartialEq, Clone, Serialize, Deserialize)]
+#[derive(Debug, Eq, PartialEq, Clone, Encode, Decode)]
 pub enum Address {
     IP(SocketAddr),
     Name { host: String, port: u16 },
