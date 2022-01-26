@@ -13,6 +13,28 @@ sealed interface ProxyState {
     object Stopped : ProxyState
 }
 
+const val remotePolicy = """
+    {
+        reject: [
+            {
+                "type": "Country",
+                "codes": ["CN"],
+            },
+            {
+                "type": "PrivateIP
+            }
+        ]
+    }
+"""
+
+const val localPolicy = """
+    {
+        "prefer": {
+            "CN": 1
+        }
+    }
+"""
+
 class ProxyInstances : Closeable {
     private var instances = emptyMap<ProxyConfiguration, ProxyState>()
     private val notification = BehaviorSubject.createDefault(Unit)
@@ -32,7 +54,7 @@ class ProxyInstances : Closeable {
             }
             else {
                 try {
-                    ProxyState.Running(CJKProxy.start(c.remoteHost, c.remotePort, c.socksHost, c.socksPort, c.socksUdpHost, "{}")).apply {
+                    ProxyState.Running(CJKProxy.start(c.remoteHost, c.remotePort, c.socksHost, c.socksPort, c.socksUdpHost, localPolicy, remotePolicy)).apply {
                         Log.d("ProxyInstances", "Started $c")
                     }
                 } catch (ec: Throwable) {

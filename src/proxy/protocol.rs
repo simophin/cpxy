@@ -19,14 +19,14 @@ pub enum ProxyRequestType {
 #[derive(Encode, Decode, Debug, Clone, Deserialize, Serialize)]
 #[serde(tag = "type")]
 pub enum IPPolicyRule {
-    Country(Vec<CountryCode>),
+    Country { codes: Vec<CountryCode> },
     PrivateIP,
 }
 
 impl IPPolicyRule {
     pub fn matches(&self, ip: &IpAddr, cc: CountryCode) -> bool {
         match self {
-            IPPolicyRule::Country(codes) => codes.contains(&cc),
+            IPPolicyRule::Country { codes } => codes.contains(&cc),
             IPPolicyRule::PrivateIP => !ip.is_global(),
         }
     }
