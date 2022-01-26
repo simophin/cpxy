@@ -20,7 +20,7 @@ use std::num::NonZeroUsize;
 use std::sync::Arc;
 use std::time::Duration;
 
-async fn duplex(
+pub async fn duplex(
     _: usize,
 ) -> (
     impl AsyncRead + AsyncWrite + Unpin + Send + Sync + 'static,
@@ -39,6 +39,7 @@ async fn duplex(
 
 #[test]
 fn test_client_server_tcp() {
+    let _ = env_logger::builder().is_test(true).try_init();
     smol::block_on(async move {
         let (client, server) = duplex(512).await;
 
@@ -156,6 +157,7 @@ async fn read_exact_n<T: AsyncRead + Unpin + Send + Sync, const N: usize>(
 
 #[test]
 fn test_client_server_udp() {
+    let _ = env_logger::builder().is_test(true).try_init();
     smol::block_on(async move {
         let udp_upstream = UdpSocket::bind("0.0.0.0:0").await.unwrap();
         let udp_upstream_addr = udp_upstream.local_addr().unwrap();

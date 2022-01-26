@@ -120,3 +120,74 @@ pub async fn listen<T: AsyncRead + AsyncWrite + Unpin>(
         Some(buf),
     ))
 }
+
+#[cfg(test)]
+mod test {
+    use super::*;
+    use crate::cipher::client::connect;
+    use crate::test::duplex;
+    use rand::RngCore;
+    use smol::spawn;
+
+    #[test]
+    fn test_cipher_server() {
+        smol::block_on(async move {
+            let (client, server) = duplex(256).await;
+            let server_task = spawn(async move {
+                let mut server = listen(server).await.expect("To listen");
+                let mut buf = vec![0u8; 256];
+                loop {
+                    let n = match server
+                        .read(buf.as_mut_slice())
+                        .await
+                        .expect("To read cipher stream")
+                    {
+                        0 => break,
+                        v => v,
+                    };
+
+                    server
+                        .write_all(&buf.as_slice()[..n])
+                        .await
+                        .expect("To reply to client");
+                }
+            });
+
+            let data = b"hello, world";
+            let mut client = connect(
+                client,
+                "localhost",
+                EncryptionStrategy::FirstN(5.try_into().unwrap()),
+                EncryptionStrategy::Always,
+                data.to_vec(),
+            )
+            .await
+            .expect("To connect to server");
+
+            let mut buf = Vec::new();
+
+            buf.resize(data.len(), 0);
+            client
+                .read_exact(buf.as_mut_slice())
+                .await
+                .expect("To read server response");
+            assert_eq!(buf, data);
+
+            let mut data = vec![0u8; 65536];
+            rand::thread_rng().fill_bytes(data.as_mut_slice());
+            client
+                .write_all(data.as_slice())
+                .await
+                .expect("To write to server");
+            buf.resize(data.len(), 0);
+            client
+                .read_exact(buf.as_mut_slice())
+                .await
+                .expect("To read second server response");
+            assert_eq!(buf, data);
+
+            drop(client);
+            let _ = server_task.cancel();
+        });
+    }
+}

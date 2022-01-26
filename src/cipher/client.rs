@@ -45,8 +45,8 @@ pub async fn connect<T: AsyncRead + AsyncWrite + Unpin>(
     }
 
     // Parse and check response
-    initial_data.resize(1024, 0);
-    let mut buf = RWBuffer::from(initial_data);
+    initial_data.resize(1024, 0); // Reuse this vector
+    let mut buf = RWBuffer::new(initial_data);
     loop {
         match stream.read(buf.write_buf()).await? {
             0 => return Err(anyhow!("Unexpected EOF")),

@@ -1,6 +1,6 @@
 use anyhow::anyhow;
 use bincode::{Decode, Encode};
-use bytes::BufMut;
+use bytes::{Buf, BufMut};
 use futures_lite::future::race;
 use futures_lite::io::{copy, split};
 use futures_lite::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
@@ -33,20 +33,18 @@ impl Default for RWBuffer<Vec<u8>> {
     }
 }
 
-impl From<Vec<u8>> for RWBuffer<Vec<u8>> {
-    fn from(buf: Vec<u8>) -> Self {
-        Self {
-            read_cursor: 0,
-            write_cursor: buf.len(),
-            buf,
-        }
-    }
-}
-
 impl RWBuffer<Vec<u8>> {
     pub fn with_capacity(size: usize) -> Self {
         Self {
             buf: vec![0; size],
+            read_cursor: 0,
+            write_cursor: 0,
+        }
+    }
+
+    pub fn new(buf: Vec<u8>) -> Self {
+        Self {
+            buf,
             read_cursor: 0,
             write_cursor: 0,
         }
@@ -151,7 +149,7 @@ pub fn write_json_lengthed(buf: &mut Vec<u8>, o: impl Encode) -> anyhow::Result<
     let prev_len = buf.len();
     buf.put_u16(0);
     bincode::encode_into_std_write(o, buf, bincode::config::standard())?;
-    let written_len = buf.len() - prev_len;
+    let written_len = buf.len() - prev_len - 2;
     if written_len > u16::MAX as usize {
         return Err(anyhow!("Object is too big: {written_len} > {}", u16::MAX));
     }
@@ -177,7 +175,7 @@ pub async fn read_json_lengthed_async<T: Decode>(
     let mut buf = Vec::with_capacity(512);
     buf.resize(2, 0);
     r.read_exact(buf.as_mut_slice()).await?;
-    let len = u16::from_be_bytes([buf[0], buf[1]]) as usize;
+    let len = buf.as_slice().get_u16() as usize;
     buf.resize(len, 0);
     r.read_exact(buf.as_mut_slice()).await?;
     match bincode::decode_from_slice(buf.as_slice(), bincode::config::standard()) {
@@ -186,5 +184,27 @@ pub async fn read_json_lengthed_async<T: Decode>(
             log::error!("Error decoding json: {e}");
             Err(e.into())
         }
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use super::*;
+
+    #[test]
+    fn test_lengthed_encoding() {
+        smol::block_on(async move {
+            let data = "hello, world";
+            let mut buf = Vec::<u8>::new();
+            write_json_lengthed(&mut buf, data).unwrap();
+
+            let expected: String = read_json_lengthed_async(&mut buf.as_slice()).await.unwrap();
+            assert_eq!(expected, data);
+
+            buf.clear();
+            write_json_lengthed_async(&mut buf, data).await.unwrap();
+            let expected: String = read_json_lengthed_async(&mut buf.as_slice()).await.unwrap();
+            assert_eq!(expected, data);
+        });
     }
 }
