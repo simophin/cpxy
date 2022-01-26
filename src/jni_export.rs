@@ -59,38 +59,34 @@ pub extern "system" fn Java_dev_fanchao_CJKProxy_start(
         }
     };
 
+    let config = Arc::new(ClientConfig {
+        upstream: match format!("{upstream_host}:{upstream_port}").parse() {
+            Ok(v) => v,
+            Err(e) => {
+                let _ = env.throw_new(
+                    "java/lang/RuntimeException",
+                    format!("Upstream address {upstream_host}:{upstream_port} is invalid: {e}"),
+                );
+                return 0;
+            }
+        },
+        upstream_timeout: Duration::from_secs(3),
+        upstream_policy: match serde_json::from_str(upstream_ip_policy.as_str()) {
+            Ok(v) => v,
+            Err(e) => {
+                let _ = env.throw_new(
+                    "java/lang/RuntimeException",
+                    format!("Invalid upstream policy: {e}"),
+                );
+                return 0;
+            }
+        },
+        socks5_udp_host,
+        local_policy: Default::default(),
+    });
+
     Box::leak(Box::new(Instance(spawn(async move {
-        run_client(
-            listener,
-            Arc::new(ClientConfig {
-                upstream: match format!("{upstream_host}:{upstream_port}").parse() {
-                    Ok(v) => v,
-                    Err(e) => {
-                        let _ = env.throw_new(
-                            "java/lang/RuntimeException",
-                            format!(
-                                "Upstream address {upstream_host}:{upstream_port} is invalid: {e}"
-                            ),
-                        );
-                        return 0;
-                    }
-                },
-                upstream_timeout: Duration::from_secs(3),
-                upstream_policy: match serde_json::from_str(upstream_ip_policy.as_str()) {
-                    Ok(v) => v,
-                    Err(e) => {
-                        let _ = env.throw_new(
-                            "java/lang/RuntimeException",
-                            format!("Invalid upstream policy: {e}"),
-                        );
-                        return 0;
-                    }
-                },
-                socks5_udp_host,
-                local_policy: Default::default(),
-            }),
-        )
-        .await
+        run_client(listener, config).await
     })))) as *mut Instance as jlong
 }
 
