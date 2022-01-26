@@ -1,5 +1,7 @@
 use crate::socks5::Address;
 use bincode::{Decode, Encode};
+use serde::de::{Deserialize, Error, Visitor};
+use serde::{Deserializer, Serialize, Serializer};
 use smol::net::resolve;
 use std::fmt::{Debug, Display, Formatter};
 use std::mem::size_of;
@@ -58,6 +60,44 @@ fn v6_records() -> &'static [V6Record] {
 
 #[derive(Encode, Decode, Eq, PartialEq, Copy, Clone, Hash)]
 pub struct CountryCode([NonZeroU8; 2]);
+
+impl Serialize for CountryCode {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        serializer.serialize_str(String::from_utf8_lossy(self.as_slice()).as_ref())
+    }
+}
+
+struct CountryCodeVisitor;
+
+impl<'de> Visitor<'de> for CountryCodeVisitor {
+    type Value = CountryCode;
+
+    fn expecting(&self, formatter: &mut Formatter) -> std::fmt::Result {
+        write!(formatter, "a string with two characters")
+    }
+
+    fn visit_str<E>(self, v: &str) -> Result<Self::Value, E>
+    where
+        E: Error,
+    {
+        match v.parse::<Self::Value>() {
+            Ok(v) => Ok(v),
+            Err(()) => return Err(serde::de::Error::custom("Invalid country code")),
+        }
+    }
+}
+
+impl<'de> Deserialize<'de> for CountryCode {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        deserializer.deserialize_str(CountryCodeVisitor)
+    }
+}
 
 impl FromStr for CountryCode {
     type Err = ();
@@ -171,5 +211,14 @@ mod test {
                 .find(|x| x.1 == Some("US".parse().unwrap()))
                 .is_some());
         });
+    }
+
+    #[test]
+    fn test_json() {
+        let code: CountryCode = "NZ".parse().unwrap();
+        let v = serde_json::to_string(&code).unwrap();
+        assert_eq!(v, "\"NZ\"");
+        let expect: CountryCode = serde_json::from_str(v.as_str()).unwrap();
+        assert_eq!(expect, code);
     }
 }

@@ -145,7 +145,7 @@ impl<T: AsMut<[u8]> + AsRef<[u8]>> Read for RWBuffer<T> {
     }
 }
 
-pub fn write_json_lengthed(buf: &mut Vec<u8>, o: impl Encode) -> anyhow::Result<()> {
+pub fn write_bincode_lengthed(buf: &mut Vec<u8>, o: impl Encode) -> anyhow::Result<()> {
     let prev_len = buf.len();
     buf.put_u16(0);
     bincode::encode_into_std_write(o, buf, bincode::config::standard())?;
@@ -158,7 +158,7 @@ pub fn write_json_lengthed(buf: &mut Vec<u8>, o: impl Encode) -> anyhow::Result<
     Ok(())
 }
 
-pub async fn write_json_lengthed_async(
+pub async fn write_bincode_lengthed_async(
     w: &mut (impl AsyncWrite + Unpin),
     o: impl Encode,
 ) -> anyhow::Result<()> {
@@ -169,7 +169,7 @@ pub async fn write_json_lengthed_async(
     Ok(())
 }
 
-pub async fn read_json_lengthed_async<T: Decode>(
+pub async fn read_bincode_lengthed_async<T: Decode>(
     r: &mut (impl AsyncRead + Unpin),
 ) -> anyhow::Result<T> {
     let mut buf = Vec::with_capacity(512);
@@ -196,14 +196,18 @@ mod test {
         smol::block_on(async move {
             let data = "hello, world";
             let mut buf = Vec::<u8>::new();
-            write_json_lengthed(&mut buf, data).unwrap();
+            write_bincode_lengthed(&mut buf, data).unwrap();
 
-            let expected: String = read_json_lengthed_async(&mut buf.as_slice()).await.unwrap();
+            let expected: String = read_bincode_lengthed_async(&mut buf.as_slice())
+                .await
+                .unwrap();
             assert_eq!(expected, data);
 
             buf.clear();
-            write_json_lengthed_async(&mut buf, data).await.unwrap();
-            let expected: String = read_json_lengthed_async(&mut buf.as_slice()).await.unwrap();
+            write_bincode_lengthed_async(&mut buf, data).await.unwrap();
+            let expected: String = read_bincode_lengthed_async(&mut buf.as_slice())
+                .await
+                .unwrap();
             assert_eq!(expected, data);
         });
     }

@@ -1,7 +1,7 @@
 use crate::io::UdpSocket;
 use crate::proxy::protocol::ProxyResult;
 use crate::socks5::{Address, UdpPacket};
-use crate::utils::{write_json_lengthed_async, RWBuffer};
+use crate::utils::{write_bincode_lengthed_async, RWBuffer};
 use anyhow::anyhow;
 use futures_lite::future::race;
 use futures_lite::io::split;
@@ -70,7 +70,7 @@ pub async fn serve_udp_proxy(
     log::info!("Proxying UDP upstream");
     let socket = match UdpSocket::bind(is_v4).await {
         Ok(v) => {
-            write_json_lengthed_async(
+            write_bincode_lengthed_async(
                 &mut src,
                 ProxyResult::Granted {
                     bound_address: v
@@ -83,7 +83,7 @@ pub async fn serve_udp_proxy(
             Arc::new(v)
         }
         Err(e) => {
-            write_json_lengthed_async(&mut src, ProxyResult::ErrGeneric { msg: e.to_string() })
+            write_bincode_lengthed_async(&mut src, ProxyResult::ErrGeneric { msg: e.to_string() })
                 .await?;
             return Err(e.into());
         }

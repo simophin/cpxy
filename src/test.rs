@@ -6,7 +6,7 @@ use crate::proxy::protocol::{ProxyRequest, ProxyRequestType, ProxyResult};
 use crate::server::run_server;
 use crate::socks5::{Address, UdpPacket};
 use crate::utils::{
-    read_json_lengthed_async, write_json_lengthed, write_json_lengthed_async, RWBuffer,
+    read_bincode_lengthed_async, write_bincode_lengthed, write_bincode_lengthed_async, RWBuffer,
 };
 use futures_lite::future::race;
 use futures_lite::io::split;
@@ -48,7 +48,7 @@ fn test_client_server_tcp() {
 
         let server_task = spawn(async move {
             let mut server = listen(server).await.expect("To create cipher channel");
-            let req: ProxyRequest = read_json_lengthed_async(&mut server)
+            let req: ProxyRequest = read_bincode_lengthed_async(&mut server)
                 .await
                 .expect("To receive proxy request");
 
@@ -56,7 +56,7 @@ fn test_client_server_tcp() {
                 matches!(req.t, ProxyRequestType::SocksTCP(addr) if addr == Address::default())
             );
 
-            write_json_lengthed_async(
+            write_bincode_lengthed_async(
                 &mut server,
                 ProxyResult::Granted {
                     bound_address: "1.2.3.4:8080".parse().unwrap(),
@@ -92,7 +92,7 @@ fn test_client_server_tcp() {
         };
 
         let mut req_buf = Vec::new();
-        write_json_lengthed(&mut req_buf, &proxy_request).unwrap();
+        write_bincode_lengthed(&mut req_buf, &proxy_request).unwrap();
 
         let mut client = connect(
             client,
@@ -103,7 +103,7 @@ fn test_client_server_tcp() {
         )
         .await
         .unwrap();
-        let result: ProxyResult = read_json_lengthed_async(&mut client).await.unwrap();
+        let result: ProxyResult = read_bincode_lengthed_async(&mut client).await.unwrap();
 
         assert!(
             matches!(result, ProxyResult::Granted {bound_address} if bound_address.to_string() == "1.2.3.4:8080")

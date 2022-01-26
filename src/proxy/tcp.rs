@@ -1,6 +1,6 @@
 use crate::io::TcpStream;
 use crate::proxy::protocol::ProxyResult;
-use crate::utils::{copy_duplex, write_json_lengthed_async};
+use crate::utils::{copy_duplex, write_bincode_lengthed_async};
 use anyhow::anyhow;
 use futures_lite::{AsyncRead, AsyncWrite, AsyncWriteExt};
 use smol_timeout::TimeoutExt;
@@ -18,15 +18,15 @@ async fn serve_tcp_proxy_common(
 ) -> anyhow::Result<()> {
     let upstream = match s {
         Some(Ok((bound_address, socket))) => {
-            write_json_lengthed_async(&mut src, ProxyResult::Granted { bound_address }).await?;
+            write_bincode_lengthed_async(&mut src, ProxyResult::Granted { bound_address }).await?;
             socket
         }
         None => {
-            write_json_lengthed_async(&mut src, ProxyResult::ErrTimeout).await?;
+            write_bincode_lengthed_async(&mut src, ProxyResult::ErrTimeout).await?;
             return Err(anyhow!("Timeout waiting for upstream"));
         }
         Some(Err(e)) => {
-            write_json_lengthed_async(&mut src, ProxyResult::ErrGeneric { msg: e.to_string() })
+            write_bincode_lengthed_async(&mut src, ProxyResult::ErrGeneric { msg: e.to_string() })
                 .await?;
             return Err(e);
         }

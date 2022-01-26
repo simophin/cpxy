@@ -1,9 +1,11 @@
-use crate::client::run_client;
+use crate::client::{run_client, ClientConfig};
 use jni::objects::{JClass, JString};
 use jni::sys::{jint, jlong};
 use jni::JNIEnv;
 use smol::{spawn, Async, Task};
 use std::net::TcpListener;
+use std::sync::Arc;
+use std::time::Duration;
 
 struct Instance(Task<anyhow::Result<()>>);
 
@@ -16,6 +18,7 @@ pub extern "system" fn Java_dev_fanchao_CJKProxy_start(
     socks5_host: JString,
     socks5_port: jint,
     socks5_udp_host: JString,
+    upstream_ip_policy: JString,
 ) -> jlong {
     #[cfg(target_os = "android")]
     android_logger::init_once(
@@ -39,6 +42,11 @@ pub extern "system" fn Java_dev_fanchao_CJKProxy_start(
         .expect("To get socks5_udp_host")
         .into();
 
+    let upstream_ip_policy: String = env
+        .get_string(upstream_ip_policy)
+        .expect("To get ip policy")
+        .into();
+
     let address = format!("{socks5_host}:{socks5_port}");
     let listener = match TcpListener::bind(&address) {
         Ok(v) => smol::net::TcpListener::from(Async::new(v).expect("Async")),
@@ -54,9 +62,33 @@ pub extern "system" fn Java_dev_fanchao_CJKProxy_start(
     Box::leak(Box::new(Instance(spawn(async move {
         run_client(
             listener,
-            upstream_host.as_str(),
-            upstream_port.try_into().unwrap(),
-            socks5_udp_host.as_str(),
+            Arc::new(ClientConfig {
+                upstream: match format!("{upstream_host}:{upstream_port}").parse() {
+                    Ok(v) => v,
+                    Err(e) => {
+                        let _ = env.throw_new(
+                            "java/lang/RuntimeException",
+                            format!(
+                                "Upstream address {upstream_host}:{upstream_port} is invalid: {e}"
+                            ),
+                        );
+                        return 0;
+                    }
+                },
+                upstream_timeout: Duration::from_secs(3),
+                upstream_policy: match serde_json::from_str(upstream_ip_policy.as_str()) {
+                    Ok(v) => v,
+                    Err(e) => {
+                        let _ = env.throw_new(
+                            "java/lang/RuntimeException",
+                            format!("Invalid upstream policy: {e}"),
+                        );
+                        return 0;
+                    }
+                },
+                socks5_udp_host,
+                local_policy: Default::default(),
+            }),
         )
         .await
     })))) as *mut Instance as jlong

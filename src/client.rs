@@ -10,7 +10,7 @@ use crate::handshake::Handshaker;
 use crate::io::{TcpStream, UdpSocket};
 use crate::proxy::protocol::{IPPolicy, ProxyRequest, ProxyRequestType as rt, ProxyResult};
 use crate::socks5::{serve_socks5_udp_direct_relay, serve_socks5_udp_stream_relay, Address};
-use crate::utils::{copy_duplex, read_json_lengthed_async, write_json_lengthed, RWBuffer};
+use crate::utils::{copy_duplex, read_bincode_lengthed_async, write_bincode_lengthed, RWBuffer};
 use futures_lite::future::race;
 use futures_lite::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
 use smol::net::TcpListener;
@@ -67,7 +67,7 @@ async fn prepare_upstream(
     log::debug!("EncryptionStrategy(send = {send_enc:?}, receive = {receive_enc})");
 
     let mut header = Vec::new();
-    write_json_lengthed(&mut header, req)?;
+    write_bincode_lengthed(&mut header, req)?;
 
     let upstream = TcpStream::connect(&c.upstream)
         .timeout(c.upstream_timeout)
@@ -83,7 +83,7 @@ async fn prepare_upstream(
     )
     .await?;
 
-    Ok((read_json_lengthed_async(&mut upstream).await?, upstream))
+    Ok((read_bincode_lengthed_async(&mut upstream).await?, upstream))
 }
 
 fn choose_resolved_addresses(

@@ -9,7 +9,7 @@ use crate::proxy::protocol::{IPPolicy, ProxyRequest, ProxyRequestType as rt, Pro
 use crate::proxy::tcp::{serve_http_proxy, serve_tcp_proxy};
 use crate::proxy::udp::serve_udp_proxy;
 use crate::socks5::Address;
-use crate::utils::{read_json_lengthed_async, write_json_lengthed_async};
+use crate::utils::{read_bincode_lengthed_async, write_bincode_lengthed_async};
 
 async fn check_resolve_addresses(
     addr: &Address,
@@ -41,20 +41,20 @@ pub async fn serve_client(
     stream: impl AsyncRead + AsyncWrite + Unpin + Send + Sync + 'static,
 ) -> anyhow::Result<()> {
     let mut stream = super::cipher::server::listen(stream).await?;
-    let ProxyRequest { t, policy }: ProxyRequest = read_json_lengthed_async(&mut stream).await?;
+    let ProxyRequest { t, policy }: ProxyRequest = read_bincode_lengthed_async(&mut stream).await?;
 
     match t {
         rt::SocksTCP(addr) => match check_resolve_addresses(&addr, &policy).await {
             Ok(addrs) => serve_tcp_proxy(addrs.as_slice(), stream).await,
             Err(e) => {
-                write_json_lengthed_async(&mut stream, &e).await?;
+                write_bincode_lengthed_async(&mut stream, &e).await?;
                 return Err(e.into());
             }
         },
         rt::Http(addr, headers) => match check_resolve_addresses(&addr, &policy).await {
             Ok(addrs) => serve_http_proxy(addrs.as_slice(), headers.as_slice(), stream).await,
             Err(e) => {
-                write_json_lengthed_async(&mut stream, &e).await?;
+                write_bincode_lengthed_async(&mut stream, &e).await?;
                 return Err(e.into());
             }
         },
@@ -62,7 +62,7 @@ pub async fn serve_client(
             match check_resolve_addresses(&addr.unwrap(), &policy).await {
                 Ok(_) => serve_udp_proxy(stream, true).await,
                 Err(e) => {
-                    write_json_lengthed_async(&mut stream, &e).await?;
+                    write_bincode_lengthed_async(&mut stream, &e).await?;
                     return Err(e.into());
                 }
             }

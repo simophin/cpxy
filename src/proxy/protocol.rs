@@ -2,6 +2,7 @@ use std::collections::HashMap;
 use std::net::{IpAddr, SocketAddr};
 
 use bincode::{Decode, Encode};
+use serde::{Deserialize, Serialize};
 
 use crate::geoip::CountryCode;
 use crate::socks5::Address;
@@ -15,17 +16,18 @@ pub enum ProxyRequestType {
     Http(Address, Headers),
 }
 
-#[derive(Encode, Decode, Debug, Clone)]
+#[derive(Encode, Decode, Debug, Clone, Deserialize, Serialize)]
+#[serde(tag = "type")]
 pub enum IPPolicyRule {
-    IsCountry(Vec<CountryCode>),
-    IsPrivateIP,
+    Country(Vec<CountryCode>),
+    PrivateIP,
 }
 
 impl IPPolicyRule {
     pub fn matches(&self, ip: &IpAddr, cc: CountryCode) -> bool {
         match self {
-            IPPolicyRule::IsCountry(codes) => codes.contains(&cc),
-            IPPolicyRule::IsPrivateIP => !ip.is_global(),
+            IPPolicyRule::Country(codes) => codes.contains(&cc),
+            IPPolicyRule::PrivateIP => !ip.is_global(),
         }
     }
 
@@ -46,10 +48,13 @@ impl IPPolicyRule {
     }
 }
 
-#[derive(Encode, Decode, Debug, Clone)]
+#[derive(Encode, Decode, Debug, Clone, Deserialize, Serialize)]
 pub struct IPPolicy {
+    #[serde(default)]
     accept: Vec<IPPolicyRule>,
+    #[serde(default)]
     reject: Vec<IPPolicyRule>,
+    #[serde(default)]
     prefer: HashMap<CountryCode, usize>,
 }
 
