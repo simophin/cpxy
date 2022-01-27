@@ -27,7 +27,7 @@ jobs:
     - name: rust-toolchain
       uses: actions-rs/toolchain@v1
       with:
-        toolchain: nightly
+        toolchain: stable
     - name: Run tests
       run: cargo test
   build_linux:
@@ -44,7 +44,7 @@ jobs:
     - name: rust-toolchain
       uses: actions-rs/toolchain@v1
       with:
-        toolchain: nightly
+        toolchain: stable
     - name: Build packages
       run: >
         ./build_unix.sh \
@@ -72,9 +72,9 @@ jobs:
     - name: rust-toolchain
       uses: actions-rs/toolchain@v1
       with:
-        toolchain: nightly
-    - name: Set nightly
-      run: rustup override set nightly
+        toolchain: stable
+    - name: Set stable
+      run: rustup override set stable
     - name: Build x86_64
       uses: actions-rs/cargo@v1
       with:
@@ -100,7 +100,7 @@ jobs:
       - name: rust-toolchain
         uses: actions-rs/toolchain@v1
         with:
-          toolchain: nightly
+          toolchain: stable
       - name: Build packages
         run: ./build_unix.sh x86_64-apple-darwin
       - name: Upload Artifact
@@ -122,7 +122,7 @@ jobs:
       - name: rust-toolchain
         uses: actions-rs/toolchain@v1
         with:
-          toolchain: nightly
+          toolchain: stable
       - name: Install cross
         run: cargo install cross
       - name: Build native libs
