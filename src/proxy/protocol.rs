@@ -37,14 +37,6 @@ impl IPPolicyRule {
     ) -> bool {
         rules.find(|rule| rule.matches(ip, cc)).is_some()
     }
-
-    pub fn matches_all<'a>(
-        ip: &IpAddr,
-        cc: CountryCode,
-        mut rules: impl Iterator<Item = &'a IPPolicyRule>,
-    ) -> bool {
-        rules.find(|rule| !rule.matches(ip, cc)).is_none()
-    }
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
@@ -93,12 +85,11 @@ impl IPPolicy {
             }
             None => self.accept.is_empty(),
         };
-        log::debug!("Looking up {ip} with country {c:?}: should keep: {result}");
         result
     }
 
     pub fn sort_by_preferences<T>(&self, c: &mut Vec<(T, Option<CountryCode>)>) {
-        c.sort_by_key(|(_, c)| {
+        c.sort_unstable_by_key(|(_, c)| {
             c.and_then(|v| self.prefer.get(&v).cloned())
                 .unwrap_or(usize::MAX)
         });

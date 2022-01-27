@@ -96,8 +96,16 @@ fn create_remote_policy(
     prefer: Vec<CountryCode>,
 ) -> IPPolicy {
     IPPolicy::new(
-        vec![IPPolicyRule::Country { codes: accept }],
-        vec![IPPolicyRule::Country { codes: reject }],
+        if accept.is_empty() {
+            vec![]
+        } else {
+            vec![IPPolicyRule::Country { codes: accept }]
+        },
+        if reject.is_empty() {
+            vec![]
+        } else {
+            vec![IPPolicyRule::Country { codes: reject }]
+        },
         prefer,
     )
 }

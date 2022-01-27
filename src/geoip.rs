@@ -57,8 +57,14 @@ fn v6_records() -> &'static [V6Record] {
     unsafe { &*slice_from_raw_parts(GEO_IPV6_DATA.as_ptr() as *const V6Record, V6_RECORD_LEN) }
 }
 
-#[derive(Eq, PartialEq, Copy, Clone, Hash)]
+#[derive(Eq, Copy, Clone, Hash)]
 pub struct CountryCode([NonZeroU8; 2]);
+
+impl PartialEq for CountryCode {
+    fn eq(&self, other: &Self) -> bool {
+        self.as_slice().eq_ignore_ascii_case(other.as_slice())
+    }
+}
 
 impl Serialize for CountryCode {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
@@ -205,6 +211,7 @@ pub async fn resolve_with_countries(addr: &Address) -> Vec<(SocketAddr, Option<C
 #[cfg(test)]
 mod test {
     use super::*;
+    use futures_lite::StreamExt;
     use std::time::Instant;
 
     #[test]
@@ -238,5 +245,16 @@ mod test {
         assert_eq!(v, "\"NZ\"");
         let expect: CountryCode = serde_json::from_str(v.as_str()).unwrap();
         assert_eq!(expect, code);
+    }
+
+    #[test]
+    fn test_country_code() {
+        let codes: Vec<CountryCode> = vec!["nz", "US"]
+            .into_iter()
+            .map(|c| c.parse().unwrap())
+            .collect();
+        assert!(codes.contains(&"NZ".parse().unwrap()));
+        assert!(codes.contains(&"US".parse().unwrap()));
+        assert!(codes.contains(&"us".parse().unwrap()));
     }
 }
