@@ -133,3 +133,39 @@ impl std::fmt::Display for ProxyResult {
 }
 
 impl std::error::Error for ProxyResult {}
+
+#[cfg(test)]
+mod test {
+    use super::*;
+
+    #[test]
+    fn test_policy_works() {
+        let us: CountryCode = "US".parse().unwrap();
+        let nz: CountryCode = "NZ".parse().unwrap();
+
+        assert!(IPPolicy::default().should_keep(&"8.8.8.8".parse().unwrap(), Some(us)));
+
+        let us_only_policy = IPPolicy::new(
+            vec![IPPolicyRule::Country { codes: vec![us] }],
+            vec![],
+            vec![],
+        );
+
+        assert!(us_only_policy.should_keep(&"8.8.8.8".parse().unwrap(), Some(us)));
+        assert_eq!(
+            us_only_policy.should_keep(&"65.9.139.97".parse().unwrap(), Some(nz)),
+            false
+        );
+
+        let reject_nz_policy = IPPolicy::new(
+            vec![],
+            vec![IPPolicyRule::Country { codes: vec![nz] }],
+            vec![],
+        );
+        assert!(reject_nz_policy.should_keep(&"8.8.8.8".parse().unwrap(), Some(us)));
+        assert_eq!(
+            reject_nz_policy.should_keep(&"65.9.139.97".parse().unwrap(), Some(nz)),
+            false
+        );
+    }
+}

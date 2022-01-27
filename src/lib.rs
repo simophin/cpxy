@@ -12,7 +12,9 @@ mod utils;
 #[cfg(target_os = "android")]
 mod jni_export;
 
-mod geoip;
+pub mod geoip;
 mod io;
 #[cfg(test)]
 mod test;
+
+pub use crate::proxy::protocol::{IPPolicy, IPPolicyRule};

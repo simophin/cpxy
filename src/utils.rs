@@ -3,7 +3,7 @@ use bytes::{Buf, BufMut};
 use futures_lite::future::race;
 use futures_lite::io::{copy, split};
 use futures_lite::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
-use serde::{Serialize, de::DeserializeOwned};
+use serde::{de::DeserializeOwned, Serialize};
 use smol::spawn;
 use std::cmp::min;
 use std::io::{Read, Write};
@@ -143,7 +143,7 @@ impl<T: AsMut<[u8]> + AsRef<[u8]>> Read for RWBuffer<T> {
 pub fn write_bincode_lengthed(mut buf: &mut Vec<u8>, o: &impl Serialize) -> anyhow::Result<()> {
     let prev_len = buf.len();
     buf.put_u16(0);
-    bincode::serialize_into(&mut buf, o)?;
+    serde_json::to_writer(&mut buf, o)?;
     let written_len = buf.len() - prev_len - 2;
     if written_len > u16::MAX as usize {
         return Err(anyhow!("Object is too big: {written_len} > {}", u16::MAX));
@@ -157,9 +157,8 @@ pub async fn write_bincode_lengthed_async(
     w: &mut (impl AsyncWrite + Unpin),
     o: &impl Serialize,
 ) -> anyhow::Result<()> {
-    let data = bincode::serialize(o)?;
-    let len: u16 = data.len().try_into()?;
-    w.write_all(len.to_be_bytes().as_ref()).await?;
+    let mut data = Vec::new();
+    write_bincode_lengthed(&mut data, o)?;
     w.write_all(data.as_slice()).await?;
     Ok(())
 }
@@ -173,7 +172,7 @@ pub async fn read_bincode_lengthed_async<T: DeserializeOwned>(
     let len = buf.as_slice().get_u16() as usize;
     buf.resize(len, 0);
     r.read_exact(buf.as_mut_slice()).await?;
-    match bincode::deserialize(buf.as_slice()) {
+    match serde_json::from_slice(buf.as_slice()) {
         Ok(v) => Ok(v),
         Err(e) => {
             log::error!("Error decoding json: {e}");

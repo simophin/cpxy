@@ -165,7 +165,7 @@ async fn serve_proxy_client(
 ) -> anyhow::Result<()> {
     let mut buf = RWBuffer::default();
     let (handshaker, req) =
-        Handshaker::start(&mut socks, &mut buf, config.local_policy.clone()).await?;
+        Handshaker::start(&mut socks, &mut buf, config.upstream_policy.clone()).await?;
     log::info!("Requesting to proxy {req:?}");
 
     match (prepare_upstream(config.as_ref(), &req).await, &req.t) {

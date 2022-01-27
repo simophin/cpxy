@@ -84,7 +84,7 @@ impl<'de> Visitor<'de> for CountryCodeVisitor {
     {
         match v.parse::<Self::Value>() {
             Ok(v) => Ok(v),
-            Err(()) => return Err(serde::de::Error::custom("Invalid country code")),
+            Err(_) => return Err(serde::de::Error::custom("Invalid country code")),
         }
     }
 }
@@ -98,12 +98,25 @@ impl<'de> Deserialize<'de> for CountryCode {
     }
 }
 
+#[derive(Debug)]
+pub enum CountryCodeParseError {
+    InvalidLength,
+}
+
+impl Display for CountryCodeParseError {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        Debug::fmt(self, f)
+    }
+}
+
+impl std::error::Error for CountryCodeParseError {}
+
 impl FromStr for CountryCode {
-    type Err = ();
+    type Err = CountryCodeParseError;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         if s.as_bytes().len() != 2 {
-            return Err(());
+            return Err(CountryCodeParseError::InvalidLength);
         }
 
         let mut transformed = s
