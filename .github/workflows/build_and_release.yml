@@ -127,9 +127,8 @@ jobs:
         run: ./build_android_libs.sh
       - name: "Build Android project"
         uses: vgaidarji/android-github-actions-build@v1.0.1
-        working-directory: ./android
         with:
-          args: "./gradlew app:assembleDebug"
+          args: "./android/gradlew app:assembleDebug"
       - name: Upload Artifact
         uses: actions/upload-artifact@v2
         with:
