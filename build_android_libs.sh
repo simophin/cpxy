@@ -7,6 +7,9 @@ configs=(
   x86_64-linux-android x86_64
 )
 
+rustup override set nightly
+cargo install cross
+
 LIBS_ROOT=android/app/src/main/jniLibs
 
 for ((i=0; i<${#configs[@]}; )); do
