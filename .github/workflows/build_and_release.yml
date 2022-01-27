@@ -12,7 +12,7 @@ env:
 
 jobs:
   test:
-    runs-on: ubuntu-latest
+    runs-on: self-hosted
     if: startsWith(github.ref, 'refs/heads/master')
     steps:
     - uses: actions/checkout@v2
@@ -30,7 +30,7 @@ jobs:
     - name: Run tests
       run: cargo test
   build_linux:
-    runs-on: ubuntu-latest
+    runs-on: self-hosted
     if: startsWith(github.ref, 'refs/tags/')
     steps:
     - uses: actions/checkout@v2
@@ -49,9 +49,9 @@ jobs:
       run: >
         ./build_unix.sh 
           x86_64-unknown-linux-gnu 
-          aarch64-unknown-linux-gnu
-          armv7-unknown-linux-gnueabihf
-          mips-unknown-linux-musl
+          aarch64-unknown-linux-gnu 
+          armv7-unknown-linux-gnueabihf 
+          mips-unknown-linux-musl 
     - name: Upload Artifact
       uses: actions/upload-artifact@v2
       with:
@@ -112,7 +112,7 @@ jobs:
           path: target/**/release/proxy
 
   build_android:
-    runs-on: ubuntu-latest
+    runs-on: self-hosted
     if: startsWith(github.ref, 'refs/tags/')
     steps:
       - uses: actions/checkout@v2
@@ -139,7 +139,7 @@ jobs:
           name: android_artifact
           path: android/app/build/outputs/apk/debug/app-debug.apk
   release:
-    runs-on: ubuntu-latest
+    runs-on: self-hosted
     if: startsWith(github.ref, 'refs/tags/')
     needs: [build_linux, build_apple, build_windows, build_android]
     steps:
