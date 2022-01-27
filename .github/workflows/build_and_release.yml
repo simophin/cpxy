@@ -47,10 +47,10 @@ jobs:
         toolchain: nightly
     - name: Build packages
       run: >
-        ./build_unix.sh 
-          x86_64-unknown-linux-gnu 
-          aarch64-unknown-linux-gnu 
-          armv7-unknown-linux-gnueabihf 
+        ./build_unix.sh \
+          x86_64-unknown-linux-gnu \
+          aarch64-unknown-linux-gnu \
+          armv7-unknown-linux-gnueabihf \
           mips-unknown-linux-musl 
     - name: Upload Artifact
       uses: actions/upload-artifact@v2
@@ -102,9 +102,7 @@ jobs:
         with:
           toolchain: nightly
       - name: Build packages
-        run: >
-          ./build_unix.sh
-            x86_64-apple-darwin
+        run: ./build_unix.sh x86_64-apple-darwin
       - name: Upload Artifact
         uses: actions/upload-artifact@v2
         with:
