@@ -72,7 +72,7 @@ pub async fn serve_udp_proxy(
         Ok(v) => {
             write_bincode_lengthed_async(
                 &mut src,
-                ProxyResult::Granted {
+                &ProxyResult::Granted {
                     bound_address: v
                         .local_addr()
                         .ok()
@@ -83,7 +83,7 @@ pub async fn serve_udp_proxy(
             Arc::new(v)
         }
         Err(e) => {
-            write_bincode_lengthed_async(&mut src, ProxyResult::ErrGeneric { msg: e.to_string() })
+            write_bincode_lengthed_async(&mut src, &ProxyResult::ErrGeneric { msg: e.to_string() })
                 .await?;
             return Err(e.into());
         }

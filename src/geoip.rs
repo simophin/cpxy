@@ -1,5 +1,4 @@
 use crate::socks5::Address;
-use bincode::{Decode, Encode};
 use serde::de::{Deserialize, Error, Visitor};
 use serde::{Deserializer, Serialize, Serializer};
 use smol::net::resolve;
@@ -58,7 +57,7 @@ fn v6_records() -> &'static [V6Record] {
     unsafe { &*slice_from_raw_parts(GEO_IPV6_DATA.as_ptr() as *const V6Record, V6_RECORD_LEN) }
 }
 
-#[derive(Encode, Decode, Eq, PartialEq, Copy, Clone, Hash)]
+#[derive(Eq, PartialEq, Copy, Clone, Hash)]
 pub struct CountryCode([NonZeroU8; 2]);
 
 impl Serialize for CountryCode {

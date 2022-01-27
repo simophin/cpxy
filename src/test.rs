@@ -58,7 +58,7 @@ fn test_client_server_tcp() {
 
             write_bincode_lengthed_async(
                 &mut server,
-                ProxyResult::Granted {
+                &ProxyResult::Granted {
                     bound_address: "1.2.3.4:8080".parse().unwrap(),
                 },
             )

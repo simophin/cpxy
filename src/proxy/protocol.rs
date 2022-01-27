@@ -1,7 +1,6 @@
 use std::collections::HashMap;
 use std::net::{IpAddr, SocketAddr};
 
-use bincode::{Decode, Encode};
 use serde::{Deserialize, Serialize};
 
 use crate::geoip::CountryCode;
@@ -9,14 +8,14 @@ use crate::socks5::Address;
 
 type Headers = Vec<u8>;
 
-#[derive(Encode, Decode, Debug, Clone)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub enum ProxyRequestType {
     SocksTCP(Address),
     SocksUDP(Option<Address>),
     Http(Address, Headers),
 }
 
-#[derive(Encode, Decode, Debug, Clone, Deserialize, Serialize)]
+#[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(tag = "type")]
 pub enum IPPolicyRule {
     Country { codes: Vec<CountryCode> },
@@ -48,7 +47,7 @@ impl IPPolicyRule {
     }
 }
 
-#[derive(Encode, Decode, Debug, Clone, Deserialize, Serialize)]
+#[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct IPPolicy {
     #[serde(default)]
     accept: Vec<IPPolicyRule>,
@@ -106,13 +105,13 @@ impl IPPolicy {
     }
 }
 
-#[derive(Encode, Decode, Debug)]
+#[derive(Serialize, Deserialize, Debug)]
 pub struct ProxyRequest {
     pub t: ProxyRequestType,
     pub policy: IPPolicy,
 }
 
-#[derive(Encode, Decode, Debug)]
+#[derive(Serialize, Deserialize, Debug)]
 pub enum ProxyResult {
     Granted {
         bound_address: SocketAddr,

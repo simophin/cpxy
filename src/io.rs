@@ -21,12 +21,12 @@ impl From<AsyncUdpSocket> for UdpSocket {
 }
 
 impl UdpSocket {
-    pub fn is_v4(&self) -> bool {
-        match self.0.local_addr() {
-            Ok(v) => v.is_ipv4(),
-            _ => true,
-        }
-    }
+    // pub fn is_v4(&self) -> bool {
+    //     match self.0.local_addr() {
+    //         Ok(v) => v.is_ipv4(),
+    //         _ => true,
+    //     }
+    // }
 
     pub async fn bind(v4: bool) -> smol::io::Result<Self> {
         Ok(Self::from(
@@ -84,12 +84,12 @@ impl TcpStream {
         }
     }
 
-    pub fn is_v4(&self) -> bool {
-        match self.0.local_addr() {
-            Ok(v) => v.is_ipv4(),
-            _ => true,
-        }
-    }
+    // pub fn is_v4(&self) -> bool {
+    //     match self.0.local_addr() {
+    //         Ok(v) => v.is_ipv4(),
+    //         _ => true,
+    //     }
+    // }
 }
 
 impl From<AsyncTcpStream> for TcpStream {

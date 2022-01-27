@@ -45,29 +45,13 @@ jobs:
       uses: actions-rs/toolchain@v1.0.6
       with:
         toolchain: nightly
-    - name: Build x86_64
-      uses: actions-rs/cargo@v1
-      with:
-        command: build
-        args: --release --target=x86_64-unknown-linux-gnu
-    - name: Build aarch64
-      uses: actions-rs/cargo@v1
-      with:
-        command: build
-        args: --release --target=aarch64-unknown-linux-gnu
-        use-cross: true
-    - name: Build armv7
-      uses: actions-rs/cargo@v1
-      with:
-        command: build
-        args: --release --target=armv7-unknown-linux-gnueabihf
-        use-cross: true
-    - name: Build MIPS
-      uses: actions-rs/cargo@v1
-      with:
-        command: build
-        args: --release --target=mips-unknown-linux-musl
-        use-cross: true
+    - name: Build packages
+      run: >
+        ./build_unix.sh 
+          x86_64-unknown-linux-gnu 
+          aarch64-unknown-linux-gnu
+          armv7-unknown-linux-gnueabihf
+          mips-unknown-linux-musl
     - name: Upload Artifact
       uses: actions/upload-artifact@v2
       with:
@@ -89,6 +73,8 @@ jobs:
       uses: actions-rs/toolchain@v1.0.6
       with:
         toolchain: nightly
+    - name: Set nightly
+      run: rustup override set nightly
     - name: Build x86_64
       uses: actions-rs/cargo@v1
       with:
@@ -115,18 +101,10 @@ jobs:
         uses: actions-rs/toolchain@v1.0.6
         with:
           toolchain: nightly
-      - name: Build x86_64
-        uses: actions-rs/cargo@v1
-        with:
-          command: build
-          args: --release --target=x86_64-apple-darwin
-#      - name: Set up toolchain
-#        run: rustup target add aarch64-apple-darwin
-#      - name: Build aarch64
-#        uses: actions-rs/cargo@v1
-#        with:
-#          command: build
-#          args: --release --target=aarch64-apple-darwin
+      - name: Build packages
+        run: >
+          ./build_unix.sh
+            x86_64-apple-darwin
       - name: Upload Artifact
         uses: actions/upload-artifact@v2
         with:
