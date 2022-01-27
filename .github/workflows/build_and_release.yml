@@ -32,6 +32,7 @@ jobs:
       run: cargo test
   build_linux:
     runs-on: self-hosted
+    if: startsWith(github.ref, 'refs/tags/')
     steps:
     - uses: actions/checkout@v2
     - name: Cache
@@ -125,10 +126,9 @@ jobs:
           toolchain: stable
       - name: Build native libs
         run: ./build_android_libs.sh
-      - name: "Build Android project"
-        uses: vgaidarji/android-github-actions-build@v1.0.1
-        with:
-          args: "./android/gradlew app:assembleDebug"
+      - name: Build with Gradle
+        working-directory: ./android
+        run: ./gradlew app:assembleDebug
       - name: Upload Artifact
         uses: actions/upload-artifact@v2
         with:
