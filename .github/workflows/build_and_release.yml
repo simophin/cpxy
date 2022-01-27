@@ -75,7 +75,7 @@ jobs:
       with:
         toolchain: stable
     - name: Set stable
-      run: rustup override set stable
+      run: rustup override set nightly
     - name: Build x86_64
       uses: actions-rs/cargo@v1
       with:
