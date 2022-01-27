@@ -24,14 +24,13 @@ jobs:
         # An explicit key for restoring and saving the cache
         key: ${{ runner.os }}-${{ hashFiles('**/Cargo.lock') }}
     - name: rust-toolchain
-      uses: actions-rs/toolchain@v1.0.6
+      uses: actions-rs/toolchain@v1
       with:
         toolchain: nightly
     - name: Run tests
       run: cargo test
   build_linux:
     runs-on: self-hosted
-    if: startsWith(github.ref, 'refs/tags/')
     steps:
     - uses: actions/checkout@v2
     - name: Cache
@@ -42,7 +41,7 @@ jobs:
         # An explicit key for restoring and saving the cache
         key: ${{ runner.os }}-${{ hashFiles('**/Cargo.lock') }}
     - name: rust-toolchain
-      uses: actions-rs/toolchain@v1.0.6
+      uses: actions-rs/toolchain@v1
       with:
         toolchain: nightly
     - name: Build packages
@@ -70,7 +69,7 @@ jobs:
         # An explicit key for restoring and saving the cache
         key: ${{ runner.os }}-${{ hashFiles('**/Cargo.lock') }}
     - name: rust-toolchain
-      uses: actions-rs/toolchain@v1.0.6
+      uses: actions-rs/toolchain@v1
       with:
         toolchain: nightly
     - name: Set nightly
@@ -98,7 +97,7 @@ jobs:
           # An explicit key for restoring and saving the cache
           key: ${{ runner.os }}-${{ hashFiles('**/Cargo.lock') }}
       - name: rust-toolchain
-        uses: actions-rs/toolchain@v1.0.6
+        uses: actions-rs/toolchain@v1
         with:
           toolchain: nightly
       - name: Build packages
@@ -111,7 +110,6 @@ jobs:
 
   build_android:
     runs-on: self-hosted
-    if: startsWith(github.ref, 'refs/tags/')
     steps:
       - uses: actions/checkout@v2
       - name: set up JDK 11
@@ -121,7 +119,7 @@ jobs:
           distribution: 'temurin'
           cache: gradle
       - name: rust-toolchain
-        uses: actions-rs/toolchain@v1.0.6
+        uses: actions-rs/toolchain@v1
         with:
           toolchain: nightly
       - name: Install cross
