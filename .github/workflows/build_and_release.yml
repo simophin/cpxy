@@ -125,9 +125,11 @@ jobs:
           toolchain: stable
       - name: Build native libs
         run: ./build_android_libs.sh
-      - name: Build with Gradle
+      - name: "Build Android project"
+        uses: vgaidarji/android-github-actions-build@v1.0.1
         working-directory: ./android
-        run: ./gradlew app:assembleDebug
+        with:
+          args: "./gradlew app:assembleDebug"
       - name: Upload Artifact
         uses: actions/upload-artifact@v2
         with:
