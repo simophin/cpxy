@@ -112,6 +112,7 @@ jobs:
 
   build_android:
     runs-on: self-hosted
+    if: startsWith(github.ref, 'refs/tags/')
     steps:
       - uses: actions/checkout@v2
       - name: set up JDK 11
