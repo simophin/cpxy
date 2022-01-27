@@ -312,7 +312,6 @@ dependencies = [
  "smol",
  "smol-timeout",
  "ureq",
- "url",
 ]
 
 [[package]]

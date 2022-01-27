@@ -13,10 +13,10 @@ async fn prepare(target: &[SocketAddr]) -> anyhow::Result<(SocketAddr, TcpStream
 }
 
 async fn serve_tcp_proxy_common(
-    s: Option<anyhow::Result<(SocketAddr, TcpStream)>>,
+    upstream: Option<anyhow::Result<(SocketAddr, TcpStream)>>,
     mut src: impl AsyncRead + AsyncWrite + Unpin + Send + Sync + 'static,
 ) -> anyhow::Result<()> {
-    let upstream = match s {
+    let upstream = match upstream {
         Some(Ok((bound_address, socket))) => {
             write_bincode_lengthed_async(&mut src, ProxyResult::Granted { bound_address }).await?;
             socket
@@ -48,6 +48,10 @@ async fn prepare_http(
     headers: &[u8],
 ) -> anyhow::Result<(SocketAddr, TcpStream)> {
     let (addr, mut stream) = prepare(target).await?;
+    log::debug!(
+        "Writing to {target:?}: \n{}",
+        String::from_utf8_lossy(headers)
+    );
     stream.write_all(headers).await?;
     Ok((addr, stream))
 }

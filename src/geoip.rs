@@ -174,13 +174,19 @@ pub fn find_country_by_ip(addr: &IpAddr) -> Option<CountryCode> {
 pub async fn resolve_with_countries(addr: &Address) -> Vec<(SocketAddr, Option<CountryCode>)> {
     match addr {
         Address::IP(addr) => vec![(addr.clone(), find_country_by_ip(&addr.ip()))],
-        Address::Name { host, port } => resolve((host.as_str(), *port))
-            .await
-            .ok()
-            .unwrap_or_default()
-            .into_iter()
-            .map(|addr| (addr, find_country_by_ip(&addr.ip())))
-            .collect(),
+        Address::Name { host, port } => {
+            let result = resolve((host.as_str(), *port))
+                .await
+                .ok()
+                .unwrap_or_default()
+                .into_iter()
+                .map(|addr| (addr, find_country_by_ip(&addr.ip())))
+                .collect();
+
+            log::debug!("Resolved {host}: {result:?}");
+
+            result
+        }
     }
 }
 

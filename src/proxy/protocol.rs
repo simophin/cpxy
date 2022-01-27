@@ -86,14 +86,16 @@ impl IPPolicy {
     }
 
     pub fn should_keep(&self, ip: &IpAddr, c: Option<CountryCode>) -> bool {
-        match c {
+        let result = match c {
             Some(c) => {
                 (self.accept.is_empty() || IPPolicyRule::matches_any(ip, c, self.accept.iter()))
                     && (self.reject.is_empty()
                         || !IPPolicyRule::matches_any(ip, c, self.reject.iter()))
             }
             None => self.accept.is_empty(),
-        }
+        };
+        log::debug!("Looking up {ip} with country {c:?}: should keep: {result}");
+        result
     }
 
     pub fn sort_by_preferences<T>(&self, c: &mut Vec<(T, Option<CountryCode>)>) {

@@ -7,9 +7,10 @@ use crate::socks5::{
 use crate::utils::RWBuffer;
 use anyhow::anyhow;
 use futures_lite::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
+use lazy_static::lazy_static;
+use regex::Regex;
 use std::io::Write;
 use std::net::SocketAddr;
-use url::Url;
 
 struct SocksState {
     auths: Vec<u8>,
@@ -31,31 +32,44 @@ impl HttpProxyState {
     pub fn from_http(r: &httparse::Request<'_, '_>) -> anyhow::Result<Self> {
         let path = r.path.ok_or_else(|| anyhow!("No path found"))?;
         let method = r.method.ok_or_else(|| anyhow!("No method found"))?;
-        let url = match Url::parse(path) {
-            Ok(v) if v.scheme().eq_ignore_ascii_case("http") && v.has_host() => v,
-            Ok(v) => {
+        lazy_static! {
+            static ref PROTOCOL_REGEX: Regex = Regex::new(r"^(.+?)://").unwrap();
+        }
+
+        let (host_and_port, path) = match PROTOCOL_REGEX.captures(path) {
+            Some(cap)
+                if cap
+                    .get(1)
+                    .map_or("", |m| m.as_str())
+                    .eq_ignore_ascii_case("http") =>
+            {
+                let path = &path["http://".len()..];
+                match path.find("/") {
+                    Some(index) => path.split_at(index),
+                    None => (path, ""),
+                }
+            }
+            Some(cap) => {
                 return Err(anyhow!(
-                    "Invalid scheme({:?}) or host({:?})",
-                    v.scheme(),
-                    v.host()
-                ));
+                    "Unsupported protocol: {}",
+                    cap.get(1).map_or("", |m| m.as_str())
+                ))
             }
-            Err(_) => {
-                return Err(anyhow!("Invalid path {path}"));
-            }
+            None => (path, ""),
         };
 
-        let addr = format!(
-            "{}:{}",
-            url.host_str().unwrap(),
-            url.port_or_known_default().unwrap_or(80)
-        );
-
-        let path = &path["http://".len()..];
-        let path = match path.find("/") {
-            Some(v) if v + 1 < path.len() => &path[v + 1..],
-            _ => "/",
+        let (host, port) = match host_and_port.rfind(":") {
+            Some(index) => host_and_port.split_at(index),
+            None => (host_and_port, ":"),
         };
+
+        let port = match (&port[1..]).parse::<u16>() {
+            Ok(v) => v,
+            Err(_) if port == ":" => 80,
+            Err(e) => return Err(anyhow!("Invalid port {port}: {e}")),
+        };
+
+        let address = format!("{host}:{port}");
 
         let mut headers = Vec::new();
         write!(&mut headers, "{method} {path} HTTP/1.1\r\n")?;
@@ -73,12 +87,12 @@ impl HttpProxyState {
 
         if !has_host {
             headers.extend_from_slice(b"Host: ");
-            headers.extend_from_slice(addr.as_bytes());
+            headers.extend_from_slice(address.as_bytes());
             headers.extend_from_slice(b"\r\n");
         }
         headers.extend_from_slice(b"\r\n");
         Ok(Self {
-            address: addr.parse()?,
+            address: address.parse()?,
             method: method.to_string(),
             headers,
         })
@@ -114,9 +128,13 @@ fn parse_http_request(buf: &[u8]) -> anyhow::Result<Option<(usize, HttpProxyStat
     Ok(Some((offset, v)))
 }
 
-pub struct Handshaker {
-    is_socks: bool,
+enum HandshakeType {
+    Socks5,
+    Http,
+    HttpTcpChannel,
 }
+
+pub struct Handshaker(HandshakeType);
 
 impl Handshaker {
     pub async fn start(
@@ -144,8 +162,8 @@ impl Handshaker {
                         buf.advance_read(offset);
                         break;
                     }
-                    (Err(_), Err(_)) => {
-                        return Err(anyhow!("No socks5/http detected"));
+                    (Err(e1), Err(e2)) => {
+                        return Err(anyhow!("No socks5/http detected: {e1}, {e2}"));
                     }
                     (Err(_), Ok(None)) => parse_state = ParseState::HttpPartial,
                     (Ok(None), Err(_)) => parse_state = ParseState::SocksPartial,
@@ -178,13 +196,18 @@ impl Handshaker {
 
         match proxy_state {
             ProxyState::SocksGreeted(s) => Ok((
-                Handshaker { is_socks: true },
+                Handshaker(HandshakeType::Socks5),
                 handshake_socks5(stream, buf, s, policy).await?,
             )),
-            ProxyState::Http(s) => Ok((
-                Handshaker { is_socks: false },
-                handshake_http(s, policy).await?,
-            )),
+            ProxyState::Http(s) => {
+                let req = handshake_http(s, policy).await?;
+                let handshaker = Self(match &req.t {
+                    ProxyRequestType::SocksTCP(_) => HandshakeType::HttpTcpChannel,
+                    ProxyRequestType::Http(_, _) => HandshakeType::Http,
+                    _ => unreachable!("Unknown proxy request type for http proxy"),
+                });
+                Ok((handshaker, req))
+            }
         }
     }
 
@@ -193,12 +216,20 @@ impl Handshaker {
         stream: &mut (impl AsyncWrite + Send + Sync + Unpin),
         bound_address: SocketAddr,
     ) -> anyhow::Result<()> {
-        if self.is_socks {
-            ClientConnRequest::respond(stream, ConnStatusCode::GRANTED, &Address::IP(bound_address))
+        match self.0 {
+            HandshakeType::Socks5 => {
+                ClientConnRequest::respond(
+                    stream,
+                    ConnStatusCode::GRANTED,
+                    &Address::IP(bound_address),
+                )
                 .await
-        } else {
-            stream.write_all(b"HTTP/1.1 200 OK\r\n\r\n").await?;
-            Ok(())
+            }
+            HandshakeType::Http => Ok(()),
+            HandshakeType::HttpTcpChannel => {
+                stream.write_all(b"HTTP/1.1 200 OK\r\n\r\n").await?;
+                Ok(())
+            }
         }
     }
 
@@ -206,13 +237,17 @@ impl Handshaker {
         self,
         stream: &mut (impl AsyncWrite + Send + Sync + Unpin),
     ) -> anyhow::Result<()> {
-        if self.is_socks {
-            ClientConnRequest::respond(stream, ConnStatusCode::FAILED, &Default::default()).await
-        } else {
-            stream
-                .write_all(b"HTTP/1.1 500 Internal server error\r\n\r\n")
-                .await?;
-            Ok(())
+        match self.0 {
+            HandshakeType::Socks5 => {
+                ClientConnRequest::respond(stream, ConnStatusCode::FAILED, &Default::default())
+                    .await
+            }
+            _ => {
+                stream
+                    .write_all(b"HTTP/1.1 500 Internal server error\r\n\r\n")
+                    .await?;
+                Ok(())
+            }
         }
     }
 }
