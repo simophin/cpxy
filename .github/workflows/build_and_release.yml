@@ -2,7 +2,6 @@ name: Build and release
 
 on:
   push:
-    branches: [ master ]
     tags:
       - "v*"
   pull_request:
@@ -58,57 +57,57 @@ jobs:
       with:
         name: linux_artifact
         path: target/**/release/proxy
-  build_windows:
-    runs-on: windows-latest
-    if: startsWith(github.ref, 'refs/tags/')
-    steps:
-    - uses: actions/checkout@v2
-    - name: Cache
-      uses: actions/cache@v2.1.7
-      with:
-        # A list of files, directories, and wildcard patterns to cache and restore
-        path: target
-        # An explicit key for restoring and saving the cache
-        key: ${{ runner.os }}-${{ hashFiles('**/Cargo.lock') }}
-    - name: rust-toolchain
-      uses: actions-rs/toolchain@v1
-      with:
-        toolchain: stable
-    - name: Set stable
-      run: rustup override set nightly
-    - name: Build x86_64
-      uses: actions-rs/cargo@v1
-      with:
-        command: build
-        args: --release --target=x86_64-pc-windows-msvc
-    - name: Upload Artifact
-      uses: actions/upload-artifact@v2
-      with:
-        name: windows_artifacts
-        path: target/**/release/proxy.exe
-  build_apple:
-    runs-on: macos-latest
-    if: startsWith(github.ref, 'refs/tags/')
-    steps:
-      - uses: actions/checkout@v2
-      - name: Cache
-        uses: actions/cache@v2.1.7
-        with:
-          # A list of files, directories, and wildcard patterns to cache and restore
-          path: target
-          # An explicit key for restoring and saving the cache
-          key: ${{ runner.os }}-${{ hashFiles('**/Cargo.lock') }}
-      - name: rust-toolchain
-        uses: actions-rs/toolchain@v1
-        with:
-          toolchain: stable
-      - name: Build packages
-        run: ./build_unix.sh x86_64-apple-darwin
-      - name: Upload Artifact
-        uses: actions/upload-artifact@v2
-        with:
-          name: apple_artifacts
-          path: target/**/release/proxy
+#  build_windows:
+#    runs-on: windows-latest
+#    if: startsWith(github.ref, 'refs/tags/')
+#    steps:
+#    - uses: actions/checkout@v2
+#    - name: Cache
+#      uses: actions/cache@v2.1.7
+#      with:
+#        # A list of files, directories, and wildcard patterns to cache and restore
+#        path: target
+#        # An explicit key for restoring and saving the cache
+#        key: ${{ runner.os }}-${{ hashFiles('**/Cargo.lock') }}
+#    - name: rust-toolchain
+#      uses: actions-rs/toolchain@v1
+#      with:
+#        toolchain: stable
+#    - name: Set stable
+#      run: rustup override set nightly
+#    - name: Build x86_64
+#      uses: actions-rs/cargo@v1
+#      with:
+#        command: build
+#        args: --release --target=x86_64-pc-windows-msvc
+#    - name: Upload Artifact
+#      uses: actions/upload-artifact@v2
+#      with:
+#        name: windows_artifacts
+#        path: target/**/release/proxy.exe
+#  build_apple:
+#    runs-on: macos-latest
+#    if: startsWith(github.ref, 'refs/tags/')
+#    steps:
+#      - uses: actions/checkout@v2
+#      - name: Cache
+#        uses: actions/cache@v2.1.7
+#        with:
+#          # A list of files, directories, and wildcard patterns to cache and restore
+#          path: target
+#          # An explicit key for restoring and saving the cache
+#          key: ${{ runner.os }}-${{ hashFiles('**/Cargo.lock') }}
+#      - name: rust-toolchain
+#        uses: actions-rs/toolchain@v1
+#        with:
+#          toolchain: stable
+#      - name: Build packages
+#        run: ./build_unix.sh x86_64-apple-darwin
+#      - name: Upload Artifact
+#        uses: actions/upload-artifact@v2
+#        with:
+#          name: apple_artifacts
+#          path: target/**/release/proxy
 
   build_android:
     runs-on: self-hosted
@@ -140,30 +139,31 @@ jobs:
     if: startsWith(github.ref, 'refs/tags/')
     needs: [build_linux, build_apple, build_windows, build_android]
     steps:
-    - name: Download apple artifacts
-      uses: actions/download-artifact@v2
-      with:
-        name: apple_artifacts
+#    - name: Download apple artifacts
+#      uses: actions/download-artifact@v2
+#      with:
+#        name: apple_artifacts
+#    - name: Download windows artifacts
+#        uses: actions/download-artifact@v2
+#        with:
+#          name: windows_artifacts
     - name: Download linux artifacts
       uses: actions/download-artifact@v2
       with:
         name: linux_artifact
-    - name: Download windows artifacts
-      uses: actions/download-artifact@v2
-      with:
-        name: windows_artifacts
+
     - name: Download android artifacts
       uses: actions/download-artifact@v2
       with:
         name: android_artifact
     - name: Rename artifacts
       run: |
-        mv x86_64-apple-darwin/release/proxy proxy.darwin.x86_64 
         mv x86_64-unknown-linux-gnu/release/proxy proxy.linux.x86_64
         mv aarch64-unknown-linux-gnu/release/proxy proxy.linux.aarch64
         mv armv7-unknown-linux-gnueabihf/release/proxy proxy.linux.armv7
         mv mips-unknown-linux-musl/release/proxy proxy.linux.mips
-        mv x86_64-pc-windows-msvc/release/proxy.exe proxy.win64.exe
+#        mv x86_64-apple-darwin/release/proxy proxy.darwin.x86_64
+#        mv x86_64-pc-windows-msvc/release/proxy.exe proxy.win64.exe
     - name: Create github release
       uses: softprops/action-gh-release@v1
       with:

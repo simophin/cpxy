@@ -25,6 +25,8 @@ async fn check_resolve_addresses(
 
     policy.sort_by_preferences(&mut addrs);
 
+    log::debug!("Looking up {addr} with policy {policy:?}, result: {addrs:?}");
+
     if addrs.is_empty() {
         return Err(ProxyResult::ErrHostRejected {
             resolved: original_addrs

@@ -36,26 +36,28 @@ impl HttpProxyState {
             static ref PROTOCOL_REGEX: Regex = Regex::new(r"^(.+?)://").unwrap();
         }
 
-        let (host_and_port, path) = match PROTOCOL_REGEX.captures(path) {
-            Some(cap)
-                if cap
-                    .get(1)
-                    .map_or("", |m| m.as_str())
-                    .eq_ignore_ascii_case("http") =>
-            {
-                let path = &path["http://".len()..];
-                match path.find("/") {
-                    Some(index) => path.split_at(index),
-                    None => (path, ""),
-                }
+        let protocol: &str = PROTOCOL_REGEX
+            .captures(path)
+            .and_then(|c| c.get(1))
+            .map(|c| c.as_str())
+            .unwrap_or("");
+
+        let ((host_and_port, path), default_port) = if protocol.eq_ignore_ascii_case("http") {
+            let path = &path["http://".len()..];
+            match path.find("/") {
+                Some(index) => (path.split_at(index), Some(80u16)),
+                None => ((path, ""), Some(80)),
             }
-            Some(cap) => {
-                return Err(anyhow!(
-                    "Unsupported protocol: {}",
-                    cap.get(1).map_or("", |m| m.as_str())
-                ))
+        } else if protocol.eq_ignore_ascii_case("https") {
+            let path = &path["https://".len()..];
+            match path.find("/") {
+                Some(index) => (path.split_at(index), Some(443)),
+                None => ((path, ""), Some(443)),
             }
-            None => (path, ""),
+        } else if protocol.is_empty() {
+            ((path, ""), None)
+        } else {
+            return Err(anyhow!("Unsupported protocol: {protocol}",));
         };
 
         let (host, port) = match host_and_port.rfind(":") {
@@ -65,7 +67,7 @@ impl HttpProxyState {
 
         let port = match (&port[1..]).parse::<u16>() {
             Ok(v) => v,
-            Err(_) if port == ":" => 80,
+            Err(_) if port == ":" && default_port.is_some() => default_port.unwrap(),
             Err(e) => return Err(anyhow!("Invalid port {port}: {e}")),
         };
 

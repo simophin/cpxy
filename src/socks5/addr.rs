@@ -1,9 +1,9 @@
 use anyhow::anyhow;
-use serde::{Serialize, Deserialize};
+use serde::{Deserialize, Serialize};
 use std::borrow::Cow;
 use std::fmt::{Debug, Formatter};
 use std::io::Cursor;
-use std::net::{Ipv4Addr, Ipv6Addr, SocketAddr, SocketAddrV4, SocketAddrV6};
+use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr, SocketAddrV4, SocketAddrV6};
 use std::str::FromStr;
 
 use bytes::{Buf, BufMut};
@@ -14,6 +14,7 @@ use regex::Regex;
 use crate::parse::ParseError;
 
 #[derive(Debug, Eq, PartialEq, Clone, Serialize, Deserialize)]
+#[serde(tag = "type")]
 pub enum Address {
     IP(SocketAddr),
     Name { host: String, port: u16 },
@@ -120,15 +121,16 @@ impl Address {
                 buf.copy_to_slice(name_buf.as_mut_slice());
 
                 let port = buf.get_u16();
-                Ok(Some((
-                    buf.position() as usize,
-                    Self::Name {
-                        host: String::from_utf8(name_buf).map_err(|_| {
-                            ParseError::unexpected("domain name", "invalid utf-8", "valid utf-8")
-                        })?,
-                        port,
-                    },
-                )))
+                String::from_utf8(name_buf)
+                    .map_err(|_| {
+                        ParseError::unexpected("domain name", "invalid utf-8", "valid utf-8")
+                    })
+                    .map(|name| {
+                        IpAddr::from_str(name.as_str())
+                            .map(|ip| Self::IP(SocketAddr::new(ip, port)))
+                            .unwrap_or_else(|| Self::Name { host: name, port })
+                    })
+                    .map(|v| Some((buf.position() as usize, v)))
             }
 
             0x4 => {

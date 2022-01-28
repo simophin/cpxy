@@ -57,8 +57,14 @@ fn v6_records() -> &'static [V6Record] {
     unsafe { &*slice_from_raw_parts(GEO_IPV6_DATA.as_ptr() as *const V6Record, V6_RECORD_LEN) }
 }
 
-#[derive(Eq, PartialEq, Copy, Clone, Hash)]
+#[derive(Eq, Copy, Clone, Hash)]
 pub struct CountryCode([NonZeroU8; 2]);
+
+impl PartialEq for CountryCode {
+    fn eq(&self, other: &Self) -> bool {
+        self.as_slice().eq_ignore_ascii_case(other.as_slice())
+    }
+}
 
 impl Serialize for CountryCode {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
@@ -84,7 +90,7 @@ impl<'de> Visitor<'de> for CountryCodeVisitor {
     {
         match v.parse::<Self::Value>() {
             Ok(v) => Ok(v),
-            Err(()) => return Err(serde::de::Error::custom("Invalid country code")),
+            Err(_) => return Err(serde::de::Error::custom("Invalid country code")),
         }
     }
 }
@@ -98,12 +104,25 @@ impl<'de> Deserialize<'de> for CountryCode {
     }
 }
 
+#[derive(Debug)]
+pub enum CountryCodeParseError {
+    InvalidLength,
+}
+
+impl Display for CountryCodeParseError {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        Debug::fmt(self, f)
+    }
+}
+
+impl std::error::Error for CountryCodeParseError {}
+
 impl FromStr for CountryCode {
-    type Err = ();
+    type Err = CountryCodeParseError;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         if s.as_bytes().len() != 2 {
-            return Err(());
+            return Err(CountryCodeParseError::InvalidLength);
         }
 
         let mut transformed = s
@@ -225,5 +244,16 @@ mod test {
         assert_eq!(v, "\"NZ\"");
         let expect: CountryCode = serde_json::from_str(v.as_str()).unwrap();
         assert_eq!(expect, code);
+    }
+
+    #[test]
+    fn test_country_code() {
+        let codes: Vec<CountryCode> = vec!["nz", "US"]
+            .into_iter()
+            .map(|c| c.parse().unwrap())
+            .collect();
+        assert!(codes.contains(&"NZ".parse().unwrap()));
+        assert!(codes.contains(&"US".parse().unwrap()));
+        assert!(codes.contains(&"us".parse().unwrap()));
     }
 }

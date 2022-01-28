@@ -54,6 +54,35 @@
         {
             "type": "lldb",
             "request": "launch",
+            "name": "Standalone",
+            "cargo": {
+                "args": [
+                    "build",
+                    "--bin=proxy",
+                    "--package=cjk-proxy"
+                    
+                ],
+                "filter": {
+                    "name": "proxy",
+                    "kind": "bin"
+                }
+            },
+            "args": [
+                "standalone",
+                "--socks5-host=0.0.0.0",
+                "--socks5-port=5000",
+                "--reject-country=NZ",
+                "--reject-country=CN",
+                "--prefer-country=US"
+            ],
+            "env": {
+                "RUST_LOG": "debug"
+            },
+            "cwd": "${workspaceFolder}"
+        },
+        {
+            "type": "lldb",
+            "request": "launch",
             "name": "Server",
             "cargo": {
                 "args": [
