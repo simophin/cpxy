@@ -70,10 +70,7 @@
             "args": [
                 "standalone",
                 "--socks5-host=0.0.0.0",
-                "--socks5-port=5000",
-                "--reject-country=NZ",
-                "--reject-country=CN",
-                "--prefer-country=US"
+                "--socks5-port=5000"
             ],
             "env": {
                 "RUST_LOG": "debug"

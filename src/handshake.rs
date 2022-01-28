@@ -30,7 +30,7 @@ impl HttpProxyState {
     pub fn from_http(r: &httparse::Request<'_, '_>) -> anyhow::Result<Self> {
         let path = r.path.ok_or_else(|| anyhow!("No path found"))?;
         let method = r.method.ok_or_else(|| anyhow!("No method found"))?;
-        let protocol = method.find("://").map(|index| &path[..index]).unwrap_or("");
+        let protocol = path.find("://").map(|index| &path[..index]).unwrap_or("");
 
         let ((host_and_port, path), default_port) = if protocol.eq_ignore_ascii_case("http") {
             let path = &path["http://".len()..];
