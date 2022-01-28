@@ -18,4 +18,4 @@ mod io;
 #[cfg(test)]
 mod test;
 
-pub use crate::proxy::protocol::{IPPolicy, IPPolicyRule};
+pub use crate::proxy::protocol::{IPPolicy, RouteDestination};

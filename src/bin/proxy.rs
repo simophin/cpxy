@@ -3,7 +3,7 @@ use futures_lite::future::race;
 use proxy::client::{run_client, ClientConfig};
 use proxy::geoip::CountryCode;
 use proxy::server::run_server;
-use proxy::{IPPolicy, IPPolicyRule};
+use proxy::{IPPolicy, RouteDestination};
 use smol::net::TcpListener;
 use std::sync::Arc;
 use std::time::Duration;
@@ -99,12 +99,12 @@ fn create_remote_policy(
         if accept.is_empty() {
             vec![]
         } else {
-            vec![IPPolicyRule::Country { codes: accept }]
+            vec![RouteDestination::Country { codes: accept }]
         },
         if reject.is_empty() {
             vec![]
         } else {
-            vec![IPPolicyRule::Country { codes: reject }]
+            vec![RouteDestination::Country { codes: reject }]
         },
         prefer,
     )

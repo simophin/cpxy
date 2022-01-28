@@ -1,6 +1,8 @@
+use either::Either;
 use std::collections::HashMap;
 use std::net::{IpAddr, SocketAddr};
 
+use crate::domains::matches_gfw;
 use serde::{Deserialize, Serialize};
 
 use crate::geoip::CountryCode;
@@ -15,36 +17,41 @@ pub enum ProxyRequestType {
     Http(Address, Headers),
 }
 
-#[derive(Debug, Clone, Deserialize, Serialize)]
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq, Hash)]
 #[serde(tag = "type")]
-pub enum IPPolicyRule {
-    Country { codes: Vec<CountryCode> },
+pub enum RouteDestination {
+    Country(CountryCode),
+    GFWList,
     PrivateIP,
 }
 
-impl IPPolicyRule {
-    pub fn matches(&self, ip: &IpAddr, cc: CountryCode) -> bool {
-        match self {
-            IPPolicyRule::Country { codes } => codes.contains(&cc),
-            IPPolicyRule::PrivateIP => !ip.is_global(),
+impl RouteDestination {
+    pub fn matches(&self, test: (&Address, Option<CountryCode>)) -> bool {
+        match (self, test) {
+            (RouteDestination::Country(c), (_, Some(test_c))) => c == &test_c,
+            (RouteDestination::PrivateIP, (Address::IP(addr), _)) => !addr.ip().is_global(),
+            (RouteDestination::GFWList, (addr, _)) if matches!(addr, Address::Name { .. }) => {
+                matches_gfw(&addr)
+            }
+            _ => false,
         }
     }
 
     pub fn matches_any<'a>(
-        ip: &IpAddr,
-        cc: CountryCode,
-        mut rules: impl Iterator<Item = &'a IPPolicyRule>,
+        test: (&Address, Option<CountryCode>),
+        mut rules: impl Iterator<Item = &'a RouteDestination>,
     ) -> bool {
-        rules.find(|rule| rule.matches(ip, cc)).is_some()
+        let (addr, cc) = test;
+        rules.find(|rule| rule.matches((addr, cc))).is_some()
     }
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct IPPolicy {
     #[serde(default)]
-    accept: Vec<IPPolicyRule>,
+    accept: Vec<RouteDestination>,
     #[serde(default)]
-    reject: Vec<IPPolicyRule>,
+    reject: Vec<RouteDestination>,
     #[serde(default)]
     prefer: HashMap<CountryCode, usize>,
 }
@@ -61,8 +68,8 @@ impl Default for IPPolicy {
 
 impl IPPolicy {
     pub fn new(
-        accept: Vec<IPPolicyRule>,
-        reject: Vec<IPPolicyRule>,
+        accept: Vec<RouteDestination>,
+        reject: Vec<RouteDestination>,
         prefer: Vec<CountryCode>,
     ) -> Self {
         Self {
@@ -76,16 +83,10 @@ impl IPPolicy {
         }
     }
 
-    pub fn should_keep(&self, ip: &IpAddr, c: Option<CountryCode>) -> bool {
-        let result = match c {
-            Some(c) => {
-                (self.accept.is_empty() || IPPolicyRule::matches_any(ip, c, self.accept.iter()))
-                    && (self.reject.is_empty()
-                        || !IPPolicyRule::matches_any(ip, c, self.reject.iter()))
-            }
-            None => self.accept.is_empty(),
-        };
-        result
+    pub fn should_keep(&self, ip: &Address, c: Option<CountryCode>) -> bool {
+        (self.accept.is_empty() || RouteDestination::matches_any((ip, c), self.accept.iter()))
+            && (self.reject.is_empty()
+                || !RouteDestination::matches_any((ip, c), self.reject.iter()))
     }
 
     pub fn sort_by_preferences<T>(&self, c: &mut Vec<(T, Option<CountryCode>)>) {
@@ -134,28 +135,20 @@ mod test {
         let us: CountryCode = "US".parse().unwrap();
         let nz: CountryCode = "NZ".parse().unwrap();
 
-        assert!(IPPolicy::default().should_keep(&"8.8.8.8".parse().unwrap(), Some(us)));
+        assert!(IPPolicy::default().should_keep(&"8.8.8.8:80".parse().unwrap(), Some(us)));
 
-        let us_only_policy = IPPolicy::new(
-            vec![IPPolicyRule::Country { codes: vec![us] }],
-            vec![],
-            vec![],
-        );
+        let us_only_policy = IPPolicy::new(vec![RouteDestination::Country(us)], vec![], vec![]);
 
-        assert!(us_only_policy.should_keep(&"8.8.8.8".parse().unwrap(), Some(us)));
+        assert!(us_only_policy.should_keep(&"8.8.8.8:53".parse().unwrap(), Some(us)));
         assert_eq!(
-            us_only_policy.should_keep(&"65.9.139.97".parse().unwrap(), Some(nz)),
+            us_only_policy.should_keep(&"65.9.139.97:80".parse().unwrap(), Some(nz)),
             false
         );
 
-        let reject_nz_policy = IPPolicy::new(
-            vec![],
-            vec![IPPolicyRule::Country { codes: vec![nz] }],
-            vec![],
-        );
-        assert!(reject_nz_policy.should_keep(&"8.8.8.8".parse().unwrap(), Some(us)));
+        let reject_nz_policy = IPPolicy::new(vec![], vec![RouteDestination::Country(nz)], vec![]);
+        assert!(reject_nz_policy.should_keep(&"8.8.8.8:443".parse().unwrap(), Some(us)));
         assert_eq!(
-            reject_nz_policy.should_keep(&"65.9.139.97".parse().unwrap(), Some(nz)),
+            reject_nz_policy.should_keep(&"65.9.139.97:80".parse().unwrap(), Some(nz)),
             false
         );
     }

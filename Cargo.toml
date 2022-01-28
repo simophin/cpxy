@@ -23,11 +23,12 @@ rand = "0"
 base64 = "0"
 aes = { version = "0", features = ["ctr"] }
 clap = { version = "3", features = ["derive"] }
+either = "1"
 regex = "1"
 lazy_static = "1"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
-adblock = "0"
+adblock = { version = "0", default-features = false, features = ["full-regex-handling", "embedded-domain-resolver"]}
 
 [profile.release]
 strip = "symbols"

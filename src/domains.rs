@@ -1,24 +1,40 @@
 use crate::socks5::Address;
+use adblock::blocker::BlockerResult;
 use adblock::engine::Engine;
-use anyhow::anyhow;
 use lazy_static::lazy_static;
-use std::sync::{Arc, RwLock};
 
-fn new_engine() -> anyhow::Result<Arc<RwLock<Engine>>> {
+fn new_engine() -> Engine {
     let mut engine = Engine::new(true);
-    if let Err(_) = engine.deserialize(include_bytes!(concat!(env!("OUT_DIR"), "/gfwlist.abp"))) {
-        return Err(anyhow!("Unable to initialise engine"));
-    }
-    Ok(Arc::new(RwLock::new(engine)))
+    engine
+        .deserialize(include_bytes!(concat!(env!("OUT_DIR"), "/gfwlist.abp")))
+        .expect("To deserialize engine");
+    engine
 }
 
-fn get_engine() -> Arc<RwLock<Engine>> {
+pub fn matches_gfw(address: &Address) -> bool {
     lazy_static! {
-        static ref engine: Arc<RwLock<Engine>> = new_engine().unwrap();
+        static ref ENGINE: Engine = new_engine();
     }
-    engine.clone()
+    let url = match address.get_port() {
+        80 => format!("http://{address}"),
+        443 => format!("https://{address}"),
+        _ => address.to_string(),
+    };
+    match ENGINE.check_network_urls(url.as_str(), url.as_str(), "") {
+        BlockerResult { matched, .. } if matched => true,
+        _ => false,
+    }
 }
 
-pub fn matches_gfw(address: &Address) -> anyhow::Result<bool> {
-    engine.check_network_urls()
+#[cfg(test)]
+mod test {
+    use super::*;
+
+    #[test]
+    fn test_engine() {
+        assert!(matches_gfw(&"www.google.com:443".parse().unwrap()));
+        assert!(matches_gfw(&"www.google.com:443".parse().unwrap()));
+        assert!(matches_gfw(&"twitter.com:80".parse().unwrap()));
+        assert!(!matches_gfw(&"qq.com:443".parse().unwrap()));
+    }
 }
