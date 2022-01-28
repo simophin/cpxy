@@ -211,7 +211,6 @@ pub async fn resolve_with_countries(addr: &Address) -> Vec<(SocketAddr, Option<C
 #[cfg(test)]
 mod test {
     use super::*;
-    use futures_lite::StreamExt;
     use std::time::Instant;
 
     #[test]

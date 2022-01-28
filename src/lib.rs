@@ -12,6 +12,7 @@ mod utils;
 #[cfg(target_os = "android")]
 mod jni_export;
 
+mod domains;
 pub mod geoip;
 mod io;
 #[cfg(test)]

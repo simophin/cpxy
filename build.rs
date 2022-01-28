@@ -1,3 +1,5 @@
+use adblock::engine::Engine;
+use adblock::lists::{FilterSet, ParseOptions};
 use std::fs::File;
 use std::io::{BufRead, BufReader, BufWriter, Write};
 use std::path::Path;
@@ -70,11 +72,51 @@ fn generate_ip_dat<N: NumTrait>(url: &str, output_file_name: &str) {
     }
 }
 
+fn generate_gfw_list() {
+    let mut list =
+        ureq::get("https://raw.githubusercontent.com/gfwlist/gfwlist/master/gfwlist.txt")
+            .call()
+            .unwrap()
+            .into_string()
+            .unwrap();
+
+    list.retain(|x| x != '\r' && x != '\n' && !x.is_ascii_whitespace());
+
+    let list = base64::decode_config(list, base64::STANDARD_NO_PAD).unwrap();
+    let mut reader = BufReader::new(list.as_slice());
+
+    let mut filter_set = FilterSet::new(true);
+    let mut line = Default::default();
+    while reader.read_line(&mut line).unwrap() > 0 {
+        match line.trim_matches('\n') {
+            l if l.starts_with("!") => {}
+            l if !l.is_empty() => {
+                filter_set
+                    .add_filter(l, ParseOptions::default())
+                    .expect(format!("Unable to add line: {line}").as_str());
+            }
+            _ => {}
+        }
+
+        line.clear();
+    }
+
+    let data = Engine::from_filter_set(filter_set, true)
+        .serialize_compressed()
+        .unwrap();
+    File::create(Path::new(&std::env::var("OUT_DIR").unwrap()).join("gfwlist.abp"))
+        .unwrap()
+        .write_all(data.as_slice())
+        .unwrap()
+}
+
 fn main() {
     let task = spawn(|| {
         generate_ip_dat::<u32>("https://raw.githubusercontent.com/sapics/ip-location-db/master/geo-whois-asn-country/geo-whois-asn-country-ipv4-num.csv", "geoip4.dat")
     });
     generate_ip_dat::<u128>("https://raw.githubusercontent.com/sapics/ip-location-db/master/geo-whois-asn-country/geo-whois-asn-country-ipv6-num.csv", "geoip6.dat");
+    let gen_gfw_task = spawn(|| generate_gfw_list());
     task.join().unwrap();
+    gen_gfw_task.join().unwrap();
     println!("cargo:rerun-if-changed=build.rs");
 }
