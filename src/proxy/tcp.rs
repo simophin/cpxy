@@ -1,5 +1,6 @@
 use crate::io::TcpStream;
 use crate::proxy::protocol::ProxyResult;
+use crate::socks5::Address;
 use crate::utils::{copy_duplex, write_bincode_lengthed_async};
 use anyhow::anyhow;
 use futures_lite::{AsyncRead, AsyncWrite, AsyncWriteExt};
@@ -7,8 +8,8 @@ use smol_timeout::TimeoutExt;
 use std::net::SocketAddr;
 use std::time::Duration;
 
-async fn prepare(target: &[SocketAddr]) -> anyhow::Result<(SocketAddr, TcpStream)> {
-    let socket = TcpStream::connect_raw(target).await?;
+async fn prepare(target: &Address) -> anyhow::Result<(SocketAddr, TcpStream)> {
+    let socket = TcpStream::connect(target).await?;
     Ok((socket.local_addr()?, socket))
 }
 
@@ -36,7 +37,7 @@ async fn serve_tcp_proxy_common(
 }
 
 pub async fn serve_tcp_proxy(
-    target: &[SocketAddr],
+    target: &Address,
     src: impl AsyncRead + AsyncWrite + Unpin + Send + Sync + 'static,
 ) -> anyhow::Result<()> {
     log::info!("Proxying upstream: tcp://{target:?}");
@@ -44,7 +45,7 @@ pub async fn serve_tcp_proxy(
 }
 
 async fn prepare_http(
-    target: &[SocketAddr],
+    target: &Address,
     headers: &[u8],
 ) -> anyhow::Result<(SocketAddr, TcpStream)> {
     let (addr, mut stream) = prepare(target).await?;
@@ -57,7 +58,7 @@ async fn prepare_http(
 }
 
 pub async fn serve_http_proxy(
-    target: &[SocketAddr],
+    target: &Address,
     headers: &[u8],
     src: impl AsyncRead + AsyncWrite + Unpin + Send + Sync + 'static,
 ) -> anyhow::Result<()> {

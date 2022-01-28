@@ -19,7 +19,6 @@ pub extern "system" fn Java_dev_fanchao_CJKProxy_start(
     socks5_port: jint,
     socks5_udp_host: JString,
     local_ip_policy: JString,
-    upstream_ip_policy: JString,
 ) -> jlong {
     #[cfg(target_os = "android")]
     android_logger::init_once(
@@ -41,16 +40,6 @@ pub extern "system" fn Java_dev_fanchao_CJKProxy_start(
     let socks5_udp_host: String = env
         .get_string(socks5_udp_host)
         .expect("To get socks5_udp_host")
-        .into();
-
-    let upstream_ip_policy: String = env
-        .get_string(upstream_ip_policy)
-        .expect("To get ip policy")
-        .into();
-
-    let local_ip_policy: String = env
-        .get_string(local_ip_policy)
-        .expect("To get ip policy")
         .into();
 
     let address = format!("{socks5_host}:{socks5_port}");
@@ -77,27 +66,7 @@ pub extern "system" fn Java_dev_fanchao_CJKProxy_start(
             }
         },
         upstream_timeout: Duration::from_secs(3),
-        upstream_policy: match serde_json::from_str(upstream_ip_policy.as_str()) {
-            Ok(v) => v,
-            Err(e) => {
-                let _ = env.throw_new(
-                    "java/lang/RuntimeException",
-                    format!("Invalid upstream policy: {e}"),
-                );
-                return 0;
-            }
-        },
         socks5_udp_host,
-        local_policy: match serde_json::from_str(local_ip_policy.as_str()) {
-            Ok(v) => v,
-            Err(e) => {
-                let _ = env.throw_new(
-                    "java/lang/RuntimeException",
-                    format!("Invalid local policy: {e}"),
-                );
-                return 0;
-            }
-        },
     });
 
     Box::leak(Box::new(Instance(spawn(async move {

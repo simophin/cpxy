@@ -8,13 +8,10 @@ use std::str::FromStr;
 
 use bytes::{Buf, BufMut};
 use futures_lite::{AsyncWrite, AsyncWriteExt};
-use lazy_static::lazy_static;
-use regex::Regex;
 
 use crate::parse::ParseError;
 
 #[derive(Debug, Eq, PartialEq, Clone, Serialize, Deserialize)]
-#[serde(tag = "type")]
 pub enum Address {
     IP(SocketAddr),
     Name { host: String, port: u16 },
@@ -51,19 +48,21 @@ impl FromStr for Address {
             _ => {}
         };
 
-        lazy_static! {
-            static ref RE: Regex = Regex::new(r"^(.+?):(\d+?)$").unwrap();
-        }
+        let mut s = s.split(':');
+        let host = match s.next().map(|v| v.trim()) {
+            Some(v) if !v.is_empty() => v,
+            _ => return Err(anyhow!("Parsing Address: host is empty")),
+        };
 
-        RE.captures(s)
-            .and_then(|cap| match (cap.get(1), cap.get(2)) {
-                (Some(host), Some(port)) => Some(Address::Name {
-                    host: host.as_str().to_string(),
-                    port: port.as_str().parse().ok()?,
-                }),
-                _ => None,
-            })
-            .ok_or_else(|| anyhow!("Invalid path {s} for a sock address"))
+        let port: u16 = s
+            .next()
+            .and_then(|v| v.parse().ok())
+            .ok_or_else(|| anyhow!("Parsing Address: invalid port"))?;
+
+        Ok(Self::Name {
+            host: host.to_string(),
+            port,
+        })
     }
 }
 
@@ -128,7 +127,7 @@ impl Address {
                     .map(|name| {
                         IpAddr::from_str(name.as_str())
                             .map(|ip| Self::IP(SocketAddr::new(ip, port)))
-                            .unwrap_or_else(|| Self::Name { host: name, port })
+                            .unwrap_or_else(|_| Self::Name { host: name, port })
                     })
                     .map(|v| Some((buf.position() as usize, v)))
             }

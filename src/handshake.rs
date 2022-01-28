@@ -1,5 +1,5 @@
 use crate::parse::ParseError;
-use crate::proxy::protocol::{IPPolicy, ProxyRequest, ProxyRequestType};
+use crate::proxy::protocol::ProxyRequest;
 use crate::socks5::{
     Address, ClientConnRequest, ClientGreeting, Command, ConnStatusCode, AUTH_NOT_ACCEPTED,
     AUTH_NO_PASSWORD,
@@ -7,8 +7,6 @@ use crate::socks5::{
 use crate::utils::RWBuffer;
 use anyhow::anyhow;
 use futures_lite::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
-use lazy_static::lazy_static;
-use regex::Regex;
 use std::io::Write;
 use std::net::SocketAddr;
 
@@ -32,15 +30,7 @@ impl HttpProxyState {
     pub fn from_http(r: &httparse::Request<'_, '_>) -> anyhow::Result<Self> {
         let path = r.path.ok_or_else(|| anyhow!("No path found"))?;
         let method = r.method.ok_or_else(|| anyhow!("No method found"))?;
-        lazy_static! {
-            static ref PROTOCOL_REGEX: Regex = Regex::new(r"^(.+?)://").unwrap();
-        }
-
-        let protocol: &str = PROTOCOL_REGEX
-            .captures(path)
-            .and_then(|c| c.get(1))
-            .map(|c| c.as_str())
-            .unwrap_or("");
+        let protocol = method.find("://").map(|index| &path[..index]).unwrap_or("");
 
         let ((host_and_port, path), default_port) = if protocol.eq_ignore_ascii_case("http") {
             let path = &path["http://".len()..];
@@ -142,7 +132,6 @@ impl Handshaker {
     pub async fn start(
         stream: &mut (impl AsyncRead + AsyncWrite + Send + Sync + Unpin),
         buf: &mut RWBuffer,
-        policy: IPPolicy,
     ) -> anyhow::Result<(Handshaker, ProxyRequest)> {
         let mut parse_state = ParseState::Init;
         let proxy_state: ProxyState;
@@ -199,13 +188,13 @@ impl Handshaker {
         match proxy_state {
             ProxyState::SocksGreeted(s) => Ok((
                 Handshaker(HandshakeType::Socks5),
-                handshake_socks5(stream, buf, s, policy).await?,
+                handshake_socks5(stream, buf, s).await?,
             )),
             ProxyState::Http(s) => {
-                let req = handshake_http(s, policy).await?;
-                let handshaker = Self(match &req.t {
-                    ProxyRequestType::SocksTCP(_) => HandshakeType::HttpTcpChannel,
-                    ProxyRequestType::Http(_, _) => HandshakeType::Http,
+                let req = handshake_http(s).await?;
+                let handshaker = Self(match &req {
+                    ProxyRequest::TCP { .. } => HandshakeType::HttpTcpChannel,
+                    ProxyRequest::Http { .. } => HandshakeType::Http,
                     _ => unreachable!("Unknown proxy request type for http proxy"),
                 });
                 Ok((handshaker, req))
@@ -260,17 +249,13 @@ async fn handshake_http(
         method,
         headers,
     }: HttpProxyState,
-    policy: IPPolicy,
 ) -> anyhow::Result<ProxyRequest> {
     if method.eq_ignore_ascii_case("connect") {
-        Ok(ProxyRequest {
-            t: ProxyRequestType::SocksTCP(address),
-            policy,
-        })
+        Ok(ProxyRequest::TCP{dst: address})
     } else {
-        Ok(ProxyRequest {
-            t: ProxyRequestType::Http(address, headers),
-            policy,
+        Ok(ProxyRequest::Http {
+            dst: address,
+            request: headers.into(),
         })
     }
 }
@@ -279,7 +264,6 @@ async fn handshake_socks5(
     socket: &mut (impl AsyncRead + AsyncWrite + Send + Sync + Unpin),
     buf: &mut RWBuffer,
     state: SocksState,
-    policy: IPPolicy,
 ) -> anyhow::Result<ProxyRequest> {
     if !state.auths.contains(&AUTH_NO_PASSWORD) {
         ClientGreeting::respond(AUTH_NOT_ACCEPTED, socket).await?;
@@ -294,21 +278,13 @@ async fn handshake_socks5(
             Some((offset, ClientConnRequest { cmd, address })) => match cmd {
                 Command::CONNECT_TCP => {
                     buf.advance_read(offset);
-                    return Ok(ProxyRequest {
-                        t: ProxyRequestType::SocksTCP(address),
-                        policy,
+                    return Ok(ProxyRequest::TCP {
+                        dst: address,
                     });
                 }
                 Command::BIND_UDP => {
                     buf.advance_read(offset);
-                    return Ok(ProxyRequest {
-                        t: ProxyRequestType::SocksUDP(if address.is_unspecified() {
-                            None
-                        } else {
-                            Some(address)
-                        }),
-                        policy,
-                    });
+                    return Ok(ProxyRequest::UDP);
                 }
                 _ => {
                     ClientConnRequest::respond(

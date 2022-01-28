@@ -1,9 +1,7 @@
 use clap::{AppSettings, Parser, Subcommand};
 use futures_lite::future::race;
 use proxy::client::{run_client, ClientConfig};
-use proxy::geoip::CountryCode;
 use proxy::server::run_server;
-use proxy::{IPPolicy, RouteDestination};
 use smol::net::TcpListener;
 use std::sync::Arc;
 use std::time::Duration;
@@ -48,18 +46,6 @@ enum Command {
         /// The remote server's port
         #[clap(default_value_t = 80, long)]
         remote_port: u16,
-
-        /// The countries to proxy. If specified only these countries will be proxied.
-        #[clap(long, multiple_occurrences(true))]
-        accept_country: Vec<CountryCode>,
-
-        /// The countries not to proxy.
-        #[clap(long, multiple_occurrences(true))]
-        reject_country: Vec<CountryCode>,
-
-        /// The order of countries preferred to proxy through
-        #[clap(long, multiple_occurrences(true))]
-        prefer_country: Vec<CountryCode>,
     },
 
     #[clap(setting(AppSettings::ArgRequiredElseHelp))]
@@ -75,39 +61,7 @@ enum Command {
         /// The SOCKS5 port to listen on
         #[clap(default_value_t = 5000, long)]
         socks5_port: u16,
-
-        /// The countries to proxy. If specified only these countries will be proxied.
-        #[clap(long, multiple_occurrences(true))]
-        accept_country: Vec<CountryCode>,
-
-        /// The countries not to proxy.
-        #[clap(long, multiple_occurrences(true))]
-        reject_country: Vec<CountryCode>,
-
-        /// The order of countries preferred to proxy through
-        #[clap(long, multiple_occurrences(true))]
-        prefer_country: Vec<CountryCode>,
     },
-}
-
-fn create_remote_policy(
-    accept: Vec<CountryCode>,
-    reject: Vec<CountryCode>,
-    prefer: Vec<CountryCode>,
-) -> IPPolicy {
-    IPPolicy::new(
-        if accept.is_empty() {
-            vec![]
-        } else {
-            vec![RouteDestination::Country { codes: accept }]
-        },
-        if reject.is_empty() {
-            vec![]
-        } else {
-            vec![RouteDestination::Country { codes: reject }]
-        },
-        prefer,
-    )
 }
 
 fn main() -> anyhow::Result<()> {
@@ -131,9 +85,6 @@ fn main() -> anyhow::Result<()> {
                 socks5_udp_host,
                 remote_host,
                 remote_port,
-                accept_country: accept_countries,
-                reject_country: reject_countries,
-                prefer_country: prefer_countries,
             } => {
                 let listen_address = format!("{socks5_host}:{socks5_port}");
                 log::info!("Start client at {listen_address}");
@@ -141,13 +92,7 @@ fn main() -> anyhow::Result<()> {
                 run_client(
                     TcpListener::bind(listen_address).await?,
                     Arc::new(ClientConfig {
-                        local_policy: Default::default(),
                         socks5_udp_host,
-                        upstream_policy: create_remote_policy(
-                            accept_countries,
-                            reject_countries,
-                            prefer_countries,
-                        ),
                         upstream_timeout: Duration::from_secs(3),
                         upstream: format!("{remote_host}:{remote_port}")
                             .parse()
@@ -161,9 +106,6 @@ fn main() -> anyhow::Result<()> {
                 socks5_host,
                 socks5_port,
                 socks5_udp_host,
-                accept_country: accept_countries,
-                reject_country: reject_countries,
-                prefer_country: prefer_countries,
             } => {
                 let server = TcpListener::bind("localhost:0").await?;
                 let listen_address = server.local_addr()?;
@@ -176,13 +118,7 @@ fn main() -> anyhow::Result<()> {
                     run_client(
                         socks_server,
                         Arc::new(ClientConfig {
-                            local_policy: Default::default(),
                             socks5_udp_host,
-                            upstream_policy: create_remote_policy(
-                                accept_countries,
-                                reject_countries,
-                                prefer_countries,
-                            ),
                             upstream_timeout: Duration::from_secs(3),
                             upstream: listen_address.into(),
                         }),

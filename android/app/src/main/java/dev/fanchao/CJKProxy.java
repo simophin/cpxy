@@ -5,9 +5,7 @@ import androidx.annotation.NonNull;
 public class CJKProxy {
     public native static long start(@NonNull String upstreamHost, int upstreamPort,
                                     @NonNull String socks5Host, int socks5Port,
-                                    @NonNull String socks5UdpHost,
-                                    @NonNull String localIPPolicy,
-                                    @NonNull String upstreamIPPolicy) throws Exception;
+                                    @NonNull String socks5UdpHost) throws Exception;
 
     public native static void stop(long instance);
 

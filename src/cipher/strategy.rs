@@ -1,12 +1,12 @@
 use super::noop::new_no_op;
 use super::partial::new_partial_stream_cipher;
 use super::suite::BoxedStreamCipher;
-use crate::proxy::protocol::{ProxyRequest, ProxyRequestType};
+use crate::proxy::protocol::ProxyRequest;
 use anyhow::anyhow;
 use std::num::NonZeroUsize;
 use std::str::FromStr;
 
-#[derive(Debug)]
+#[derive(Debug, Clone, Copy)]
 pub enum EncryptionStrategy {
     FirstN(NonZeroUsize),
     Always,
@@ -25,8 +25,8 @@ impl std::fmt::Display for EncryptionStrategy {
 
 impl EncryptionStrategy {
     pub fn pick_send(req: &ProxyRequest) -> Self {
-        match &req.t {
-            ProxyRequestType::SocksTCP(addr) if addr.get_port() == 443 => {
+        match &req {
+            ProxyRequest::TCP { dst } if dst.get_port() == 443 => {
                 Self::FirstN(NonZeroUsize::try_from(512).unwrap())
             }
             _ => EncryptionStrategy::Always,
@@ -34,8 +34,8 @@ impl EncryptionStrategy {
     }
 
     pub fn pick_receive(req: &ProxyRequest) -> Self {
-        match &req.t {
-            ProxyRequestType::SocksTCP(addr) if addr.get_port() == 443 => EncryptionStrategy::Never,
+        match &req {
+            ProxyRequest::TCP { dst } if dst.get_port() == 443 => EncryptionStrategy::Never,
             _ => EncryptionStrategy::Always,
         }
     }

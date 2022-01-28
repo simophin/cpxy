@@ -1,10 +1,6 @@
-use super::strategy::EncryptionStrategy;
+use super::client::CipherParams;
 use anyhow::anyhow;
-use base64::{decode_config, URL_SAFE_NO_PAD};
 use futures_lite::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
-use lazy_static::lazy_static;
-use regex::Regex;
-use std::str::FromStr;
 
 use crate::utils::RWBuffer;
 
@@ -25,35 +21,27 @@ fn check_request(
         }
     };
 
-    lazy_static! {
-        static ref RE: Regex = Regex::new(r"/shop/by-id/(.+?)/(.+?)/(.+?)/(.+?)/(\d+?)").unwrap();
-    }
-
-    let path = req.path.unwrap_or("");
-
-    let (key, iv, client_send_strategy, client_receive_strategy, t) = RE
-        .captures(path)
-        .and_then(
-            |cap| match (cap.get(1), cap.get(2), cap.get(3), cap.get(4), cap.get(5)) {
-                (Some(k), Some(i), Some(s1), Some(s2), Some(t)) => Some((
-                    decode_config(k.as_str(), URL_SAFE_NO_PAD).ok()?,
-                    decode_config(i.as_str(), URL_SAFE_NO_PAD).ok()?,
-                    EncryptionStrategy::from_str(s1.as_str()).ok()?,
-                    EncryptionStrategy::from_str(s2.as_str()).ok()?,
-                    t.as_str().parse::<u8>().ok()?,
-                )),
-                _ => None,
-            },
-        )
-        .ok_or_else(|| ("HTTP/1.1 201 OK\r\n\r\n", "Invalid URL"))?;
+    let CipherParams {
+        key,
+        iv,
+        send_strategy: client_send_strategy,
+        recv_strategy: client_receive_strategy,
+        cipher_type,
+    } = match req.path.unwrap_or("").parse() {
+        Ok(v) => v,
+        Err(e) => {
+            log::error!("Error parsing params: {e}");
+            return Err(("HTTP/1.1 404 Not found\r\n\r\n", "Invalid PATH"));
+        }
+    };
 
     let rd_cipher = client_send_strategy.wrap_cipher(
-        create_cipher(t, key.as_slice(), iv.as_slice())
+        create_cipher(cipher_type, key.as_ref(), iv.as_ref())
             .map_err(|_| ("HTTP/1.1 401 Invalid type\r\n\r\n", "Invalid cipher type"))?,
     );
 
     let wr_cipher = client_receive_strategy
-        .wrap_cipher(create_cipher(t, key.as_slice(), iv.as_slice()).unwrap());
+        .wrap_cipher(create_cipher(cipher_type, key.as_ref(), iv.as_ref()).unwrap());
 
     Ok((rd_cipher, wr_cipher))
 }
@@ -124,7 +112,8 @@ pub async fn listen<T: AsyncRead + AsyncWrite + Unpin>(
 #[cfg(test)]
 mod test {
     use super::*;
-    use crate::cipher::client::connect;
+    use super::super::client::connect;
+    use super::super::strategy::EncryptionStrategy;
     use crate::test::duplex;
     use rand::RngCore;
     use smol::spawn;

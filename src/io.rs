@@ -1,6 +1,6 @@
 use crate::socks5::Address;
 use futures_lite::{AsyncRead, AsyncWrite};
-use smol::net::{AsyncToSocketAddrs, TcpStream as AsyncTcpStream, UdpSocket as AsyncUdpSocket};
+use smol::net::{TcpStream as AsyncTcpStream, UdpSocket as AsyncUdpSocket};
 use std::io::{IoSlice, IoSliceMut};
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr};
 use std::ops::{Deref, DerefMut};
@@ -38,13 +38,6 @@ impl UdpSocket {
             .await?,
         ))
     }
-
-    pub async fn send_to_addr(&self, buf: &[u8], a: &Address) -> smol::io::Result<usize> {
-        match a {
-            Address::IP(addr) => self.send_to(buf, addr).await,
-            Address::Name { host, port } => self.send_to(buf, (host.as_str(), *port)).await,
-        }
-    }
 }
 
 impl Deref for UdpSocket {
@@ -71,10 +64,6 @@ impl Drop for UdpSocket {
 pub struct TcpStream(AsyncTcpStream);
 
 impl TcpStream {
-    pub async fn connect_raw(a: impl AsyncToSocketAddrs) -> smol::io::Result<Self> {
-        Ok(Self::from(AsyncTcpStream::connect(a).await?))
-    }
-
     pub async fn connect(a: &Address) -> smol::io::Result<Self> {
         match a {
             Address::IP(addr) => Ok(TcpStream::from(AsyncTcpStream::connect(addr).await?)),

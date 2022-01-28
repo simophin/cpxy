@@ -2,7 +2,7 @@ use crate::cipher::client::connect;
 use crate::cipher::server::listen;
 use crate::cipher::strategy::EncryptionStrategy;
 use crate::client::{run_client, ClientConfig};
-use crate::proxy::protocol::{ProxyRequest, ProxyRequestType, ProxyResult};
+use crate::proxy::protocol::{ProxyRequest, ProxyResult};
 use crate::server::run_server;
 use crate::socks5::{Address, UdpPacket};
 use crate::utils::{
@@ -16,6 +16,7 @@ use smol::net::{TcpListener, TcpStream, UdpSocket};
 use smol::spawn;
 use smol_timeout::TimeoutExt;
 use std::borrow::Cow;
+use std::future::join;
 use std::num::NonZeroUsize;
 use std::sync::Arc;
 use std::time::Duration;
@@ -29,8 +30,7 @@ pub async fn duplex(
     let listener = TcpListener::bind("127.0.0.1:0").await.expect("To listen");
     let addr = listener.local_addr().expect("To have local addr");
 
-    let (client, server) =
-        futures_util::future::join(TcpStream::connect(addr), listener.accept()).await;
+    let (client, server) = join!(TcpStream::connect(addr), listener.accept()).await;
     let client = client.expect("To connect");
     let (server, _) = server.expect("To accept");
 
@@ -52,9 +52,7 @@ fn test_client_server_tcp() {
                 .await
                 .expect("To receive proxy request");
 
-            assert!(
-                matches!(req.t, ProxyRequestType::SocksTCP(addr) if addr == Address::default())
-            );
+            assert!(matches!(req, ProxyRequest::TCP {dst} if dst == Address::default()));
 
             write_bincode_lengthed_async(
                 &mut server,
@@ -86,9 +84,8 @@ fn test_client_server_tcp() {
             }
         });
 
-        let proxy_request = ProxyRequest {
-            t: ProxyRequestType::SocksTCP(Default::default()),
-            policy: Default::default(),
+        let proxy_request = ProxyRequest::TCP {
+            dst: Default::default(),
         };
 
         let mut req_buf = Vec::new();
@@ -188,9 +185,7 @@ fn test_client_server_udp() {
                     Arc::new(ClientConfig {
                         upstream: Address::IP(server_addr),
                         upstream_timeout: Duration::from_secs(3),
-                        upstream_policy: Default::default(),
                         socks5_udp_host: "0.0.0.0".to_string(),
-                        local_policy: Default::default(),
                     }),
                 ),
                 run_server(server),

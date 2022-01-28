@@ -1,75 +1,25 @@
-use crate::geoip::resolve_with_countries;
 use futures_lite::{AsyncRead, AsyncWrite};
 use smol::net::TcpListener;
 use smol::spawn;
-use std::net::SocketAddr;
 
 use crate::io::TcpStream;
-use crate::proxy::protocol::{IPPolicy, ProxyRequest, ProxyRequestType as rt, ProxyResult};
+use crate::proxy::protocol::ProxyRequest;
 use crate::proxy::tcp::{serve_http_proxy, serve_tcp_proxy};
 use crate::proxy::udp::serve_udp_proxy;
-use crate::socks5::Address;
-use crate::utils::{read_bincode_lengthed_async, write_bincode_lengthed_async};
-
-async fn check_resolve_addresses(
-    addr: &Address,
-    policy: &IPPolicy,
-) -> Result<Vec<SocketAddr>, ProxyResult> {
-    let original_addrs = resolve_with_countries(addr).await;
-
-    let mut addrs = original_addrs
-        .iter()
-        .filter(|(addr, country)| policy.should_keep(&addr.ip(), *country))
-        .map(|(addr, c)| (addr.clone(), *c))
-        .collect::<Vec<_>>();
-
-    policy.sort_by_preferences(&mut addrs);
-
-    log::debug!("Looking up {addr} with policy {policy:?}, result: {addrs:?}");
-
-    if addrs.is_empty() {
-        return Err(ProxyResult::ErrHostRejected {
-            resolved: original_addrs
-                .into_iter()
-                .map(|(addr, cc)| (addr.ip(), cc))
-                .collect(),
-        });
-    }
-
-    Ok(addrs.into_iter().map(|(addr, _)| addr).collect())
-}
+use crate::utils::read_bincode_lengthed_async;
 
 pub async fn serve_client(
     stream: impl AsyncRead + AsyncWrite + Unpin + Send + Sync + 'static,
 ) -> anyhow::Result<()> {
     let mut stream = super::cipher::server::listen(stream).await?;
-    let ProxyRequest { t, policy }: ProxyRequest = read_bincode_lengthed_async(&mut stream).await?;
+    let req: ProxyRequest = read_bincode_lengthed_async(&mut stream).await?;
 
-    match t {
-        rt::SocksTCP(addr) => match check_resolve_addresses(&addr, &policy).await {
-            Ok(addrs) => serve_tcp_proxy(addrs.as_slice(), stream).await,
-            Err(e) => {
-                write_bincode_lengthed_async(&mut stream, &e).await?;
-                return Err(e.into());
-            }
-        },
-        rt::Http(addr, headers) => match check_resolve_addresses(&addr, &policy).await {
-            Ok(addrs) => serve_http_proxy(addrs.as_slice(), headers.as_slice(), stream).await,
-            Err(e) => {
-                write_bincode_lengthed_async(&mut stream, &e).await?;
-                return Err(e.into());
-            }
-        },
-        rt::SocksUDP(addr) if addr.is_some() => {
-            match check_resolve_addresses(&addr.unwrap(), &policy).await {
-                Ok(_) => serve_udp_proxy(stream, true).await,
-                Err(e) => {
-                    write_bincode_lengthed_async(&mut stream, &e).await?;
-                    return Err(e.into());
-                }
-            }
+    match req {
+        ProxyRequest::TCP { dst } => serve_tcp_proxy(&dst, stream).await,
+        ProxyRequest::Http { dst, request } => {
+            serve_http_proxy(&dst, request.as_ref(), stream).await
         }
-        rt::SocksUDP(_) => serve_udp_proxy(stream, true).await,
+        ProxyRequest::UDP => serve_udp_proxy(stream, true).await,
     }
 }
 

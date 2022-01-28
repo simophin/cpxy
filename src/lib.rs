@@ -1,4 +1,4 @@
-#![feature(ip)]
+#![feature(future_join, future_poll_fn)]
 
 mod cipher;
 pub mod client;
@@ -12,10 +12,6 @@ mod utils;
 #[cfg(target_os = "android")]
 mod jni_export;
 
-mod domains;
-pub mod geoip;
 mod io;
 #[cfg(test)]
 mod test;
-
-pub use crate::proxy::protocol::{IPPolicy, RouteDestination};
