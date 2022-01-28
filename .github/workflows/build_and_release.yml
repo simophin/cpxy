@@ -137,7 +137,7 @@ jobs:
   release:
     runs-on: self-hosted
     if: startsWith(github.ref, 'refs/tags/')
-    needs: [build_linux, build_apple, build_windows, build_android]
+    needs: [build_linux, build_android]
     steps:
 #    - name: Download apple artifacts
 #      uses: actions/download-artifact@v2
