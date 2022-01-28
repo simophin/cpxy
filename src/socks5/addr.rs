@@ -14,6 +14,7 @@ use regex::Regex;
 use crate::parse::ParseError;
 
 #[derive(Debug, Eq, PartialEq, Clone, Serialize, Deserialize)]
+#[serde(tag = "type")]
 pub enum Address {
     IP(SocketAddr),
     Name { host: String, port: u16 },
