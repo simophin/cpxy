@@ -15,3 +15,5 @@ mod jni_export;
 mod io;
 #[cfg(test)]
 mod test;
+
+mod geoip;
