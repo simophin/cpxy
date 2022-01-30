@@ -1,3 +1,6 @@
+use adblock::engine::Engine;
+use adblock::lists::{FilterSet, ParseOptions};
+use read_transform::ReadTransformer;
 use std::fmt::Debug;
 use std::fs::File;
 use std::io::{BufRead, BufReader, BufWriter, Write};
@@ -5,7 +8,7 @@ use std::path::Path;
 use std::str::FromStr;
 use std::thread::spawn;
 
-trait Num: FromStr + num_traits::Unsigned + Copy + Debug + PartialOrd {
+trait Num: FromStr + Copy + Debug + PartialOrd {
     fn write_be(self, t: &mut impl Write);
 }
 
@@ -57,6 +60,43 @@ where
     }
 }
 
+fn download_gfw_list(url: &str, output: &Path) {
+    let mut output = File::create(output).unwrap();
+    let mut reader = ReadTransformer::new(
+        ureq::get(url).call().unwrap().into_reader(),
+        256,
+        Box::new(|buf: &mut [u8], _, _| {
+            return Some((
+                buf.iter().filter(|x| **x != b'\n').map(|x| *x).collect(),
+                buf.len(),
+            ));
+        }),
+    );
+
+    let mut reader = BufReader::new(base64::read::DecoderReader::new(
+        &mut reader,
+        base64::STANDARD_NO_PAD,
+    ));
+
+    let mut line = Default::default();
+    let mut fs = FilterSet::new(true);
+    while reader.read_line(&mut line).unwrap() > 0 {
+        {
+            let line = line.trim_matches('\n').trim();
+            if !line.is_empty() && !line.starts_with('!') {
+                fs.add_filter(line, ParseOptions::default()).unwrap();
+            }
+        }
+
+        line.clear();
+    }
+
+    let engine = Engine::from_filter_set(fs, true);
+    output
+        .write_all(engine.serialize_compressed().unwrap().as_slice())
+        .unwrap();
+}
+
 fn main() {
     env_logger::init();
     let mut args = std::env::args();
@@ -68,7 +108,7 @@ fn main() {
         spawn(move || {
             download_geo_ip::<u32>(
                 "https://raw.githubusercontent.com/sapics/ip-location-db/master/geo-whois-asn-country/geo-whois-asn-country-ipv4-num.csv",
-                &Path::new(out_dir.as_str()).join("ipv4.dat"))
+                &Path::new(out_dir.as_str()).join("geoip").join("ipv4.dat"))
         })
     };
 
@@ -77,9 +117,14 @@ fn main() {
         spawn(move || {
             download_geo_ip::<u128>(
                 "https://raw.githubusercontent.com/sapics/ip-location-db/master/geo-whois-asn-country/geo-whois-asn-country-ipv6-num.csv",
-                &Path::new(out_dir.as_str()).join("ipv6.dat"))
+                &Path::new(out_dir.as_str()).join("geoip").join("ipv6.dat"))
         })
     };
+
+    download_gfw_list(
+        "https://raw.githubusercontent.com/gfwlist/gfwlist/master/gfwlist.txt",
+        &Path::new(out_dir.as_str()).join("abp").join("gfw_list.dat"),
+    );
 
     download_ipv4.join().unwrap();
     download_ipv6.join().unwrap();

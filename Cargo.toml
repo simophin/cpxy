@@ -4,3 +4,6 @@ members = [
     "app",
     "fetcher",
 ]
+
+[profile.release]
+strip = "symbols"

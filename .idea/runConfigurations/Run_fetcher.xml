@@ -1,6 +1,6 @@
 <component name="ProjectRunConfigurationManager">
   <configuration default="false" name="Run fetcher" type="CargoCommandRunConfiguration" factoryName="Cargo Command">
-    <option name="command" value="run --package fetcher --bin fetcher -- app/src/geoip" />
+    <option name="command" value="run --package fetcher --bin fetcher -- app/src" />
     <option name="workingDirectory" value="file://$PROJECT_DIR$" />
     <option name="channel" value="DEFAULT" />
     <option name="requiredFeatures" value="true" />

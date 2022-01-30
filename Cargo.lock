@@ -14,7 +14,6 @@ dependencies = [
  "flate2",
  "idna",
  "itertools",
- "lifeguard",
  "once_cell",
  "percent-encoding",
  "regex",
@@ -459,9 +458,10 @@ name = "fetcher"
 version = "0.1.0"
 dependencies = [
  "adblock",
+ "base64",
  "env_logger 0.9.0",
  "log",
- "num-traits",
+ "read_transform",
  "ureq",
 ]
 
@@ -653,12 +653,6 @@ name = "libc"
 version = "0.2.116"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "565dbd88872dbe4cc8a46e527f26483c1d1f7afa6b884a3bd6cd893d4f98da74"
-
-[[package]]
-name = "lifeguard"
-version = "0.6.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "89be94dbd775db37b46ca4f4bf5cf89adfb13ba197bfbcb69b2122848ee73c26"
 
 [[package]]
 name = "log"
@@ -860,6 +854,12 @@ checksum = "d51e9f596de227fda2ea6c84607f5558e196eeaf43c986b724ba4fb8fdf497e7"
 dependencies = [
  "rand_core",
 ]
+
+[[package]]
+name = "read_transform"
+version = "0.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d12e2b4e15c5da65ec7de8424b5303c61166938a89659b6ef12f21455a5f9f25"
 
 [[package]]
 name = "regex"
