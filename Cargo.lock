@@ -442,6 +442,10 @@ dependencies = [
 ]
 
 [[package]]
+name = "fetcher"
+version = "0.1.0"
+
+[[package]]
 name = "flate2"
 version = "1.0.22"
 source = "registry+https://github.com/rust-lang/crates.io-index"
