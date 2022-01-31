@@ -1,4 +1,4 @@
 /target
 /app/android/app/src/main/jniLibs
-/app/src/geoip/*.dat
-/app/src/abp/*.dat
+#/app/src/geoip/*.dat
+#/app/src/abp/*.dat
