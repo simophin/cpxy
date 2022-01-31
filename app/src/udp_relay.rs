@@ -152,8 +152,8 @@ impl Relay {
                 log::debug!("Connecting to udp://{addr} directly");
                 serve_socks5_udp_directly(socket, buf, socks5_remote_addr).await
             }
-            Some(upstream) => {
-                log::debug!("Requesting UDP proxy upstream: {upstream:?} for {addr}");
+            Some((name, upstream)) => {
+                log::debug!("Requesting UDP proxy upstream: {name} for {addr}");
                 match request_proxy_upstream(upstream, &ProxyRequest::UDP).await {
                     Ok((ProxyResult::Granted { .. }, upstream)) => {
                         serve_socks5_udp_stream_relay(socket, buf, socks5_remote_addr, upstream)

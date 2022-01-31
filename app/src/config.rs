@@ -98,23 +98,38 @@ impl ClientConfig {
         &self,
         last_visit: LastVisitMap,
         target: &Address,
-    ) -> Option<&UpstreamConfig> {
-        let last_visit = last_visit.read().ok()?;
-        // Find suitable upstreams first
-        let mut upstreams: Vec<(&str, &UpstreamConfig, usize)> = self
-            .upstreams
-            .iter()
-            .filter(|(_, c)| c.matches(target))
-            .map(|(n, c)| {
-                (
-                    n.as_str(),
-                    c,
-                    (u16::MAX - c.priority) as usize + Self::calc_last_visit_score(&last_visit, n),
-                )
-            })
-            .collect();
+    ) -> Option<(&str, &UpstreamConfig)> {
+        let mut upstreams: Vec<(&str, &UpstreamConfig, usize)> = {
+            let last_visit = last_visit.read().ok()?;
+            // Find suitable upstreams first
+            self.upstreams
+                .iter()
+                .filter(|(_, c)| c.matches(target))
+                .map(|(n, c)| {
+                    (
+                        n.as_str(),
+                        c,
+                        (u16::MAX - c.priority) as usize
+                            + Self::calc_last_visit_score(&last_visit, n),
+                    )
+                })
+                .collect()
+        };
 
         upstreams.sort_by_key(|(_, _, score)| *score);
-        upstreams.last().map(|(_, c, _)| *c)
+        let result = upstreams.last().map(|(n, c, _)| (*n, *c));
+
+        if let Some((name, _)) = result.as_ref() {
+            if let Ok(mut v) = last_visit.try_write() {
+                match v.get_mut(*name) {
+                    Some(v) => *v = Instant::now(),
+                    None => {
+                        v.insert(name.to_string(), Instant::now());
+                    }
+                };
+            }
+        }
+
+        result
     }
 }

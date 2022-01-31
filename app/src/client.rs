@@ -87,8 +87,8 @@ async fn serve_proxy_client(
 
     match &req {
         ProxyRequest::TCP { dst } | ProxyRequest::Http { dst, .. } => {
-            if let Some(config) = config.find_best_upstream(last_visit, &dst) {
-                log::info!("Using upstream {config:?} for {dst}");
+            if let Some((name, config)) = config.find_best_upstream(last_visit, &dst) {
+                log::info!("Using upstream {name} for {dst}");
                 match request_proxy_upstream(&config, &req).await {
                     Ok((ProxyResult::Granted { bound_address }, upstream)) => {
                         handshaker.respond_ok(&mut socks, bound_address).await?;
