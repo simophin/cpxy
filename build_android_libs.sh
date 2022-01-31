@@ -16,7 +16,7 @@ for ((i=0; i<${#configs[@]}; )); do
   target=${configs[i++]}
   android_target=${configs[i++]}
   echo "Building ${target}"
-  cross build --release --lib --target $target || exit 1
+  cross build --package cjk-proxy --release --lib --target $target || exit 1
   mkdir -pv $LIBS_ROOT/$android_target
   cp -v target/$target/release/libproxy.so $LIBS_ROOT/$android_target/
 done
