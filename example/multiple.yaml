@@ -1,0 +1,10 @@
+
+upstreams:
+  us-west-cloudflare:
+    address: oracle-us-west.fanchao.nz:80
+    reject:
+      - CN
+      - NZ
+  us-west:
+    address: oracle-us-west-direct.fanchao.nz:80
+    match_gfw: true

@@ -1,6 +1,6 @@
 <component name="ProjectRunConfigurationManager">
   <configuration default="false" name="Watch standalone" type="CargoCommandRunConfiguration" factoryName="Cargo Command">
-    <option name="command" value="watch -x &quot;run --bin=proxy -- standalone --socks5-host 0.0.0.0 --socks5-udp-host 192.168.11.105 --reject-country NZ --reject-country CN --prefer-country US&quot;" />
+    <option name="command" value="watch -x &quot;run --bin=proxy -- standalone --socks5-host 0.0.0.0 &quot;" />
     <option name="workingDirectory" value="file://$PROJECT_DIR$" />
     <option name="channel" value="DEFAULT" />
     <option name="requiredFeatures" value="true" />

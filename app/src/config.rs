@@ -14,10 +14,15 @@ pub type LastVisitMap = Arc<RwLock<HashMap<String, Instant>>>;
 #[derive(Debug, Serialize, Deserialize)]
 pub struct UpstreamConfig {
     pub address: Address,
+    #[serde(default)]
     pub accept: Vec<CountryCode>,
+    #[serde(default)]
     pub reject: Vec<CountryCode>,
+    #[serde(default)]
     pub priority: u16,
+    #[serde(default)]
     pub match_gfw: bool,
+    #[serde(default)]
     pub match_networks: Vec<IpNetwork>,
 }
 
@@ -52,8 +57,29 @@ impl UpstreamConfig {
     }
 }
 
+fn default_socks5_udp_host() -> String {
+    "0.0.0.0".to_string()
+}
+
+fn default_socks5_host() -> String {
+    "127.0.0.1".to_string()
+}
+
+fn default_socks5_port() -> u16 {
+    5000
+}
+
+#[derive(Debug, Serialize, Deserialize)]
 pub struct ClientConfig {
     pub upstreams: HashMap<String, UpstreamConfig>,
+
+    #[serde(default = "default_socks5_host")]
+    pub socks5_host: String,
+
+    #[serde(default = "default_socks5_port")]
+    pub socks5_port: u16,
+
+    #[serde(default = "default_socks5_udp_host")]
     pub socks5_udp_host: String,
 }
 
