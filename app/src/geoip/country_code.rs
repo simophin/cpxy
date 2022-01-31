@@ -1,4 +1,7 @@
 use anyhow::anyhow;
+use serde::de::{Error, Visitor};
+use serde::{Deserialize, Deserializer, Serialize, Serializer};
+use std::borrow::Cow;
 use std::fmt::{Debug, Display, Formatter, Write};
 use std::num::NonZeroU8;
 use std::str::FromStr;
@@ -7,9 +10,48 @@ use std::str::FromStr;
 #[repr(C)]
 pub struct CountryCode([NonZeroU8; 2]);
 
+impl Serialize for CountryCode {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        serializer.serialize_str(self.as_str().as_ref())
+    }
+}
+
+struct CountryCodeVisitor;
+
+impl Visitor<'_> for CountryCodeVisitor {
+    type Value = CountryCode;
+
+    fn expecting(&self, formatter: &mut Formatter) -> std::fmt::Result {
+        formatter.write_str("Expected string for CountryCode")
+    }
+
+    fn visit_str<E>(self, v: &str) -> Result<Self::Value, E>
+    where
+        E: Error,
+    {
+        CountryCode::from_str(v).map_err(|e| serde::de::Error::custom(e.to_string()))
+    }
+}
+
+impl<'de> Deserialize<'de> for CountryCode {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        deserializer.deserialize_str(CountryCodeVisitor)
+    }
+}
+
 impl CountryCode {
     pub fn as_slice(&self) -> &[u8] {
         unsafe { &*(&self.0 as *const [NonZeroU8; 2] as *const [u8; 2]) }
+    }
+
+    pub fn as_str(&self) -> Cow<str> {
+        String::from_utf8_lossy(self.as_slice())
     }
 }
 

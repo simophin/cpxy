@@ -1,6 +1,6 @@
 use super::Address;
 use crate::parse::ParseError;
-use bytes::Buf;
+use bytes::{Buf, BufMut};
 use futures_lite::{AsyncWrite, AsyncWriteExt};
 use std::borrow::Cow;
 
@@ -49,8 +49,20 @@ impl<'a> UdpPacket<'a> {
         )))
     }
 
+    pub fn write_tcp_headers(
+        w: &mut impl BufMut,
+        addr: &Address,
+        data_len: usize,
+    ) -> anyhow::Result<()> {
+        let data_len: u16 = data_len.try_into()?;
+
+        addr.write_to(w)?;
+        w.put_u16(data_len);
+        Ok(())
+    }
+
     pub async fn write_tcp(
-        w: &mut (impl AsyncWrite + Unpin + Send + Sync),
+        w: &mut (impl AsyncWrite + Unpin + Send + Sync + ?Sized),
         addr: &Address,
         data: &[u8],
     ) -> anyhow::Result<()> {
@@ -96,14 +108,20 @@ impl<'a> UdpPacket<'a> {
         })
     }
 
-    pub async fn write_udp(
-        &self,
-        b: &mut (impl AsyncWrite + Unpin + Send + Sync + ?Sized),
-    ) -> anyhow::Result<()> {
-        b.write_all(&[0, 0, self.frag_no]).await?;
-        self.addr.write(b).await?;
-        b.write_all(self.data.as_ref()).await?;
+    pub fn write_udp_sync(&self, b: &mut impl BufMut) -> anyhow::Result<()> {
+        b.put_slice(&[0, 0, self.frag_no]);
+        self.addr.write_to(b)?;
+        b.put_slice(self.data.as_ref());
         Ok(())
+    }
+
+    pub fn write_udp_headers(addr: &Address, b: &mut impl BufMut) -> anyhow::Result<()> {
+        b.put_slice(&[0, 0, 0]);
+        addr.write_to(b)
+    }
+
+    pub fn udp_header_len(addr: &Address) -> usize {
+        3 + addr.write_len()
     }
 }
 

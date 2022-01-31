@@ -1,8 +1,10 @@
 use clap::{AppSettings, Parser, Subcommand};
 use futures_lite::future::race;
-use proxy::client::{run_client, ClientConfig};
+use proxy::client::run_client;
+use proxy::config::{ClientConfig, UpstreamConfig};
 use proxy::server::run_server;
 use smol::net::TcpListener;
+use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -89,14 +91,26 @@ fn main() -> anyhow::Result<()> {
                 let listen_address = format!("{socks5_host}:{socks5_port}");
                 log::info!("Start client at {listen_address}");
 
+                let mut upstreams = HashMap::new();
+                upstreams.insert(
+                    "only".to_string(),
+                    UpstreamConfig {
+                        address: format!("{remote_host}:{remote_port}")
+                            .parse()
+                            .expect("To parse remote address:port"),
+                        match_networks: Default::default(),
+                        accept: Default::default(),
+                        reject: Default::default(),
+                        priority: 0,
+                        match_gfw: false,
+                    },
+                );
+
                 run_client(
                     TcpListener::bind(listen_address).await?,
                     Arc::new(ClientConfig {
                         socks5_udp_host,
-                        upstream_timeout: Duration::from_secs(3),
-                        upstream: format!("{remote_host}:{remote_port}")
-                            .parse()
-                            .expect("To parse remote address:port"),
+                        upstreams,
                     }),
                 )
                 .await
@@ -113,14 +127,26 @@ fn main() -> anyhow::Result<()> {
                 let socks_server = TcpListener::bind(&socks_listen_address).await?;
                 log::info!("Started socks5 at {socks_listen_address}");
 
+                let mut upstreams = HashMap::new();
+                upstreams.insert(
+                    "only".to_string(),
+                    UpstreamConfig {
+                        address: listen_address.into(),
+                        match_networks: Default::default(),
+                        accept: Default::default(),
+                        reject: Default::default(),
+                        priority: 0,
+                        match_gfw: false,
+                    },
+                );
+
                 race(
                     run_server(server),
                     run_client(
                         socks_server,
                         Arc::new(ClientConfig {
                             socks5_udp_host,
-                            upstream_timeout: Duration::from_secs(3),
-                            upstream: listen_address.into(),
+                            upstreams,
                         }),
                     ),
                 )

@@ -1,7 +1,8 @@
 use crate::cipher::client::connect;
 use crate::cipher::server::listen;
 use crate::cipher::strategy::EncryptionStrategy;
-use crate::client::{run_client, ClientConfig};
+use crate::client::run_client;
+use crate::config::{ClientConfig, UpstreamConfig};
 use crate::proxy::protocol::{ProxyRequest, ProxyResult};
 use crate::server::run_server;
 use crate::socks5::{Address, UdpPacket};
@@ -11,6 +12,7 @@ use crate::utils::{
 use futures_lite::future::race;
 use futures_lite::io::split;
 use futures_lite::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
+use maplit::hashmap;
 use rand::Rng;
 use smol::net::{TcpListener, TcpStream, UdpSocket};
 use smol::spawn;
@@ -183,8 +185,16 @@ fn test_client_server_udp() {
                 run_client(
                     socks5_server,
                     Arc::new(ClientConfig {
-                        upstream: Address::IP(server_addr),
-                        upstream_timeout: Duration::from_secs(3),
+                        upstreams: hashmap! {
+                            "test".to_string() => UpstreamConfig {
+                                address: Address::IP(server_addr),
+                                accept: Default::default(),
+                                reject: Default::default(),
+                                priority: 0,
+                                match_gfw: false,
+                                match_networks: Default::default(),
+                            }
+                        },
                         socks5_udp_host: "0.0.0.0".to_string(),
                     }),
                 ),
