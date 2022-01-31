@@ -20,7 +20,7 @@ async fn serve_socks5_udp_stream_relay(
         }
         _ => {}
     };
-    socks5_buf.resize(socks5_buf.capacity(), 0);
+    socks5_buf.clear();
 
     copy_udp_and_stream(
         socks5_sock,
@@ -54,10 +54,22 @@ const MAX_STREAM_HDR_LEN: usize = 512;
 
 async fn serve_socks5_udp_directly(
     socks5_sock: UdpSocket,
-    socks5_buf: Vec<u8>,
+    mut socks5_buf: Vec<u8>,
     socks5_remote_addr: SocketAddr,
 ) -> anyhow::Result<()> {
     let upstream = UdpSocket::bind(socks5_sock.is_v4()).await?;
+
+    match UdpPacket::parse_udp(socks5_buf.as_slice()) {
+        Ok(UdpPacket {
+            frag_no,
+            addr,
+            data,
+        }) if frag_no == 0 => {
+            upstream.send_to_addr(data.as_ref(), &addr).await?;
+        }
+        _ => {}
+    };
+    socks5_buf.clear();
 
     copy_udp_and_udp(
         socks5_sock,

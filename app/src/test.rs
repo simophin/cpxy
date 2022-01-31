@@ -256,8 +256,7 @@ fn test_client_server_udp() {
             data: Cow::Borrowed(b"hello, world1"),
             addr: Address::IP(udp_upstream_addr.clone()),
         }
-        .write_udp(&mut buf)
-        .await
+        .write_udp_sync(&mut buf)
         .unwrap();
         udp_client
             .send_to(buf.as_slice(), addr.to_string())

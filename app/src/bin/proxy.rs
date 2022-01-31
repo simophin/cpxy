@@ -6,7 +6,6 @@ use proxy::server::run_server;
 use smol::net::TcpListener;
 use std::collections::HashMap;
 use std::sync::Arc;
-use std::time::Duration;
 
 /// SOCKS5 over HTTPs
 #[derive(Parser)]

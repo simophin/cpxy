@@ -1,5 +1,7 @@
 #![feature(future_join, future_poll_fn)]
 
+extern crate core;
+
 mod cipher;
 pub mod client;
 mod handshake;

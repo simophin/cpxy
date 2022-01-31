@@ -142,7 +142,7 @@ mod test {
                 data: Cow::Borrowed(b"hello, world"),
             };
 
-            pkt.write_udp(&mut buf).await.unwrap();
+            pkt.write_udp_sync(&mut buf).unwrap();
 
             assert_eq!(pkt, UdpPacket::parse_udp(buf.as_slice()).unwrap());
 
