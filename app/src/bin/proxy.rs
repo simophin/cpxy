@@ -69,7 +69,7 @@ fn main() -> anyhow::Result<()> {
                 let config: ClientConfig =
                     serde_yaml::from_reader(File::open(config).expect("To open {config}"))
                         .expect("Valid config file");
-                let listen_address = format!("{}:{}", config.socks5_host, config.socks5_port);
+                let listen_address = config.socks5_address.to_string();
                 log::info!("Start client at {listen_address}");
 
                 run_client(TcpListener::bind(listen_address).await?, Arc::new(config)).await
@@ -105,8 +105,7 @@ fn main() -> anyhow::Result<()> {
                         socks_server,
                         Arc::new(ClientConfig {
                             socks5_udp_host,
-                            socks5_host,
-                            socks5_port,
+                            socks5_address: socks_listen_address.parse().unwrap(),
                             upstreams,
                         }),
                     ),

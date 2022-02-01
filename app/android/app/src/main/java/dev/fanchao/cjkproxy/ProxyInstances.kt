@@ -32,7 +32,7 @@ class ProxyInstances : Closeable {
             }
             else {
                 try {
-                    ProxyState.Running(CJKProxy.start(c.remoteHost, c.remotePort, c.socksHost, c.socksPort, c.socksUdpHost)).apply {
+                    ProxyState.Running(CJKProxy.start(c)).apply {
                         Log.d("ProxyInstances", "Started $c")
                     }
                 } catch (ec: Throwable) {
@@ -57,21 +57,11 @@ class ProxyInstances : Closeable {
         notification.onNext(Unit)
     }
 
-    fun pickNewLocalPort(): Int {
-        for (i in 5000 until 6000) {
-            if (instances.keys.find { it.socksPort == i } == null) {
-                return i
-            }
-        }
-
-        return 6001
-    }
-
     @Synchronized
     override fun close() {
         for (state in instances.values) {
             if (state is ProxyState.Running) {
-                CJKProxy.stop(state.instance);
+                CJKProxy.stop(state.instance)
             }
         }
         instances = emptyMap()

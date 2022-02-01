@@ -10,7 +10,7 @@ configs=(
 rustup override set nightly
 cargo install cross
 
-LIBS_ROOT=android/app/src/main/jniLibs
+LIBS_ROOT=app/android/app/src/main/jniLibs
 
 for ((i=0; i<${#configs[@]}; )); do
   target=${configs[i++]}

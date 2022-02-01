@@ -61,23 +61,16 @@ fn default_socks5_udp_host() -> String {
     "0.0.0.0".to_string()
 }
 
-fn default_socks5_host() -> String {
-    "127.0.0.1".to_string()
-}
-
-fn default_socks5_port() -> u16 {
-    5000
+fn default_socks5_address() -> Address {
+    "127.0.0.1:5000".parse().unwrap()
 }
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct ClientConfig {
     pub upstreams: HashMap<String, UpstreamConfig>,
 
-    #[serde(default = "default_socks5_host")]
-    pub socks5_host: String,
-
-    #[serde(default = "default_socks5_port")]
-    pub socks5_port: u16,
+    #[serde(default = "default_socks5_address")]
+    pub socks5_address: Address,
 
     #[serde(default = "default_socks5_udp_host")]
     pub socks5_udp_host: String,

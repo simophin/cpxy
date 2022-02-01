@@ -11,7 +11,7 @@ pub mod server;
 mod socks5;
 mod utils;
 
-#[cfg(target_os = "android")]
+// #[cfg(target_os = "android")]
 mod jni_export;
 
 mod io;

@@ -1,24 +1,31 @@
-use crate::client::{run_client, ClientConfig};
+use crate::client::run_client;
+use crate::config::ClientConfig;
 use jni::objects::{JClass, JString};
-use jni::sys::{jint, jlong};
+use jni::sys::jlong;
 use jni::JNIEnv;
 use smol::{spawn, Async, Task};
 use std::net::TcpListener;
 use std::sync::Arc;
-use std::time::Duration;
 
 struct Instance(Task<anyhow::Result<()>>);
+
+#[no_mangle]
+pub extern "system" fn Java_dev_fanchao_CJKProxy_verifyConfig(
+    env: JNIEnv,
+    _: JClass,
+    config: JString,
+) {
+    let config: String = env.get_string(config).expect("To get config string").into();
+    if let Err(e) = serde_yaml::from_str::<ClientConfig>(config.as_str()) {
+        let _ = env.throw_new("java/lang/RuntimeException", e.to_string());
+    }
+}
 
 #[no_mangle]
 pub extern "system" fn Java_dev_fanchao_CJKProxy_start(
     env: JNIEnv,
     _: JClass,
-    upstream_host: JString,
-    upstream_port: jint,
-    socks5_host: JString,
-    socks5_port: jint,
-    socks5_udp_host: JString,
-    local_ip_policy: JString,
+    config: JString,
 ) -> jlong {
     #[cfg(target_os = "android")]
     android_logger::init_once(
@@ -27,50 +34,32 @@ pub extern "system" fn Java_dev_fanchao_CJKProxy_start(
             .with_tag("proxy_rust"),
     );
 
-    let upstream_host: String = env
-        .get_string(upstream_host)
-        .expect("To get host string")
-        .into();
+    let config: String = env.get_string(config).expect("To get config string").into();
 
-    let socks5_host: String = env
-        .get_string(socks5_host)
-        .expect("To get host string")
-        .into();
-
-    let socks5_udp_host: String = env
-        .get_string(socks5_udp_host)
-        .expect("To get socks5_udp_host")
-        .into();
-
-    let address = format!("{socks5_host}:{socks5_port}");
-    let listener = match TcpListener::bind(&address) {
-        Ok(v) => smol::net::TcpListener::from(Async::new(v).expect("Async")),
+    let config: ClientConfig = match serde_yaml::from_str(config.as_str()) {
+        Ok(c) => c,
         Err(e) => {
             let _ = env.throw_new(
-                "java/lang/Exception",
-                format!("Unable to bind address at {address}: {e}"),
+                "java/lang/RuntimeException",
+                format!("Error parsing config: {e}"),
             );
             return 0;
         }
     };
 
-    let config = Arc::new(ClientConfig {
-        upstream: match format!("{upstream_host}:{upstream_port}").parse() {
-            Ok(v) => v,
-            Err(e) => {
-                let _ = env.throw_new(
-                    "java/lang/RuntimeException",
-                    format!("Upstream address {upstream_host}:{upstream_port} is invalid: {e}"),
-                );
-                return 0;
-            }
-        },
-        upstream_timeout: Duration::from_secs(3),
-        socks5_udp_host,
-    });
+    let listener = match TcpListener::bind(config.socks5_address.to_string()) {
+        Ok(v) => smol::net::TcpListener::from(Async::new(v).expect("Async")),
+        Err(e) => {
+            let _ = env.throw_new(
+                "java/lang/Exception",
+                format!("Unable to bind address at {}: {e}", config.socks5_address),
+            );
+            return 0;
+        }
+    };
 
     Box::leak(Box::new(Instance(spawn(async move {
-        run_client(listener, config).await
+        run_client(listener, Arc::new(config)).await
     })))) as *mut Instance as jlong
 }
 

@@ -7,6 +7,7 @@ import android.view.Menu
 import android.view.MenuItem
 import androidx.appcompat.app.AppCompatActivity
 import com.google.android.material.textfield.TextInputEditText
+import dev.fanchao.CJKProxy
 import dev.fanchao.cjkproxy.databinding.ActivityAddConfigBinding
 
 class EditConfigActivity : AppCompatActivity() {
@@ -18,15 +19,8 @@ class EditConfigActivity : AppCompatActivity() {
         setContentView(binding.root)
 
         val config: ProxyConfigurationPersisted? = intent.getParcelableExtra(EXTRA_CONFIG)
-        if (config != null) {
-            binding.name.setText(config.name)
-            binding.remoteHost.setText(config.config.remoteHost)
-            binding.remotePort.setText(config.config.remotePort.toString())
-            binding.socks5Host.setText(config.config.socksHost)
-            binding.socks5Port.setText(config.config.socksPort.toString())
-        } else {
-            binding.socks5Port.setText(App.instance.proxyInstances.pickNewLocalPort().toString())
-        }
+        binding.configEdit.setText(config?.config.orEmpty())
+        binding.configName.setText(config?.name.orEmpty())
     }
 
     override fun onCreateOptionsMenu(menu: Menu): Boolean {
@@ -45,20 +39,23 @@ class EditConfigActivity : AppCompatActivity() {
     }
 
     private fun doSave() {
-        setResult(
-            RESULT_OK, Intent()
-            .putExtra(EXTRA_CONFIG, intent.getParcelableExtra<ProxyConfigurationPersisted>(EXTRA_CONFIG))
-            .putExtra(EXTRA_UPDATED_CONFIG, ProxyConfigurationPersisted(
-            binding.name.checkNotEmpty() ?: return,
-            ProxyConfiguration(
-                binding.remoteHost.checkNotEmpty() ?: return,
-                binding.remotePort.checkNotEmpty()?.toInt() ?: return,
-                binding.socks5Host.checkNotEmpty() ?: return,
-                binding.socks5Port.checkNotEmpty()?.toInt() ?: return,
-                "0.0.0.0"
+        val config = binding.configEdit.text.toString()
+        val msg = try {
+            CJKProxy.verifyConfig(config)
+            null
+        } catch (ec: Throwable) {
+            ec.message.orEmpty()
+        }
+
+        val name = binding.configName.text.toString()
+
+        if (msg == null) {
+            setResult(
+                RESULT_OK, Intent()
+                    .putExtra(EXTRA_CONFIG, intent.getParcelableExtra<ProxyConfigurationPersisted>(EXTRA_CONFIG))
+                    .putExtra(EXTRA_UPDATED_CONFIG, ProxyConfigurationPersisted(name, config))
             )
-        )))
-        finish()
+        }
     }
 
 

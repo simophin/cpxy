@@ -195,6 +195,7 @@ fn test_client_server_udp() {
                                 match_networks: Default::default(),
                             }
                         },
+                        socks5_address: Address::IP(socks5_addr),
                         socks5_udp_host: "0.0.0.0".to_string(),
                     }),
                 ),

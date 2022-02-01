@@ -5,12 +5,10 @@ package dev.fanchao.cjkproxy
 import android.annotation.SuppressLint
 import android.content.Intent
 import android.graphics.Color
-import android.graphics.Typeface
 import android.os.Bundle
 import android.preference.PreferenceManager
 import android.text.SpannableStringBuilder
 import android.text.style.ForegroundColorSpan
-import android.text.style.StyleSpan
 import android.view.*
 import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
@@ -315,10 +313,6 @@ private class Adapter(
             .append(state.toText(), state.styled(), 0)
             .append(")")
 
-        holder.binding.status.text = SpannableStringBuilder()
-            .append(config.config.remoteHost, StyleSpan(Typeface.ITALIC), 0)
-            .append(" | ")
-            .append("${config.config.socksHost}:${config.config.socksPort}", StyleSpan(Typeface.ITALIC), 0)
         holder.binding.toggle.setImageResource(state.image())
         holder.binding.toggle.setOnClickListener {
             if (!isSelected) onItemToggled(config, state)
