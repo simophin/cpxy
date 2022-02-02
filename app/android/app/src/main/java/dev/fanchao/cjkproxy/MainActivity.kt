@@ -38,14 +38,18 @@ class MainActivity : AppCompatActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        binding = ActivityMainBinding.inflate(LayoutInflater.from(this))
-        setContentView(binding.root)
+//        binding = ActivityMainBinding.inflate(LayoutInflater.from(this))
+//        setContentView(binding.root)
 
-        binding.list.adapter = adapter
-        binding.list.layoutManager = LinearLayoutManager(this)
-        binding.list.addItemDecoration(DividerItemDecoration(this, DividerItemDecoration.VERTICAL))
+//        binding.list.adapter = adapter
+//        binding.list.layoutManager = LinearLayoutManager(this)
+//        binding.list.addItemDecoration(DividerItemDecoration(this, DividerItemDecoration.VERTICAL))
 
-        startService(Intent(this, ProxyService::class.java))
+//        startService(Intent(this, ProxyService::class.java))
+
+        supportFragmentManager.beginTransaction()
+            .replace(android.R.id.content, UpstreamEditFragment())
+            .commitNow()
     }
 
     override fun onStart() {
@@ -104,31 +108,10 @@ class MainActivity : AppCompatActivity() {
 
     override fun onOptionsItemSelected(item: MenuItem): Boolean {
         if (item.itemId == R.id.menu_add) {
-            startActivityForResult(Intent(this, EditConfigActivity::class.java), 0)
+//            startActivityForResult(Intent(this, EditConfigActivity::class.java), 0)
             return true
         }
         return super.onOptionsItemSelected(item)
-    }
-
-    override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
-        if (requestCode == 0 && resultCode == RESULT_OK) {
-            val oldConfig: ProxyConfigurationPersisted? =
-                data?.getParcelableExtra(EditConfigActivity.EXTRA_CONFIG)
-            val newConfig: ProxyConfigurationPersisted =
-                checkNotNull(data?.getParcelableExtra(EditConfigActivity.EXTRA_UPDATED_CONFIG))
-
-            val indexOfOldConfig = adapter.items.indexOf(oldConfig)
-            if (indexOfOldConfig < 0) {
-                adapter.items = adapter.items + listOf(newConfig)
-            } else {
-                adapter.items =
-                    adapter.items.toMutableList().apply { this[indexOfOldConfig] = newConfig }
-            }
-
-            doSaveAdapterItems()
-            return
-        }
-        super.onActivityResult(requestCode, resultCode, data)
     }
 
     private fun onItemToggled(c: ProxyConfigurationPersisted, state: ProxyState) {
@@ -156,11 +139,11 @@ class MainActivity : AppCompatActivity() {
     private fun onItemClicked(c: ProxyConfigurationPersisted) {
         when {
             actionMode == null -> {
-                startActivityForResult(
-                    Intent(this, EditConfigActivity::class.java)
-                        .putExtra(EditConfigActivity.EXTRA_CONFIG, c),
-                    0
-                )
+//                startActivityForResult(
+//                    Intent(this, EditConfigActivity::class.java)
+//                        .putExtra(EditConfigActivity.EXTRA_CONFIG, c),
+//                    0
+//                )
             }
             adapter.selectedConfigs.contains(c) -> {
                 adapter.selectedConfigs = adapter.selectedConfigs.toMutableSet().apply { remove(c) }

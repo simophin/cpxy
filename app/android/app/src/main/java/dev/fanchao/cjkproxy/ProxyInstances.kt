@@ -27,22 +27,22 @@ class ProxyInstances : Closeable {
         // Check for additions
         for (c in configurations) {
             val existing = instances[c]
-            newInstances[c] = if (existing is ProxyState.Running) {
-                existing
-            }
-            else {
-                try {
-                    ProxyState.Running(CJKProxy.start(c)).apply {
-                        Log.d("ProxyInstances", "Started $c")
-                    }
-                } catch (ec: Throwable) {
-                    if (Looper.getMainLooper() == Looper.myLooper()) {
-                        Toast.makeText(App.instance, "Error starting proxy: ${ec.message}", Toast.LENGTH_LONG).show()
-                    }
-
-                    ProxyState.Stopped
-                }
-            }
+//            newInstances[c] = if (existing is ProxyState.Running) {
+//                existing
+//            }
+//            else {
+//                try {
+//                    ProxyState.Running(CJKProxy.start(c)).apply {
+//                        Log.d("ProxyInstances", "Started $c")
+//                    }
+//                } catch (ec: Throwable) {
+//                    if (Looper.getMainLooper() == Looper.myLooper()) {
+//                        Toast.makeText(App.instance, "Error starting proxy: ${ec.message}", Toast.LENGTH_LONG).show()
+//                    }
+//
+//                    ProxyState.Stopped
+//                }
+//            }
         }
 
         // Check for removal
