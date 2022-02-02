@@ -3,6 +3,7 @@ use crate::cipher::server::listen;
 use crate::cipher::strategy::EncryptionStrategy;
 use crate::client::run_client;
 use crate::config::{ClientConfig, UpstreamConfig};
+use crate::io::{TcpStream, UdpSocket};
 use crate::proxy::protocol::{ProxyRequest, ProxyResult};
 use crate::server::run_server;
 use crate::socks5::{Address, UdpPacket};
@@ -14,7 +15,7 @@ use futures_lite::io::split;
 use futures_lite::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
 use maplit::hashmap;
 use rand::Rng;
-use smol::net::{TcpListener, TcpStream, UdpSocket};
+use smol::net::TcpListener;
 use smol::spawn;
 use smol_timeout::TimeoutExt;
 use std::borrow::Cow;
@@ -32,7 +33,7 @@ pub async fn duplex(
     let listener = TcpListener::bind("127.0.0.1:0").await.expect("To listen");
     let addr = listener.local_addr().expect("To have local addr");
 
-    let (client, server) = join!(TcpStream::connect(addr), listener.accept()).await;
+    let (client, server) = join!(TcpStream::connect(&Address::IP(addr)), listener.accept()).await;
     let client = client.expect("To connect");
     let (server, _) = server.expect("To accept");
 
@@ -158,7 +159,7 @@ async fn read_exact_n<T: AsyncRead + Unpin + Send + Sync, const N: usize>(
 fn test_client_server_udp() {
     let _ = env_logger::builder().is_test(true).try_init();
     smol::block_on(async move {
-        let udp_upstream = UdpSocket::bind("0.0.0.0:0").await.unwrap();
+        let udp_upstream = UdpSocket::bind(true).await.unwrap();
         let udp_upstream_addr = udp_upstream.local_addr().unwrap();
         log::info!("Upstream server listened at {udp_upstream_addr}");
 
@@ -191,8 +192,6 @@ fn test_client_server_udp() {
                                 accept: Default::default(),
                                 reject: Default::default(),
                                 priority: 0,
-                                match_gfw: false,
-                                match_networks: Default::default(),
                             }
                         },
                         socks5_address: Address::IP(socks5_addr),
@@ -206,7 +205,7 @@ fn test_client_server_udp() {
         });
 
         // Try to request a UDP proxy
-        let mut socks5_client = TcpStream::connect(&socks5_addr).await.unwrap();
+        let mut socks5_client = TcpStream::connect(&Address::IP(socks5_addr)).await.unwrap();
 
         // Greeting
         socks5_client.write_all(&[0x5, 1, 0x00]).await.unwrap();
@@ -247,7 +246,7 @@ fn test_client_server_udp() {
         assert_eq!(buf.remaining_read(), 0);
 
         // Write to UDP address
-        let udp_client = UdpSocket::bind("0.0.0.0:0").await.unwrap();
+        let udp_client = UdpSocket::bind(true).await.unwrap();
         let mut buf = Vec::<u8>::new();
 
         // Send first package

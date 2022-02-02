@@ -1,59 +1,151 @@
-use crate::abp::matches_gfw_list;
+use crate::abp::{matches_adblock_list, matches_gfw_list};
 use crate::geoip::{find_geoip, CountryCode};
 use crate::socks5::Address;
 use ipnetwork::IpNetwork;
-use serde::{Deserialize, Serialize};
+use serde::de::{Error, Visitor};
+use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use std::collections::HashMap;
+use std::fmt::{Display, Formatter};
 use std::net::IpAddr;
 use std::ops::Deref;
+use std::str::FromStr;
 use std::sync::{Arc, RwLock};
 use std::time::Instant;
 
 pub type LastVisitMap = Arc<RwLock<HashMap<String, Instant>>>;
 
+#[derive(Debug)]
+pub enum UpstreamRule {
+    GeoIP(CountryCode),
+    Network(IpNetwork),
+    GfwList,
+    AdBlockList,
+}
+
+struct UpstreamRuleVisitor;
+
+impl<'de> Visitor<'de> for UpstreamRuleVisitor {
+    type Value = UpstreamRule;
+
+    fn expecting(&self, formatter: &mut std::fmt::Formatter) -> std::fmt::Result {
+        formatter.write_str("Upstream rule")
+    }
+
+    fn visit_str<E>(self, v: &str) -> Result<Self::Value, E>
+    where
+        E: Error,
+    {
+        v.parse::<Self::Value>()
+            .map_err(|e| serde::de::Error::custom(e.to_string()))
+    }
+}
+
+impl<'de> Deserialize<'de> for UpstreamRule {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        deserializer.deserialize_str(UpstreamRuleVisitor)
+    }
+}
+
+impl Serialize for UpstreamRule {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        serializer.serialize_str(self.to_string().as_str())
+    }
+}
+
+impl FromStr for UpstreamRule {
+    type Err = anyhow::Error;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        let mut splits = s.split(':');
+        let t = splits
+            .next()
+            .ok_or_else(|| anyhow::anyhow!("Invalid rule: {s}"))?;
+        let v = splits
+            .next()
+            .ok_or_else(|| anyhow::anyhow!("Invalid rule: {s}"))?;
+        if t.eq_ignore_ascii_case("geoip") {
+            Ok(Self::GeoIP(v.parse()?))
+        } else if t.eq_ignore_ascii_case("network") {
+            Ok(Self::Network(v.parse()?))
+        } else if t.eq_ignore_ascii_case("gfwlist") {
+            Ok(Self::GfwList)
+        } else if t.eq_ignore_ascii_case("adblock") {
+            Ok(Self::AdBlockList)
+        } else {
+            Err(anyhow::anyhow!("Invalid rule: {s}"))
+        }
+    }
+}
+
+impl Display for UpstreamRule {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::GeoIP(c) => f.write_fmt(format_args!("geoip:{c}")),
+            Self::Network(n) => f.write_fmt(format_args!("network:{n}")),
+            Self::GfwList => f.write_str("gfwlist"),
+            Self::AdBlockList => f.write_str("adblocklist"),
+        }
+    }
+}
+
+impl UpstreamRule {
+    pub fn matches(
+        &self,
+        country_code: Option<CountryCode>,
+        ip: Option<IpAddr>,
+        addr: &Address,
+    ) -> bool {
+        match (self, country_code, ip, addr) {
+            (Self::GeoIP(cc), Some(c), _, _) => cc == &c,
+            (Self::Network(network), _, Some(ip), _) => network.contains(ip),
+            (Self::GfwList, _, _, Address::Name { .. }) => matches_gfw_list(addr),
+            (Self::AdBlockList, _, _, _) => matches_adblock_list(addr),
+            _ => false,
+        }
+    }
+
+    fn matches_any<'a>(
+        mut rules: impl Iterator<Item = &'a UpstreamRule>,
+        country_code: Option<CountryCode>,
+        ip: Option<IpAddr>,
+        addr: &Address,
+    ) -> bool {
+        rules
+            .find(|r| r.matches(country_code.clone(), ip.clone(), addr))
+            .is_some()
+    }
+}
+
 #[derive(Debug, Serialize, Deserialize)]
 pub struct UpstreamConfig {
     pub address: Address,
     #[serde(default)]
-    pub accept: Vec<CountryCode>,
+    pub accept: Vec<UpstreamRule>,
     #[serde(default)]
-    pub reject: Vec<CountryCode>,
+    pub reject: Vec<UpstreamRule>,
     #[serde(default)]
     pub priority: u16,
-    #[serde(default)]
-    pub match_gfw: bool,
-    #[serde(default)]
-    pub match_networks: Vec<IpNetwork>,
 }
 
 impl UpstreamConfig {
-    fn matches_network(&self, ip: &IpAddr) -> bool {
-        self.match_networks
-            .iter()
-            .find(|n| n.contains(ip.clone()))
-            .is_some()
-    }
-
     fn matches(&self, target: &Address) -> bool {
-        match target {
-            Address::IP(addr) => {
-                // Match specified network first
-                if self.matches_network(&addr.ip()) {
-                    return true;
-                }
+        let ip = match target {
+            Address::IP(a) => Some(a.ip()),
+            _ => None,
+        };
 
-                let country_code = match find_geoip(&addr.ip()) {
-                    Some(c) => c,
-                    _ => return false,
-                };
+        let country_code = ip.as_ref().and_then(|v| find_geoip(v));
 
-                (self.accept.is_empty() || self.accept.contains(&country_code))
-                    && (self.reject.is_empty() || !self.reject.contains(&country_code))
-            }
-
-            v if self.match_gfw => matches_gfw_list(v),
-            _ => false,
-        }
+        (self.accept.is_empty()
+            || UpstreamRule::matches_any(self.accept.iter(), country_code, ip, target))
+            && (self.reject.is_empty()
+                || !UpstreamRule::matches_any(self.reject.iter(), country_code, ip, target))
     }
 }
 

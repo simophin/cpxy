@@ -91,11 +91,9 @@ fn main() -> anyhow::Result<()> {
                     "only".to_string(),
                     UpstreamConfig {
                         address: listen_address.into(),
-                        match_networks: Default::default(),
                         accept: Default::default(),
                         reject: Default::default(),
                         priority: 0,
-                        match_gfw: false,
                     },
                 );
 

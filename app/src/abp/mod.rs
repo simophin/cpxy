@@ -26,6 +26,11 @@ pub fn matches_gfw_list(addr: &Address) -> bool {
         .matched
 }
 
+pub fn matches_adblock_list(_: &Address) -> bool {
+    //TODO
+    false
+}
+
 #[cfg(test)]
 mod test {
     use super::*;
