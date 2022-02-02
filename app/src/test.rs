@@ -174,10 +174,10 @@ fn test_client_server_udp() {
             }
         });
 
-        let socks5_server = TcpListener::bind("localhost:0").await.unwrap();
+        let socks5_server = TcpListener::bind("127.0.0.1:0").await.unwrap();
         let socks5_addr = socks5_server.local_addr().unwrap();
 
-        let server = TcpListener::bind("localhost:0").await.unwrap();
+        let server = TcpListener::bind("127.0.0.1:0").await.unwrap();
         let server_addr = server.local_addr().unwrap();
 
         // Run the proxy
@@ -195,7 +195,7 @@ fn test_client_server_udp() {
                             }
                         },
                         socks5_address: Address::IP(socks5_addr),
-                        socks5_udp_host: "0.0.0.0".to_string(),
+                        socks5_udp_host: "127.0.0.1".to_string(),
                     }),
                 ),
                 run_server(server),
@@ -243,6 +243,7 @@ fn test_client_server_udp() {
                 }
             }
         };
+        log::info!("Address = {addr}");
         assert_eq!(buf.remaining_read(), 0);
 
         // Write to UDP address
