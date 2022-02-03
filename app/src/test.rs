@@ -17,7 +17,7 @@ use maplit::hashmap;
 use rand::Rng;
 use smol::channel::unbounded;
 use smol::net::TcpListener;
-use smol::spawn;
+use smol::{spawn, Timer};
 use smol_timeout::TimeoutExt;
 use std::borrow::Cow;
 use std::future::join;
@@ -175,9 +175,6 @@ fn test_client_server_udp() {
             }
         });
 
-        let socks5_server = TcpListener::bind("127.0.0.1:0").await.unwrap();
-        let socks5_addr = socks5_server.local_addr().unwrap();
-
         let server = TcpListener::bind("127.0.0.1:0").await.unwrap();
         let server_addr = server.local_addr().unwrap();
 
@@ -200,7 +197,7 @@ fn test_client_server_udp() {
                             priority: 0,
                         }
                     },
-                    socks5_address: Address::IP(socks5_addr),
+                    socks5_address: "127.0.0.1:5001".parse().unwrap(),
                     socks5_udp_host: "127.0.0.1".to_string(),
                 }),
                 Arc::new(ClientStatistics {
@@ -212,8 +209,12 @@ fn test_client_server_udp() {
             .await
             .unwrap();
 
+        Timer::after(Duration::from_millis(100)).await;
+
         // Try to request a UDP proxy
-        let mut socks5_client = TcpStream::connect(&Address::IP(socks5_addr)).await.unwrap();
+        let mut socks5_client = TcpStream::connect(&"127.0.0.1:5001".parse().unwrap())
+            .await
+            .unwrap();
 
         // Greeting
         socks5_client.write_all(&[0x5, 1, 0x00]).await.unwrap();
