@@ -30,6 +30,7 @@ ipnetwork = "0"
 serde_yaml = "0"
 jni = "0"
 async-broadcast = "0"
+rust-embed = "6"
 
 [dev-dependencies]
 maplit = "1"

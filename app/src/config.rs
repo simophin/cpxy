@@ -1,3 +1,4 @@
+use anyhow::anyhow;
 use std::collections::HashMap;
 use std::fmt::{Display, Formatter};
 use std::net::IpAddr;
@@ -67,13 +68,17 @@ impl FromStr for UpstreamRule {
         let t = splits
             .next()
             .ok_or_else(|| anyhow::anyhow!("Invalid rule: {s}"))?;
-        let v = splits
-            .next()
-            .ok_or_else(|| anyhow::anyhow!("Invalid rule: {s}"))?;
+        let v = splits.next();
         if t.eq_ignore_ascii_case("geoip") {
-            Ok(Self::GeoIP(v.parse()?))
+            Ok(Self::GeoIP(
+                v.and_then(|d| d.parse().ok())
+                    .ok_or_else(|| anyhow!("Invalid geoip"))?,
+            ))
         } else if t.eq_ignore_ascii_case("network") {
-            Ok(Self::Network(v.parse()?))
+            Ok(Self::Network(
+                v.and_then(|d| d.parse().ok())
+                    .ok_or_else(|| anyhow!("Invalid networks"))?,
+            ))
         } else if t.eq_ignore_ascii_case("gfwlist") {
             Ok(Self::GfwList)
         } else if t.eq_ignore_ascii_case("adblock") {

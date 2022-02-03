@@ -9,6 +9,7 @@ use futures_lite::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
 use serde::Serialize;
 use smol::fs::File;
 use smol::spawn;
+use std::borrow::Cow;
 use std::net::SocketAddr;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
@@ -25,8 +26,11 @@ struct ConfigWithStats {
     stats: Arc<ClientStatistics>,
 }
 
-fn to_json(s: impl Serialize) -> anyhow::Result<Vec<u8>> {
-    Ok(serde_json::to_vec(&s)?)
+fn to_json(s: impl Serialize) -> anyhow::Result<(Option<String>, Cow<[u8]>)> {
+    Ok((
+        Some("application/json".to_string()),
+        Cow::Owned(serde_json::to_vec(&s)?),
+    ))
 }
 
 impl Controller {
@@ -52,7 +56,7 @@ impl Controller {
 
         let _ = File::create(&self.config_file)
             .await?
-            .write_all(serde_json::to_vec(config.as_ref())?.as_slice())
+            .write_all(serde_yaml::to_vec(config.as_ref())?.as_slice())
             .await?;
         log::info!("Config written successfully to {:?}", self.config_file);
         self.get_config_state()
@@ -63,7 +67,7 @@ impl Controller {
         mut sock: impl AsyncRead + AsyncWrite + Unpin + Send + Sync,
     ) -> anyhow::Result<()> {
         let mut buf = RWBuffer::with_capacity(65536);
-        let result: anyhow::Result<Vec<u8>> = loop {
+        let result: anyhow::Result<(Option<String>, Cow<[u8]>)> = loop {
             match sock.read(buf.write_buf()).await? {
                 0 => return Err(anyhow!("Unexpected EOF")),
                 v => buf.advance_write(v),
@@ -73,13 +77,18 @@ impl Controller {
             let mut req = httparse::Request::new(&mut headers);
             match req.parse(buf.read_buf())? {
                 httparse::Status::Complete(v) => match (req.method, req.path) {
+                    (Some(m), _) if m.eq_ignore_ascii_case("option") => {
+                        break Ok((None, Cow::Borrowed("")));
+                    }
                     (Some(m), Some(p))
-                        if m.eq_ignore_ascii_case("get") && p.eq_ignore_ascii_case("/config") =>
+                        if m.eq_ignore_ascii_case("get")
+                            && p.eq_ignore_ascii_case("/api/config") =>
                     {
                         break self.get_config_state().and_then(to_json);
                     }
                     (Some(m), Some(p))
-                        if m.eq_ignore_ascii_case("post") && p.eq_ignore_ascii_case("/config") =>
+                        if m.eq_ignore_ascii_case("post")
+                            && p.eq_ignore_ascii_case("/api/config") =>
                     {
                         let content_length: Option<usize> = req
                             .headers
@@ -167,7 +176,7 @@ pub async fn run_controller(bind_address: SocketAddr, config_file: &Path) -> any
     let listener = TcpListener::bind(&Address::IP(bind_address.clone())).await?;
 
     let config: ClientConfig = if config_file.exists() {
-        serde_json::from_reader(std::fs::File::open(config_file)?)?
+        serde_yaml::from_reader(std::fs::File::open(config_file)?)?
     } else {
         Default::default()
     };
