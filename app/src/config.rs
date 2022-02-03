@@ -1,20 +1,21 @@
-use crate::abp::{matches_adblock_list, matches_gfw_list};
-use crate::geoip::{find_geoip, CountryCode};
-use crate::socks5::Address;
-use ipnetwork::IpNetwork;
-use serde::de::{Error, Visitor};
-use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use std::collections::HashMap;
 use std::fmt::{Display, Formatter};
 use std::net::IpAddr;
-use std::ops::Deref;
 use std::str::FromStr;
-use std::sync::{Arc, RwLock};
-use std::time::Instant;
+use std::sync::atomic::Ordering;
+use std::sync::Arc;
+use std::time::UNIX_EPOCH;
 
-pub type LastVisitMap = Arc<RwLock<HashMap<String, Instant>>>;
+use ipnetwork::IpNetwork;
+use serde::de::{Error, Visitor};
+use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
-#[derive(Debug)]
+use crate::abp::{matches_adblock_list, matches_gfw_list};
+use crate::client::ClientStatistics;
+use crate::geoip::{find_geoip, CountryCode};
+use crate::socks5::Address;
+
+#[derive(Debug, Eq, PartialEq, Clone)]
 pub enum UpstreamRule {
     GeoIP(CountryCode),
     Network(IpNetwork),
@@ -122,7 +123,7 @@ impl UpstreamRule {
     }
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, PartialEq, Eq, Clone)]
 pub struct UpstreamConfig {
     pub address: Address,
     #[serde(default)]
@@ -157,7 +158,7 @@ fn default_socks5_address() -> Address {
     "127.0.0.1:5000".parse().unwrap()
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, PartialEq, Eq)]
 pub struct ClientConfig {
     pub upstreams: HashMap<String, UpstreamConfig>,
 
@@ -169,23 +170,26 @@ pub struct ClientConfig {
 }
 
 impl ClientConfig {
-    fn calc_last_visit_score(
-        last_visit: &impl Deref<Target = HashMap<String, Instant>>,
-        upstream_name: &String,
-    ) -> usize {
-        (match last_visit.get(upstream_name) {
-            Some(i) => i.elapsed().as_millis().try_into().unwrap_or(u16::MAX),
+    fn calc_last_visit_score(stats: &ClientStatistics, upstream_name: &String) -> usize {
+        (match stats.upstreams.get(upstream_name) {
+            Some(stat) => {
+                let last = stat.last_activity.load(Ordering::Relaxed);
+                let now = UNIX_EPOCH.elapsed().unwrap().as_secs();
+                now.checked_sub(last)
+                    .unwrap_or(0)
+                    .try_into()
+                    .unwrap_or(u16::MAX)
+            }
             _ => u16::MAX,
         }) as usize
     }
 
     pub fn find_best_upstream(
         &self,
-        last_visit: LastVisitMap,
+        stats: Arc<ClientStatistics>,
         target: &Address,
     ) -> Option<(&str, &UpstreamConfig)> {
         let mut upstreams: Vec<(&str, &UpstreamConfig, usize)> = {
-            let last_visit = last_visit.read().ok()?;
             // Find suitable upstreams first
             self.upstreams
                 .iter()
@@ -195,7 +199,7 @@ impl ClientConfig {
                         n.as_str(),
                         c,
                         (u16::MAX - c.priority) as usize
-                            + Self::calc_last_visit_score(&last_visit, n),
+                            + Self::calc_last_visit_score(stats.as_ref(), n),
                     )
                 })
                 .collect()
@@ -205,13 +209,11 @@ impl ClientConfig {
         let result = upstreams.last().map(|(n, c, _)| (*n, *c));
 
         if let Some((name, _)) = result.as_ref() {
-            if let Ok(mut v) = last_visit.try_write() {
-                match v.get_mut(*name) {
-                    Some(v) => *v = Instant::now(),
-                    None => {
-                        v.insert(name.to_string(), Instant::now());
-                    }
-                };
+            match stats.upstreams.get(*name) {
+                Some(stat) => stat
+                    .last_activity
+                    .store(UNIX_EPOCH.elapsed().unwrap().as_secs(), Ordering::Relaxed),
+                _ => {}
             }
         }
 

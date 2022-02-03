@@ -12,7 +12,7 @@ mod socks5;
 mod utils;
 
 // #[cfg(target_os = "android")]
-mod jni_export;
+// mod jni_export;
 
 mod io;
 #[cfg(test)]
@@ -20,5 +20,6 @@ mod test;
 
 mod abp;
 pub mod config;
+mod controller;
 mod geoip;
 mod udp_relay;

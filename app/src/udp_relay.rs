@@ -1,4 +1,5 @@
-use crate::config::{ClientConfig, LastVisitMap};
+use crate::client::ClientStatistics;
+use crate::config::ClientConfig;
 use crate::io::{copy_udp_and_stream, copy_udp_and_udp, UdpSocket};
 use crate::proxy::protocol::{ProxyRequest, ProxyResult};
 use crate::proxy::request_proxy_upstream;
@@ -106,34 +107,23 @@ async fn serve_socks5_udp_directly(
 
 pub struct Relay {
     c: Arc<ClientConfig>,
-    last_visit: LastVisitMap,
+    stats: Arc<ClientStatistics>,
     socket: UdpSocket,
 }
 
 impl Relay {
     pub async fn new(
         c: Arc<ClientConfig>,
-        last_visit: LastVisitMap,
+        stats: Arc<ClientStatistics>,
         v4: bool,
     ) -> anyhow::Result<(Self, SocketAddr)> {
         let socket = UdpSocket::bind(v4).await?;
         let addr = socket.local_addr()?;
-        Ok((
-            Self {
-                c,
-                socket,
-                last_visit,
-            },
-            addr,
-        ))
+        Ok((Self { c, socket, stats }, addr))
     }
 
     pub async fn run(self) -> anyhow::Result<()> {
-        let Relay {
-            c,
-            socket,
-            last_visit,
-        } = self;
+        let Relay { c, socket, stats } = self;
 
         let mut buf = vec![0; 65536];
         let socks5_remote_addr = match socket.recv_from(buf.as_mut_slice()).await? {
@@ -147,7 +137,7 @@ impl Relay {
         let UdpPacket { addr, .. } = UdpPacket::parse_udp(buf.as_slice())?;
 
         // Find out where we want to go
-        match c.find_best_upstream(last_visit, &addr) {
+        match c.find_best_upstream(stats, &addr) {
             None => {
                 log::debug!("Connecting to udp://{addr} directly");
                 serve_socks5_udp_directly(socket, buf, socks5_remote_addr).await

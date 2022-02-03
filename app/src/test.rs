@@ -1,7 +1,7 @@
 use crate::cipher::client::connect;
 use crate::cipher::server::listen;
 use crate::cipher::strategy::EncryptionStrategy;
-use crate::client::run_client;
+use crate::client::{run_client, ClientStatistics};
 use crate::config::{ClientConfig, UpstreamConfig};
 use crate::io::{TcpStream, UdpSocket};
 use crate::proxy::protocol::{ProxyRequest, ProxyResult};
@@ -15,6 +15,7 @@ use futures_lite::io::split;
 use futures_lite::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
 use maplit::hashmap;
 use rand::Rng;
+use smol::channel::unbounded;
 use smol::net::TcpListener;
 use smol::spawn;
 use smol_timeout::TimeoutExt;
@@ -181,28 +182,35 @@ fn test_client_server_udp() {
         let server_addr = server.local_addr().unwrap();
 
         // Run the proxy
+        let (config_tx, config_rx) = unbounded();
         let _proxy_task = spawn(async move {
-            race(
-                run_client(
-                    socks5_server,
-                    Arc::new(ClientConfig {
-                        upstreams: hashmap! {
-                            "test".to_string() => UpstreamConfig {
-                                address: Address::IP(server_addr),
-                                accept: Default::default(),
-                                reject: Default::default(),
-                                priority: 0,
-                            }
-                        },
-                        socks5_address: Address::IP(socks5_addr),
-                        socks5_udp_host: "127.0.0.1".to_string(),
-                    }),
-                ),
-                run_server(server),
-            )
+            race(run_client(config_rx), run_server(server))
+                .await
+                .unwrap();
+        });
+
+        config_tx
+            .send((
+                Arc::new(ClientConfig {
+                    upstreams: hashmap! {
+                        "test".to_string() => UpstreamConfig {
+                            address: Address::IP(server_addr),
+                            accept: Default::default(),
+                            reject: Default::default(),
+                            priority: 0,
+                        }
+                    },
+                    socks5_address: Address::IP(socks5_addr),
+                    socks5_udp_host: "127.0.0.1".to_string(),
+                }),
+                Arc::new(ClientStatistics {
+                    upstreams: hashmap! {
+                        "test".to_string() => Default::default(),
+                    },
+                }),
+            ))
             .await
             .unwrap();
-        });
 
         // Try to request a UDP proxy
         let mut socks5_client = TcpStream::connect(&Address::IP(socks5_addr)).await.unwrap();

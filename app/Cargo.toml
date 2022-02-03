@@ -9,6 +9,7 @@ edition = "2021"
 smol = "1"
 smol-timeout = "0"
 futures-lite = "1"
+futures-util = "0"
 anyhow = "1"
 httparse = "1"
 log = "0"
@@ -28,6 +29,7 @@ adblock = { version = "0", default-features = false, features = ["full-regex-han
 ipnetwork = "0"
 serde_yaml = "0"
 jni = "0"
+async-broadcast = "0"
 
 [dev-dependencies]
 maplit = "1"

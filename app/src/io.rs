@@ -3,7 +3,9 @@ use crate::utils::RWBuffer;
 use futures_lite::future::race;
 use futures_lite::io::split;
 use futures_lite::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
-use smol::net::{TcpStream as AsyncTcpStream, UdpSocket as AsyncUdpSocket};
+use smol::net::{
+    TcpListener as AsyncTcpListener, TcpStream as AsyncTcpStream, UdpSocket as AsyncUdpSocket,
+};
 use smol::spawn;
 use std::borrow::Cow;
 use std::io::{IoSlice, IoSliceMut};
@@ -163,6 +165,23 @@ impl AsyncWrite for TcpStream {
 
     fn poll_close(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<std::io::Result<()>> {
         Pin::new(&mut self.0).poll_close(cx)
+    }
+}
+
+pub struct TcpListener(AsyncTcpListener);
+
+impl TcpListener {
+    pub async fn bind(addr: &Address) -> smol::io::Result<Self> {
+        let inner = match addr {
+            Address::IP(addr) => AsyncTcpListener::bind(addr).await?,
+            Address::Name { host, port } => AsyncTcpListener::bind((host.as_str(), *port)).await?,
+        };
+        Ok(Self(inner))
+    }
+
+    pub async fn accept(&self) -> smol::io::Result<(TcpStream, SocketAddr)> {
+        let (stream, addr) = self.0.accept().await?;
+        Ok((TcpStream::from(stream), addr))
     }
 }
 
