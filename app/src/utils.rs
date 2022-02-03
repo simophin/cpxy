@@ -51,6 +51,12 @@ impl RWBuffer<Vec<u8>> {
     }
 }
 
+impl<T: AsRef<[u8]>> RWBuffer<T> {
+    pub fn capacity(&self) -> usize {
+        self.buf.as_ref().len()
+    }
+}
+
 impl<T> RWBuffer<T> {
     pub fn remaining_read(&self) -> usize {
         return self.write_cursor - self.read_cursor;
@@ -63,6 +69,11 @@ impl<T> RWBuffer<T> {
             self.read_cursor = 0;
             self.write_cursor = 0;
         }
+    }
+
+    pub fn clear(&mut self) {
+        self.read_cursor = 0;
+        self.write_cursor = 0;
     }
 }
 

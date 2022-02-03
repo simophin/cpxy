@@ -169,6 +169,16 @@ pub struct ClientConfig {
     pub socks5_udp_host: String,
 }
 
+impl Default for ClientConfig {
+    fn default() -> Self {
+        Self {
+            upstreams: Default::default(),
+            socks5_address: default_socks5_address(),
+            socks5_udp_host: default_socks5_udp_host(),
+        }
+    }
+}
+
 impl ClientConfig {
     fn calc_last_visit_score(stats: &ClientStatistics, upstream_name: &String) -> usize {
         (match stats.upstreams.get(upstream_name) {

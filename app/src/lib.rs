@@ -3,7 +3,7 @@
 extern crate core;
 
 mod cipher;
-pub mod client;
+mod client;
 mod handshake;
 mod parse;
 mod proxy;
@@ -20,6 +20,6 @@ mod test;
 
 mod abp;
 pub mod config;
-mod controller;
+pub mod controller;
 mod geoip;
 mod udp_relay;

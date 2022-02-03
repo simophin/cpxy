@@ -2,7 +2,7 @@ use anyhow::anyhow;
 use bytes::Bytes;
 use std::collections::HashMap;
 use std::net::SocketAddr;
-use std::sync::atomic::{AtomicU64, AtomicUsize};
+use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
 use std::sync::Arc;
 
 use crate::config::*;
@@ -18,16 +18,38 @@ use futures_util::{select, FutureExt};
 use serde::{Deserialize, Serialize};
 use smol::{spawn, Task};
 
-#[derive(Default, Serialize, Deserialize, Debug, Clone)]
+#[derive(Default, Serialize, Deserialize, Debug)]
 pub struct UpstreamStatistics {
     pub tx: AtomicUsize,
     pub rx: AtomicUsize,
     pub last_activity: AtomicU64,
 }
 
+impl Clone for UpstreamStatistics {
+    fn clone(&self) -> Self {
+        Self {
+            tx: AtomicUsize::new(self.tx.load(Ordering::Relaxed)),
+            rx: AtomicUsize::new(self.rx.load(Ordering::Relaxed)),
+            last_activity: AtomicU64::new(self.last_activity.load(Ordering::Relaxed)),
+        }
+    }
+}
+
 #[derive(Default, Serialize, Deserialize, Debug)]
 pub struct ClientStatistics {
     pub upstreams: HashMap<String, UpstreamStatistics>,
+}
+
+impl ClientStatistics {
+    pub fn new(c: &ClientConfig) -> Self {
+        Self {
+            upstreams: c
+                .upstreams
+                .iter()
+                .map(|(n, _)| (n.clone(), Default::default()))
+                .collect(),
+        }
+    }
 }
 
 pub async fn run_client(
