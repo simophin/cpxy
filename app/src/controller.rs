@@ -6,6 +6,7 @@ use crate::utils::RWBuffer;
 use anyhow::anyhow;
 use async_broadcast::Sender;
 use futures_lite::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
+use rust_embed::RustEmbed;
 use serde::Serialize;
 use smol::fs::File;
 use smol::spawn;
@@ -26,15 +27,33 @@ struct ConfigWithStats {
     stats: Arc<ClientStatistics>,
 }
 
-fn to_json(s: impl Serialize) -> anyhow::Result<(Option<String>, Cow<[u8]>)> {
-    Ok((
-        Some("application/json".to_string()),
-        Cow::Owned(serde_json::to_vec(&s)?),
+fn to_json(s: impl Serialize) -> Result<Response, ErrorResponse> {
+    Ok(Response::Json(
+        serde_json::to_vec(&s).map_err(|e| ErrorResponse::Generic(e.into()))?,
     ))
 }
 
+#[derive(RustEmbed)]
+#[folder = "web/build"]
+struct Asset;
+
+enum Response {
+    Empty,
+    Json(Vec<u8>),
+    EmbedFile {
+        path: String,
+        file: rust_embed::EmbeddedFile,
+    },
+}
+
+enum ErrorResponse {
+    Generic(anyhow::Error),
+    NotFound(Option<String>),
+    InvalidRequest,
+}
+
 impl Controller {
-    fn get_config_state(&self) -> anyhow::Result<ConfigWithStats> {
+    fn get_config_state(&self) -> Result<ConfigWithStats, ErrorResponse> {
         let (config, stats) = &self.current;
         Ok(ConfigWithStats {
             config: config.clone(),
@@ -42,7 +61,10 @@ impl Controller {
         })
     }
 
-    async fn set_config(&mut self, new_config: ClientConfig) -> anyhow::Result<ConfigWithStats> {
+    async fn set_config(
+        &mut self,
+        new_config: ClientConfig,
+    ) -> Result<ConfigWithStats, ErrorResponse> {
         let config_with_stats = self.get_config_state()?;
         if config_with_stats.config.as_ref() == &new_config {
             return Ok(config_with_stats);
@@ -55,9 +77,15 @@ impl Controller {
         let _ = self.broadcaster.broadcast((config.clone(), stats)).await;
 
         let _ = File::create(&self.config_file)
-            .await?
-            .write_all(serde_yaml::to_vec(config.as_ref())?.as_slice())
-            .await?;
+            .await
+            .map_err(|e| ErrorResponse::Generic(e.into()))?
+            .write_all(
+                serde_yaml::to_vec(config.as_ref())
+                    .map_err(|e| ErrorResponse::Generic(e.into()))?
+                    .as_slice(),
+            )
+            .await
+            .map_err(|e| ErrorResponse::Generic(e.into()))?;
         log::info!("Config written successfully to {:?}", self.config_file);
         self.get_config_state()
     }
@@ -67,7 +95,7 @@ impl Controller {
         mut sock: impl AsyncRead + AsyncWrite + Unpin + Send + Sync,
     ) -> anyhow::Result<()> {
         let mut buf = RWBuffer::with_capacity(65536);
-        let result: anyhow::Result<(Option<String>, Cow<[u8]>)> = loop {
+        let result: Result<Response, ErrorResponse> = loop {
             match sock.read(buf.write_buf()).await? {
                 0 => return Err(anyhow!("Unexpected EOF")),
                 v => buf.advance_write(v),
@@ -78,7 +106,7 @@ impl Controller {
             match req.parse(buf.read_buf())? {
                 httparse::Status::Complete(v) => match (req.method, req.path) {
                     (Some(m), _) if m.eq_ignore_ascii_case("option") => {
-                        break Ok((None, Cow::Borrowed("")));
+                        break Ok(Response::Empty);
                     }
                     (Some(m), Some(p))
                         if m.eq_ignore_ascii_case("get")
@@ -97,7 +125,7 @@ impl Controller {
                             .and_then(|h| String::from_utf8_lossy(h.value).as_ref().parse().ok());
 
                         if content_length.is_none() {
-                            break Err(anyhow!("Content length not specified"));
+                            break Err(ErrorResponse::InvalidRequest);
                         }
                         let content_length = content_length.unwrap();
 
@@ -107,9 +135,7 @@ impl Controller {
 
                         buf.compact();
                         if buf.capacity() < content_length {
-                            break Err(anyhow!(
-                                "Content-Length: {content_length} exceeds buffer length"
-                            ));
+                            break Err(ErrorResponse::InvalidRequest);
                         }
 
                         let buf_to_read = content_length - buf.read_buf().len();
@@ -120,15 +146,31 @@ impl Controller {
                                     buf.advance_write(buf_to_read);
                                     match serde_json::from_slice(buf.read_buf()) {
                                         Ok(v) => v,
-                                        Err(e) => break Err(e.into()),
+                                        Err(e) => break Err(ErrorResponse::Generic(e.into())),
                                     }
                                 }
-                                Err(e) => break Err(e.into()),
+                                Err(e) => break Err(ErrorResponse::Generic(e.into())),
                             };
 
                         break self.set_config(req).await.and_then(to_json);
                     }
-                    _ => break Err(anyhow!("Invalid http request")),
+                    (Some(m), Some(p)) if m.eq_ignore_ascii_case("get") => {
+                        let p = match p {
+                            "/" => "index.html",
+                            v if v.starts_with('/') => &p[1..],
+                            v => v,
+                        };
+                        match Asset::get(p) {
+                            Some(file) => {
+                                break Ok(Response::EmbedFile {
+                                    path: p.to_string(),
+                                    file,
+                                })
+                            }
+                            None => break Err(ErrorResponse::NotFound(Some(p.to_string()))),
+                        };
+                    }
+                    _ => break Err(ErrorResponse::NotFound(req.path.map(|v| v.to_string()))),
                 },
                 httparse::Status::Partial => continue,
             };
@@ -137,38 +179,68 @@ impl Controller {
         buf.clear();
 
         match result {
-            Ok(body) => {
+            Ok(Response::Empty) => {
+                sock.write_all(b"HTTP/1.1 201\r\n\r\n").await?;
+            }
+            Ok(Response::Json(buf)) => {
                 sock.write_all(
                     format!(
                         "HTTP/1.1 200\r\n\
                     Content-Type: application/json\r\n\
                     Content-Length: {}\r\n\
                     \r\n",
-                        body.len()
+                        buf.len()
                     )
                     .as_bytes(),
                 )
                 .await?;
-                sock.write_all(buf.read_buf()).await?;
-                Ok(())
+                sock.write_all(buf.as_slice()).await?;
             }
-            Err(e) => {
-                let err_msg = e.to_string();
+            Ok(Response::EmbedFile { path, file }) => {
+                let mime = mime_guess::from_path(path);
+                let mime = match mime.first() {
+                    Some(v) => Cow::Owned(v.to_string()),
+                    None => Cow::Borrowed("application/octet-stream"),
+                };
+
                 sock.write_all(
                     format!(
-                        "HTTP/1.1 500\r\n\
-                    Content-Type: plain/text\r\n\
-                    Content-Length: {}\r\n\
-                    \r\n",
-                        err_msg.as_bytes().len()
+                        "HTTP/1.1 200 OK\r\n\
+                Content-Type: {}\r\n\
+                Content-Length: {}\r\n\
+                \r\n",
+                        mime,
+                        file.data.as_ref().len()
                     )
                     .as_bytes(),
                 )
                 .await?;
-                sock.write_all(err_msg.as_bytes()).await?;
-                Ok(())
+                sock.write_all(file.data.as_ref()).await?;
             }
-        }
+            Err(e) => {
+                let (code, msg) = match e {
+                    ErrorResponse::Generic(e) => (500, e.to_string()),
+                    ErrorResponse::InvalidRequest => (400, String::new()),
+                    ErrorResponse::NotFound(s) => {
+                        (404, format!("Resource {} not found", s.unwrap_or_default()))
+                    }
+                };
+                let msg = msg.as_bytes();
+                sock.write_all(
+                    format!(
+                        "HTTP/1.1 {code}\r\n\
+                    Content-Type: text/plain\r\n\
+                    Content-Length: {}\r\n\
+                    \r\n",
+                        msg.len()
+                    )
+                    .as_bytes(),
+                )
+                .await?;
+                sock.write_all(msg).await?;
+            }
+        };
+        Ok(())
     }
 }
 
