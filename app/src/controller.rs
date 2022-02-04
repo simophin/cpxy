@@ -34,7 +34,7 @@ fn to_json(s: impl Serialize) -> Result<Response, ErrorResponse> {
 }
 
 #[derive(RustEmbed)]
-#[folder = "web/build"]
+#[folder = "$OUT_DIR/webapp"]
 struct Asset;
 
 enum Response {
