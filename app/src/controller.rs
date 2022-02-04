@@ -180,13 +180,15 @@ impl Controller {
 
         match result {
             Ok(Response::Empty) => {
-                sock.write_all(b"HTTP/1.1 201\r\n\r\n").await?;
+                sock.write_all(b"HTTP/1.1 201\r\nAccess-Control-Allow-Origin: *\r\n\r\n")
+                    .await?;
             }
             Ok(Response::Json(buf)) => {
                 sock.write_all(
                     format!(
                         "HTTP/1.1 200\r\n\
                     Content-Type: application/json\r\n\
+                    Access-Control-Allow-Origin: *\r\n\
                     Content-Length: {}\r\n\
                     \r\n",
                         buf.len()
