@@ -1,10 +1,10 @@
 import { useEffect, useMemo, useState } from "react";
 import useFetch from "use-http";
-import { ClientConfigWithStats, UpstreamConfig, UpstreamStatistics } from "./models";
+import { ClientConfigWithStats, UpstreamStatistics } from "./models";
 import { BASE_URL } from './config';
 import _ from 'lodash';
-import { Button, Checkbox, Chip, Fab, IconButton, List, ListItem, ListItemText, Typography } from "@mui/material";
-import { Add, ArrowDownward, ArrowUpward, Delete } from "@mui/icons-material";
+import { Button, Checkbox, Chip, Fab, List, ListItem, ListItemText, Typography } from "@mui/material";
+import { Add, ArrowDownward, ArrowUpward } from "@mui/icons-material";
 
 type Props = {
     reloadList?: any,

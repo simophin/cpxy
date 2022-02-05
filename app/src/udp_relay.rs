@@ -7,13 +7,16 @@ use crate::socks5::{Address, UdpPacket};
 use futures_lite::{AsyncRead, AsyncWrite};
 use std::borrow::Cow;
 use std::net::SocketAddr;
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
 
-async fn serve_socks5_udp_stream_relay(
+async fn serve_socks5_udp_stream_relay<'a>(
     socks5_sock: UdpSocket,
     mut socks5_buf: Vec<u8>,
     socks5_remote_addr: SocketAddr,
-    mut upstream: impl AsyncRead + AsyncWrite + Unpin + Send + Sync + 'static,
+    mut upstream: impl AsyncRead + AsyncWrite + Unpin + Send + Sync + 'a,
+    upstream_tx_count: &'a AtomicUsize,
+    upstream_rx_count: &'a AtomicUsize,
 ) -> anyhow::Result<()> {
     match UdpPacket::parse_udp(socks5_buf.as_slice()) {
         Ok(v) if v.frag_no == 0 => {
@@ -30,7 +33,10 @@ async fn serve_socks5_udp_stream_relay(
         Some(MAX_STREAM_HDR_LEN),
         |_, hdr_buf, out_buf| match UdpPacket::parse_udp(out_buf.as_slice())? {
             p if p.frag_no == 0 => {
-                UdpPacket::write_tcp_headers(hdr_buf.unwrap(), &p.addr, p.data.len())
+                let mut hdr_buf = hdr_buf.unwrap();
+                UdpPacket::write_tcp_headers(&mut hdr_buf, &p.addr, p.data.len())?;
+                upstream_tx_count.fetch_add(hdr_buf.len() + out_buf.len(), Ordering::Relaxed);
+                Ok(())
             }
             _ => {
                 hdr_buf.unwrap().clear();
@@ -43,6 +49,7 @@ async fn serve_socks5_udp_stream_relay(
             Some((offset, p)) => {
                 out.clear();
                 p.write_udp_sync(out)?;
+                upstream_rx_count.fetch_add(out.len(), Ordering::Relaxed);
                 Ok(Some((offset, Address::IP(socks5_remote_addr.clone()))))
             }
         },
@@ -137,7 +144,7 @@ impl Relay {
         let UdpPacket { addr, .. } = UdpPacket::parse_udp(buf.as_slice())?;
 
         // Find out where we want to go
-        match c.find_best_upstream(stats, &addr) {
+        match c.find_best_upstream(stats.as_ref(), &addr) {
             None => {
                 log::debug!("Connecting to udp://{addr} directly");
                 serve_socks5_udp_directly(socket, buf, socks5_remote_addr).await
@@ -146,8 +153,20 @@ impl Relay {
                 log::debug!("Requesting UDP proxy upstream: {name} for {addr}");
                 match request_proxy_upstream(upstream, &ProxyRequest::UDP).await {
                     Ok((ProxyResult::Granted { .. }, upstream)) => {
-                        serve_socks5_udp_stream_relay(socket, buf, socks5_remote_addr, upstream)
-                            .await
+                        let (tx_count, rx_count) = stats
+                            .upstreams
+                            .get(name)
+                            .map(|stat| (stat.rx.clone(), stat.tx.clone()))
+                            .unwrap_or_else(|| (Default::default(), Default::default()));
+                        serve_socks5_udp_stream_relay(
+                            socket,
+                            buf,
+                            socks5_remote_addr,
+                            upstream,
+                            tx_count.as_ref(),
+                            rx_count.as_ref(),
+                        )
+                        .await
                     }
                     Ok((r, _)) => Err(r.into()),
                     Err(e) => Err(e.into()),

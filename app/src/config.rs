@@ -4,7 +4,6 @@ use std::fmt::{Display, Formatter};
 use std::net::IpAddr;
 use std::str::FromStr;
 use std::sync::atomic::Ordering;
-use std::sync::Arc;
 use std::time::UNIX_EPOCH;
 
 use ipnetwork::IpNetwork;
@@ -140,18 +139,29 @@ pub struct UpstreamConfig {
 }
 
 impl UpstreamConfig {
-    fn matches(&self, target: &Address) -> bool {
+    fn calc_score(&self, target: &Address, country_code: Option<CountryCode>) -> usize {
         let ip = match target {
             Address::IP(a) => Some(a.ip()),
             _ => None,
         };
 
-        let country_code = ip.as_ref().and_then(|v| find_geoip(v));
+        let mut score = 5;
+        if !self.accept.is_empty() {
+            if UpstreamRule::matches_any(self.accept.iter(), country_code, ip, target) {
+                score += 5;
+            } else {
+                return 0;
+            }
+        }
 
-        (self.accept.is_empty()
-            || UpstreamRule::matches_any(self.accept.iter(), country_code, ip, target))
-            && (self.reject.is_empty()
-                || !UpstreamRule::matches_any(self.reject.iter(), country_code, ip, target))
+        if !self.reject.is_empty()
+            && UpstreamRule::matches_any(self.reject.iter(), country_code, ip, target)
+        {
+            return 0;
+        }
+
+        score += (u16::MAX - self.priority) as usize;
+        score
     }
 }
 
@@ -201,22 +211,23 @@ impl ClientConfig {
 
     pub fn find_best_upstream(
         &self,
-        stats: Arc<ClientStatistics>,
+        stats: &ClientStatistics,
         target: &Address,
     ) -> Option<(&str, &UpstreamConfig)> {
+        let country_code = match target {
+            Address::IP(addr) => find_geoip(&addr.ip()),
+            _ => None,
+        };
+
         let mut upstreams: Vec<(&str, &UpstreamConfig, usize)> = {
             // Find suitable upstreams first
             self.upstreams
                 .iter()
-                .filter(|(_, c)| c.matches(target))
-                .map(|(n, c)| {
-                    (
-                        n.as_str(),
-                        c,
-                        (u16::MAX - c.priority) as usize
-                            + Self::calc_last_visit_score(stats.as_ref(), n),
-                    )
+                .filter_map(|(n, c)| match c.calc_score(target, country_code) {
+                    0 => None,
+                    score => Some((n.as_str(), c, score + Self::calc_last_visit_score(stats, n))),
                 })
+                .filter(|(_, _, score)| *score > 0)
                 .collect()
         };
 

@@ -6,14 +6,14 @@ use anyhow::anyhow;
 use futures_lite::future::race;
 use futures_lite::io::split;
 use futures_lite::{AsyncRead, AsyncReadExt, AsyncWrite};
-use smol::spawn;
+use smol::Executor;
 use smol_timeout::TimeoutExt;
 use std::fmt::Write;
 use std::sync::Arc;
 use std::time::Duration;
 
-async fn copy_stream_to_udp(
-    mut src: impl AsyncRead + Unpin + Send + Sync + 'static,
+async fn copy_stream_to_udp<'a>(
+    mut src: impl AsyncRead + Unpin + Send + Sync + 'a,
     socket: &UdpSocket,
 ) -> anyhow::Result<()> {
     let mut buf = RWBuffer::with_capacity(66000);
@@ -41,9 +41,9 @@ async fn copy_stream_to_udp(
     }
 }
 
-async fn copy_udp_to_stream(
+async fn copy_udp_to_stream<'a>(
     socket: &UdpSocket,
-    mut dst: impl AsyncWrite + Unpin + Send + Sync + 'static,
+    mut dst: impl AsyncWrite + Unpin + Send + Sync + 'a,
 ) -> anyhow::Result<()> {
     let mut buf = vec![0u8; 65536];
 
@@ -63,8 +63,8 @@ async fn copy_udp_to_stream(
     }
 }
 
-pub async fn serve_udp_proxy(
-    mut src: impl AsyncRead + AsyncWrite + Unpin + Send + Sync + 'static,
+pub async fn serve_udp_proxy<'a>(
+    mut src: impl AsyncRead + AsyncWrite + Unpin + Send + Sync + 'a,
     is_v4: bool,
 ) -> anyhow::Result<()> {
     log::info!("Proxying UDP upstream");
@@ -90,10 +90,11 @@ pub async fn serve_udp_proxy(
     };
 
     let (r, w) = split(src);
+    let executor = Executor::new();
 
     let task1 = {
         let socket = socket.clone();
-        spawn(async move {
+        executor.spawn(async move {
             if let Err(e) = copy_stream_to_udp(r, &socket).await {
                 log::error!("Error serving UDP upstream: {e}")
             }
@@ -104,7 +105,7 @@ pub async fn serve_udp_proxy(
 
     let task2 = {
         let socket = socket.clone();
-        spawn(async move {
+        executor.spawn(async move {
             if let Err(e) = copy_udp_to_stream(&socket, w).await {
                 log::error!("Error serving UDP downstream: {e}")
             }

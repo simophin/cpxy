@@ -6,7 +6,7 @@ use futures_lite::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
 use smol::net::{
     TcpListener as AsyncTcpListener, TcpStream as AsyncTcpStream, UdpSocket as AsyncUdpSocket,
 };
-use smol::spawn;
+use smol::{spawn, Executor};
 use std::borrow::Cow;
 use std::io::{IoSlice, IoSliceMut};
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr};
@@ -263,26 +263,27 @@ pub async fn copy_udp_and_udp(
     race(task1, task2).await
 }
 
-pub async fn copy_udp_and_stream(
+pub async fn copy_udp_and_stream<'a>(
     udp: UdpSocket,
     mut udp_buf: Vec<u8>,
-    stream: impl AsyncRead + AsyncWrite + Unpin + Send + Sync + 'static,
+    stream: impl AsyncRead + AsyncWrite + Unpin + Send + Sync + 'a,
     stream_hdr_max_size: Option<usize>,
     transform_udp_buf: impl Fn(SocketAddr, Option<&mut Vec<u8>>, &mut Vec<u8>) -> anyhow::Result<()>
         + Send
         + Sync
-        + 'static,
+        + 'a,
     transform_stream_buf: impl Fn(&[u8], &mut Vec<u8>) -> anyhow::Result<Option<(usize, Address)>>
         + Send
         + Sync
-        + 'static,
+        + 'a,
 ) -> anyhow::Result<()> {
     let udp = Arc::new(udp);
     let (mut r, mut w) = split(stream);
+    let executor = Executor::new();
 
     let task1 = {
         let udp = udp.clone();
-        spawn(async move {
+        executor.spawn(async move {
             let mut stream_hdr = stream_hdr_max_size.map(Vec::with_capacity);
             loop {
                 unsafe {
@@ -316,7 +317,7 @@ pub async fn copy_udp_and_stream(
 
     let task2 = {
         let udp = udp.clone();
-        spawn(async move {
+        executor.spawn(async move {
             loop {
                 let mut stream_buf = RWBuffer::with_capacity(67000);
                 let mut udp_buf = Vec::new();

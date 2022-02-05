@@ -2,7 +2,7 @@ use anyhow::anyhow;
 use bytes::Bytes;
 use std::collections::HashMap;
 use std::net::SocketAddr;
-use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
+use std::sync::atomic::{AtomicU64, AtomicUsize};
 use std::sync::Arc;
 
 use crate::config::*;
@@ -16,23 +16,13 @@ use futures_lite::future::race;
 use futures_lite::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt, Stream, StreamExt};
 use futures_util::{select, FutureExt};
 use serde::{Deserialize, Serialize};
-use smol::{spawn, Task};
+use smol::{spawn, Executor, Task};
 
-#[derive(Default, Serialize, Deserialize, Debug)]
+#[derive(Default, Serialize, Deserialize, Debug, Clone)]
 pub struct UpstreamStatistics {
-    pub tx: AtomicUsize,
-    pub rx: AtomicUsize,
-    pub last_activity: AtomicU64,
-}
-
-impl Clone for UpstreamStatistics {
-    fn clone(&self) -> Self {
-        Self {
-            tx: AtomicUsize::new(self.tx.load(Ordering::Relaxed)),
-            rx: AtomicUsize::new(self.rx.load(Ordering::Relaxed)),
-            last_activity: AtomicU64::new(self.last_activity.load(Ordering::Relaxed)),
-        }
-    }
+    pub tx: Arc<AtomicUsize>,
+    pub rx: Arc<AtomicUsize>,
+    pub last_activity: Arc<AtomicU64>,
 }
 
 #[derive(Default, Serialize, Deserialize, Debug)]
@@ -52,15 +42,16 @@ impl ClientStatistics {
     }
 }
 
-pub async fn run_client(
+pub async fn run_client<'a>(
     mut config_stream: impl Stream<Item = (Arc<ClientConfig>, Arc<ClientStatistics>)>
         + Send
         + Sync
         + Unpin
-        + 'static,
+        + 'a,
 ) -> anyhow::Result<()> {
     let (shutdown_tx, shutdown_rx) = async_broadcast::broadcast::<()>(1);
     let mut current_task: Option<Task<anyhow::Result<()>>> = None;
+    let executor = Executor::new();
 
     loop {
         let (config, stats) = config_stream
@@ -86,7 +77,7 @@ pub async fn run_client(
         let mut shutdown_rx = shutdown_rx.clone();
         let config = config.clone();
         let stats = stats.clone();
-        current_task = Some(spawn(async move {
+        current_task = Some(executor.spawn(async move {
             loop {
                 let (sock, addr) = select! {
                     v = listener.accept().fuse() => v?,
@@ -143,9 +134,9 @@ async fn drain_socks(
     Ok(())
 }
 
-async fn serve_proxy_client(
+async fn serve_proxy_client<'a>(
     is_v4: bool,
-    mut socks: impl AsyncRead + AsyncWrite + Unpin + Send + Sync + 'static,
+    mut socks: impl AsyncRead + AsyncWrite + Unpin + Send + Sync + 'a,
     config: Arc<ClientConfig>,
     stats: Arc<ClientStatistics>,
 ) -> anyhow::Result<()> {
@@ -155,12 +146,17 @@ async fn serve_proxy_client(
 
     match &req {
         ProxyRequest::TCP { dst } | ProxyRequest::Http { dst, .. } => {
-            if let Some((name, config)) = config.find_best_upstream(stats, &dst) {
+            if let Some((name, config)) = config.find_best_upstream(stats.as_ref(), &dst) {
                 log::info!("Using upstream {name} for {dst}");
                 match request_proxy_upstream(&config, &req).await {
                     Ok((ProxyResult::Granted { bound_address }, upstream)) => {
                         handshaker.respond_ok(&mut socks, bound_address).await?;
-                        copy_duplex(upstream, socks).await
+                        let (upstream_tx_bytes, upstream_rx_bytes) = match stats.upstreams.get(name)
+                        {
+                            Some(stats) => (Some(stats.tx.clone()), Some(stats.rx.clone())),
+                            None => (None, None),
+                        };
+                        copy_duplex(upstream, socks, upstream_rx_bytes, upstream_tx_bytes).await
                     }
                     Ok((result, _)) => {
                         handshaker.respond_err(&mut socks).await?;
@@ -176,7 +172,7 @@ async fn serve_proxy_client(
                 match prepare_direct_tcp(&req).await {
                     Ok((bound_address, upstream)) => {
                         handshaker.respond_ok(&mut socks, bound_address).await?;
-                        copy_duplex(upstream, socks).await
+                        copy_duplex(upstream, socks, None, None).await
                     }
                     Err(e) => {
                         handshaker.respond_err(&mut socks).await?;

@@ -4,18 +4,54 @@ use futures_lite::future::race;
 use futures_lite::io::{copy, split};
 use futures_lite::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
 use serde::{de::DeserializeOwned, Serialize};
-use smol::spawn;
+use smol::Executor;
 use std::cmp::min;
 use std::io::{Read, Write};
+use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::Arc;
 
-pub async fn copy_duplex(
-    d1: impl AsyncRead + AsyncWrite + Unpin + Send + Sync + 'static,
-    d2: impl AsyncRead + AsyncWrite + Unpin + Send + Sync + 'static,
+async fn copy_with_stats(
+    mut r: impl AsyncRead + Unpin + Send + Sync,
+    mut w: impl AsyncWrite + Unpin + Send + Sync,
+    stat: &AtomicUsize,
 ) -> anyhow::Result<()> {
+    let mut buf = vec![0u8; 8192];
+    loop {
+        match r.read(buf.as_mut_slice()).await? {
+            0 => return Ok(()),
+            v => {
+                stat.fetch_add(v, Ordering::Relaxed);
+                w.write_all(&buf.as_slice()[..v]).await?;
+            }
+        }
+    }
+}
+
+pub async fn copy_duplex<'a>(
+    d1: impl AsyncRead + AsyncWrite + Unpin + Send + Sync + 'a,
+    d2: impl AsyncRead + AsyncWrite + Unpin + Send + Sync + 'a,
+    d1d2_count: Option<Arc<AtomicUsize>>,
+    d2d1_count: Option<Arc<AtomicUsize>>,
+) -> anyhow::Result<()> {
+    let executor = Executor::new();
     let (d1r, d1w) = split(d1);
     let (d2r, d2w) = split(d2);
-    let task1 = spawn(async move { copy(d1r, d2w).await });
-    let task2 = spawn(async move { copy(d2r, d1w).await });
+    let task1 = executor.spawn(async move {
+        if let Some(count) = d1d2_count {
+            let _ = copy_with_stats(d1r, d2w, count.as_ref()).await?;
+        } else {
+            let _ = copy(d1r, d2w).await?;
+        }
+        anyhow::Result::<()>::Ok(())
+    });
+    let task2 = executor.spawn(async move {
+        if let Some(count) = d2d1_count {
+            let _ = copy_with_stats(d2r, d1w, count.as_ref()).await?;
+        } else {
+            let _ = copy(d2r, d1w).await?;
+        }
+        anyhow::Result::<()>::Ok(())
+    });
 
     let _ = race(task1, task2).await;
     Ok(())

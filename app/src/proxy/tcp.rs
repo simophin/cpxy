@@ -13,9 +13,9 @@ async fn prepare(target: &Address) -> anyhow::Result<(SocketAddr, TcpStream)> {
     Ok((socket.local_addr()?, socket))
 }
 
-async fn serve_tcp_proxy_common(
+async fn serve_tcp_proxy_common<'a>(
     upstream: Option<anyhow::Result<(SocketAddr, TcpStream)>>,
-    mut src: impl AsyncRead + AsyncWrite + Unpin + Send + Sync + 'static,
+    mut src: impl AsyncRead + AsyncWrite + Unpin + Send + Sync + 'a,
 ) -> anyhow::Result<()> {
     let upstream = match upstream {
         Some(Ok((bound_address, socket))) => {
@@ -33,21 +33,18 @@ async fn serve_tcp_proxy_common(
         }
     };
 
-    copy_duplex(upstream, src).await
+    copy_duplex(upstream, src, None, None).await
 }
 
-pub async fn serve_tcp_proxy(
+pub async fn serve_tcp_proxy<'a>(
     target: &Address,
-    src: impl AsyncRead + AsyncWrite + Unpin + Send + Sync + 'static,
+    src: impl AsyncRead + AsyncWrite + Unpin + Send + Sync + 'a,
 ) -> anyhow::Result<()> {
     log::info!("Proxying upstream: tcp://{target:?}");
     serve_tcp_proxy_common(prepare(target).timeout(Duration::from_secs(3)).await, src).await
 }
 
-async fn prepare_http(
-    target: &Address,
-    headers: &[u8],
-) -> anyhow::Result<(SocketAddr, TcpStream)> {
+async fn prepare_http(target: &Address, headers: &[u8]) -> anyhow::Result<(SocketAddr, TcpStream)> {
     let (addr, mut stream) = prepare(target).await?;
     log::debug!(
         "Writing to {target:?}: \n{}",
@@ -57,10 +54,10 @@ async fn prepare_http(
     Ok((addr, stream))
 }
 
-pub async fn serve_http_proxy(
+pub async fn serve_http_proxy<'a>(
     target: &Address,
     headers: &[u8],
-    src: impl AsyncRead + AsyncWrite + Unpin + Send + Sync + 'static,
+    src: impl AsyncRead + AsyncWrite + Unpin + Send + Sync + 'a,
 ) -> anyhow::Result<()> {
     serve_tcp_proxy_common(
         prepare_http(target, headers)
