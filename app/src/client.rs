@@ -5,6 +5,7 @@ use std::net::SocketAddr;
 use std::sync::atomic::{AtomicU64, AtomicUsize};
 use std::sync::Arc;
 
+use crate::broadcast::bounded;
 use crate::config::*;
 use crate::handshake::Handshaker;
 use crate::io::{TcpListener, TcpStream};
@@ -49,7 +50,7 @@ pub async fn run_client<'a>(
         + Unpin
         + 'a,
 ) -> anyhow::Result<()> {
-    let (shutdown_tx, shutdown_rx) = async_broadcast::broadcast::<()>(1);
+    let (shutdown_tx, shutdown_rx) = bounded::<()>(None, 1);
     let mut current_task: Option<Task<anyhow::Result<()>>> = None;
     let executor = Executor::new();
 

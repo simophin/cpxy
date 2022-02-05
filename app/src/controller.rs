@@ -1,3 +1,4 @@
+use crate::broadcast::bounded;
 use crate::client::{run_client, ClientStatistics};
 use crate::config::ClientConfig;
 use crate::io::TcpListener;
@@ -249,19 +250,19 @@ impl Controller {
 pub async fn run_controller(bind_address: SocketAddr, config_file: &Path) -> anyhow::Result<()> {
     let listener = TcpListener::bind(&Address::IP(bind_address.clone())).await?;
 
-    let config: ClientConfig = if config_file.exists() {
-        serde_yaml::from_reader(std::fs::File::open(config_file)?)?
+    let config = if config_file.exists() {
+        Arc::new(serde_yaml::from_reader(std::fs::File::open(config_file)?)?)
     } else {
         Default::default()
     };
 
     log::info!("Started controller on {bind_address}. Config: {config:?}");
-    let stats = ClientStatistics::new(&config);
+    let stats = Arc::new(ClientStatistics::new(&config));
 
-    let (broadcaster, rx) = async_broadcast::broadcast(1);
+    let (broadcaster, rx) = bounded(Some((config.clone(), stats.clone())), 1);
 
     let mut controller = Controller {
-        current: (Arc::new(config), Arc::new(stats)),
+        current: (config, stats),
         broadcaster,
         config_file: config_file.to_path_buf(),
     };

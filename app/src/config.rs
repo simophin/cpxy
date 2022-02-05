@@ -232,17 +232,17 @@ impl ClientConfig {
         };
 
         upstreams.sort_by_key(|(_, _, score)| *score);
-        let result = upstreams.last().map(|(n, c, _)| (*n, *c));
-
-        if let Some((name, _)) = result.as_ref() {
-            match stats.upstreams.get(*name) {
-                Some(stat) => stat
-                    .last_activity
-                    .store(UNIX_EPOCH.elapsed().unwrap().as_secs(), Ordering::Relaxed),
-                _ => {}
+        match upstreams.pop() {
+            Some((name, config, score)) => {
+                log::debug!("Best upstream = {name}, address = {target}, country_code = {country_code:?}, score = {score}");
+                if let Some(upstream) = stats.upstreams.get(name) {
+                    upstream
+                        .last_activity
+                        .store(UNIX_EPOCH.elapsed().unwrap().as_secs(), Ordering::Relaxed)
+                }
+                Some((name, config))
             }
+            None => None,
         }
-
-        result
     }
 }

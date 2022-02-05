@@ -13,6 +13,7 @@ use crate::utils::{
 use futures_lite::future::race;
 use futures_lite::io::split;
 use futures_lite::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
+use futures_util::join;
 use maplit::hashmap;
 use rand::Rng;
 use smol::channel::unbounded;
@@ -20,7 +21,6 @@ use smol::net::TcpListener;
 use smol::{spawn, Timer};
 use smol_timeout::TimeoutExt;
 use std::borrow::Cow;
-use std::future::join;
 use std::num::NonZeroUsize;
 use std::sync::Arc;
 use std::time::Duration;
@@ -32,9 +32,9 @@ pub async fn duplex(
     impl AsyncRead + AsyncWrite + Unpin + Send + Sync + 'static,
 ) {
     let listener = TcpListener::bind("127.0.0.1:0").await.expect("To listen");
-    let addr = listener.local_addr().expect("To have local addr");
+    let addr = Address::IP(listener.local_addr().expect("To have local addr"));
 
-    let (client, server) = join!(TcpStream::connect(&Address::IP(addr)), listener.accept()).await;
+    let (client, server) = join!(TcpStream::connect(&addr), listener.accept());
     let client = client.expect("To connect");
     let (server, _) = server.expect("To accept");
 

@@ -1,9 +1,9 @@
 [workspace]
 
 members = [
-    "app",
-    "fetcher",
+  "app",
+  "fetcher",
 ]
 
-[profile.release]
-strip = "symbols"
+# [profile.release]
+# strip = "symbols"
