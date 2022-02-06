@@ -22,12 +22,6 @@ struct Controller {
     config_file: PathBuf,
 }
 
-#[derive(Default, Serialize, Debug)]
-struct ConfigWithStats {
-    config: Arc<ClientConfig>,
-    stats: Arc<ClientStatistics>,
-}
-
 fn to_json(s: impl Serialize) -> Result<Response, ErrorResponse> {
     Ok(Response::Json(
         serde_json::to_vec(&s).map_err(|e| ErrorResponse::Generic(e.into()))?,
@@ -54,21 +48,23 @@ enum ErrorResponse {
 }
 
 impl Controller {
-    fn get_config_state(&self) -> Result<ConfigWithStats, ErrorResponse> {
-        let (config, stats) = &self.current;
-        Ok(ConfigWithStats {
-            config: config.clone(),
-            stats: stats.clone(),
-        })
+    fn get_stats(&self) -> Result<Arc<ClientStatistics>, ErrorResponse> {
+        Ok(self.current.1.clone())
+    }
+
+    fn get_config(&self) -> Result<Arc<ClientConfig>, ErrorResponse> {
+        Ok(self.current.0.clone())
     }
 
     async fn set_config(
         &mut self,
         new_config: ClientConfig,
-    ) -> Result<ConfigWithStats, ErrorResponse> {
-        let config_with_stats = self.get_config_state()?;
-        if config_with_stats.config.as_ref() == &new_config {
-            return Ok(config_with_stats);
+    ) -> Result<Arc<ClientConfig>, ErrorResponse> {
+        match self.get_config()? {
+            v if v.as_ref() == &new_config => {
+                return Ok(v);
+            }
+            _ => {},
         }
         let stats = Arc::new(ClientStatistics::new(&new_config));
         let config = Arc::new(new_config);
@@ -88,7 +84,7 @@ impl Controller {
             .await
             .map_err(|e| ErrorResponse::Generic(e.into()))?;
         log::info!("Config written successfully to {:?}", self.config_file);
-        self.get_config_state()
+        self.get_config()
     }
 
     async fn handle_client(
@@ -111,13 +107,19 @@ impl Controller {
                     }
                     (Some(m), Some(p))
                         if m.eq_ignore_ascii_case("get")
-                            && p.eq_ignore_ascii_case("/api/config") =>
+                            && p.starts_with("/api/config") =>
                     {
-                        break self.get_config_state().and_then(to_json);
+                        break self.get_config().and_then(to_json);
+                    }
+                    (Some(m), Some(p))
+                        if m.eq_ignore_ascii_case("get")
+                            && p.starts_with("/api/stats") =>
+                    {
+                        break self.get_stats().and_then(to_json);
                     }
                     (Some(m), Some(p))
                         if m.eq_ignore_ascii_case("post")
-                            && p.eq_ignore_ascii_case("/api/config") =>
+                            && p.starts_with("/api/config") =>
                     {
                         let content_length: Option<usize> = req
                             .headers

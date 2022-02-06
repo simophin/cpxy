@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import useFetch from "use-http";
-import { ClientConfigWithStats, UpstreamStatistics } from "./models";
+import { ClientConfig, ClientStatistics, UpstreamStatistics } from "./models";
 import { BASE_URL } from './config';
 import _ from 'lodash';
 import { Button, Checkbox, Chip, Fab, List, ListItem, ListItemText, Typography } from "@mui/material";
@@ -31,8 +31,10 @@ function formatBytes(v: number) {
     return `${(v / ONE_TB).toFixed(4)}TB`;
 }
 
-function formatStatistics({ tx, rx }: UpstreamStatistics) {
+function formatStatistics({ tx, rx, last_latency }: UpstreamStatistics) {
     return <>
+        <Chip style={{ marginRight: 4 }}
+            color='primary' label={`${last_latency}ms`} size='small' />
         <Chip icon={<ArrowUpward />} style={{ marginRight: 4 }}
             color='info' label={formatBytes(tx)} size='small' />
         <Chip icon={<ArrowDownward />}
@@ -41,24 +43,25 @@ function formatStatistics({ tx, rx }: UpstreamStatistics) {
 }
 
 export default function UpstreamList({ reloadList }: Props) {
-    const [reload, setReload] = useState(0);
-    const { loading, error, data } = useFetch<ClientConfigWithStats>(`${BASE_URL}/api/config`, {},
-        [BASE_URL, reload, reloadList]);
+    const [reload, setReload] = useState(Date.now());
+    const [reloadStats, setReloadStats] = useState(Date.now());
+    const { loading, error, data } = useFetch<ClientConfig>(`${BASE_URL}/api/config?t=${reload}`, {}, [reload]);
+    const { data: clientStats } = useFetch<ClientStatistics>(`${BASE_URL}/api/stats?t=${reloadStats}`, {}, [reloadStats]);
 
     const [selectMode, setSelectMode] = useState(false);
     const [selected, setSelected] = useState<string[]>([]);
 
     useEffect(() => {
         const handle = setInterval(() => {
-            setReload(reload + 1);
+            setReloadStats(Date.now());
         }, 1000);
 
         return () => clearInterval(handle);
-    }, [setReload]);
+    }, [setReloadStats]);
 
     const items = useMemo(() => {
-        return _.map(data?.config?.upstreams, (value, name) => {
-            const stats = data?.stats?.upstreams?.[name];
+        return _.map(data?.upstreams, (value, name) => {
+            const stats = clientStats?.upstreams?.[name];
             return <ListItem
                 onClick={() => {
                     if (selectMode) {
@@ -85,7 +88,7 @@ export default function UpstreamList({ reloadList }: Props) {
 
             </ListItem >;
         });
-    }, [data, selectMode, selected]);
+    }, [data, selectMode, selected, clientStats]);
 
     return <>
         {loading && !data && <Typography style={{ padding: 16 }}>
@@ -98,13 +101,13 @@ export default function UpstreamList({ reloadList }: Props) {
             <p>
                 <Button
                     variant='contained'
-                    onClick={() => setReload(reload + 1)}>
+                    onClick={() => setReload(Date.now())}>
                     Reload
                 </Button>
             </p>
         </div>}
 
-        {data && _.isEmpty(data.config.upstreams) &&
+        {data && _.isEmpty(data.upstreams) &&
             <Typography style={{ padding: 16 }}>No upstream configs</Typography>
         }
 

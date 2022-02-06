@@ -152,13 +152,13 @@ impl Relay {
             while let Some((name, upstream)) = upstreams.pop() {
                 log::debug!("Trying UDP proxy upstream: {name} for {addr}");
                 match request_proxy_upstream(upstream, &ProxyRequest::UDP).await {
-                    Ok((ProxyResult::Granted { .. }, upstream)) => {
+                    Ok((ProxyResult::Granted { .. }, upstream, latency)) => {
                         let (tx_count, rx_count) = stats
                             .upstreams
                             .get(name)
                             .map(|stat| (stat.rx.clone(), stat.tx.clone()))
                             .unwrap_or_else(|| (Default::default(), Default::default()));
-                        stats.update_upstream(name);
+                        stats.update_upstream(name, latency);
                         return serve_socks5_udp_stream_relay(
                             socket,
                             buf,
@@ -169,7 +169,7 @@ impl Relay {
                         )
                         .await
                     }
-                    Ok((r, _)) => return Err(r.into()),
+                    Ok((r, _, _)) => return Err(r.into()),
                     Err(e) => {
                         last_error = Some(e);
                     },

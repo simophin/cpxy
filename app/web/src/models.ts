@@ -6,7 +6,7 @@ export type UpstreamConfig = {
     priority: number,
 }
 
-type ClientConfig = {
+export type ClientConfig = {
     socks5_address: string,
     socks5_udp_host: string,
     upstreams: { [name: string]: UpstreamConfig },
@@ -16,13 +16,9 @@ export type UpstreamStatistics = {
     tx: number,
     rx: number,
     last_activity: number,
+    last_latency: number,
 }
 
-type ClientStatistics = {
+export type ClientStatistics = {
     upstreams: { [name: string]: UpstreamStatistics },
-}
-
-export type ClientConfigWithStats = {
-    config: ClientConfig,
-    stats: ClientStatistics,
 }

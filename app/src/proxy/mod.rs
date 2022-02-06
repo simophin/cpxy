@@ -6,7 +6,7 @@ use anyhow::anyhow;
 use futures_lite::{AsyncRead, AsyncWrite};
 use protocol::{ProxyRequest, ProxyResult};
 use smol_timeout::TimeoutExt;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 pub mod protocol;
 pub mod tcp;
@@ -18,6 +18,7 @@ pub async fn request_proxy_upstream(
 ) -> anyhow::Result<(
     ProxyResult,
     impl AsyncRead + AsyncWrite + Unpin + Send + Sync,
+    Duration,
 )> {
     let send_enc = EncryptionStrategy::pick_send(&req);
     let receive_enc = EncryptionStrategy::pick_receive(&req);
@@ -27,10 +28,13 @@ pub async fn request_proxy_upstream(
     let mut header = Vec::new();
     write_bincode_lengthed(&mut header, req)?;
 
+    let start = Instant::now();
     let upstream = TcpStream::connect(&c.address)
         .timeout(Duration::from_secs(3))
         .await
         .ok_or_else(|| anyhow!("Timeout connecting to {}", c.address))??;
+
+    let latency = start.elapsed();
 
     let mut upstream = super::cipher::client::connect(
         upstream,
@@ -41,5 +45,9 @@ pub async fn request_proxy_upstream(
     )
     .await?;
 
-    Ok((read_bincode_lengthed_async(&mut upstream).await?, upstream))
+    Ok((
+        read_bincode_lengthed_async(&mut upstream).await?,
+        upstream,
+        latency,
+    ))
 }

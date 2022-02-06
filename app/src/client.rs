@@ -4,7 +4,7 @@ use std::collections::HashMap;
 use std::net::SocketAddr;
 use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
 use std::sync::Arc;
-use std::time::UNIX_EPOCH;
+use std::time::{UNIX_EPOCH, Duration};
 
 use crate::config::*;
 use crate::handshake::Handshaker;
@@ -23,6 +23,7 @@ pub struct UpstreamStatistics {
     pub tx: Arc<AtomicUsize>,
     pub rx: Arc<AtomicUsize>,
     pub last_activity: Arc<AtomicU64>,
+    pub last_latency: Arc<AtomicUsize>,
 }
 
 #[derive(Default, Serialize, Deserialize, Debug)]
@@ -41,9 +42,10 @@ impl ClientStatistics {
         }
     }
 
-    pub fn update_upstream(&self, name: &str) {
+    pub fn update_upstream(&self, name: &str, latency: Duration) {
         if let Some(stats) = self.upstreams.get(name) {
             stats.last_activity.store(UNIX_EPOCH.elapsed().unwrap().as_secs(), Ordering::Relaxed);
+            stats.last_latency.store(latency.as_millis() as usize, Ordering::Relaxed);
         }
     }
 }
@@ -155,9 +157,9 @@ async fn serve_proxy_client(
                 while let Some((name, config)) = upstreams.pop() {
                     log::info!("Trying upstream {name} for {dst}");
                     match request_proxy_upstream(&config, &req).await {
-                        Ok((ProxyResult::Granted { bound_address }, upstream)) => {
+                        Ok((ProxyResult::Granted { bound_address }, upstream, latency)) => {
                             handshaker.respond_ok(&mut socks, bound_address).await?;
-                            stats.update_upstream(name);
+                            stats.update_upstream(name, latency);
                             let (upstream_tx_bytes, upstream_rx_bytes) = match stats.upstreams.get(name)
                             {
                                 Some(stats) => (Some(stats.tx.clone()), Some(stats.rx.clone())),
@@ -165,7 +167,7 @@ async fn serve_proxy_client(
                             };
                             return copy_duplex(upstream, socks, upstream_rx_bytes, upstream_tx_bytes).await
                         }
-                        Ok((result, _)) => {
+                        Ok((result, _, _)) => {
                             handshaker.respond_err(&mut socks).await?;
                             return Err(result.into())
                         }

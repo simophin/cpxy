@@ -119,7 +119,7 @@ impl DerefMut for TcpStream {
 
 impl Drop for TcpStream {
     fn drop(&mut self) {
-        let count = TCP_SOCKET_COUNT.fetch_sub(1, Ordering::Acquire);
+        let count = TCP_SOCKET_COUNT.fetch_sub(1, Ordering::SeqCst);
         log::debug!("Dropping TCP socket. Remaining: {count}");
     }
 }

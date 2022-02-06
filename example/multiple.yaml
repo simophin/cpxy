@@ -1,12 +1,23 @@
 
 upstreams:
-  us-west-cloudflare:
+  us-west-cloudflare1:
     address: oracle-us-west.fanchao.nz:80
+    accept:
+      - gfwlist
+
+  us-west-cloudflare2:
+    address: oracle-us-west.fanchao.nz:80
+    accept:
+      - gfwlist
+
+  us-west-cloudflare3:
+    address: oracle-us-west.fanchao.nz:80
+    accept:
+      - gfwlist
     
   us-west:
     address: oracle-us-west-direct.fanchao.nz:80
-    accept:
-      - gfwlist
+    reject:
       - geoip:nz
       - geoip:cn
   nz:
