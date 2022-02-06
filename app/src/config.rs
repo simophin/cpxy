@@ -173,7 +173,7 @@ fn default_socks5_address() -> Address {
     "127.0.0.1:5000".parse().unwrap()
 }
 
-#[derive(Debug, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Serialize, Deserialize, PartialEq, Eq, Clone)]
 pub struct ClientConfig {
     pub upstreams: HashMap<String, UpstreamConfig>,
 
@@ -232,8 +232,6 @@ impl ClientConfig {
         };
 
         upstreams.sort_by_key(|(_, _, score)| *score);
-        upstreams.into_iter()
-            .map(|(n, c, _)| (n, c))
-            .collect()
+        upstreams.into_iter().map(|(n, c, _)| (n, c)).collect()
     }
 }

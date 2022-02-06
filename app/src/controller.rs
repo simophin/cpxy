@@ -1,26 +1,20 @@
 use crate::broadcast::bounded;
 use crate::client::{run_client, ClientStatistics};
-use crate::config::ClientConfig;
+use crate::config::{ClientConfig, UpstreamConfig};
 use crate::io::TcpListener;
 use crate::socks5::Address;
-use crate::utils::{JsonSerializable, RWBuffer};
-use anyhow::anyhow;
+use crate::utils::{write_http_response, JsonSerializable, RWBuffer};
+use anyhow::{anyhow, Context};
 use async_broadcast::Sender;
 use futures_lite::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
 use rust_embed::RustEmbed;
 use serde::de::DeserializeOwned;
+use serde::Deserialize;
 use smol::fs::File;
 use smol::spawn;
-use std::borrow::Cow;
 use std::net::SocketAddr;
 use std::path::PathBuf;
 use std::sync::Arc;
-
-struct Controller {
-    current: (Arc<ClientConfig>, Arc<ClientStatistics>),
-    broadcaster: Sender<(Arc<ClientConfig>, Arc<ClientStatistics>)>,
-    config_file: PathBuf,
-}
 
 fn parse_json<T: DeserializeOwned>(s: &RWBuffer) -> Result<T, ErrorResponse> {
     serde_json::from_slice(s.read_buf()).map_err(|e| ErrorResponse::Generic(e.into()))
@@ -115,27 +109,33 @@ enum ErrorResponse {
     InvalidRequest(anyhow::Error),
 }
 
+type HttpResult<T> = Result<T, ErrorResponse>;
+
+struct Controller {
+    current: (Arc<ClientConfig>, Arc<ClientStatistics>),
+    broadcaster: Sender<(Arc<ClientConfig>, Arc<ClientStatistics>)>,
+    config_file: PathBuf,
+}
+
+#[derive(Deserialize)]
+struct UpstreamUpdate {
+    old_name: Option<String>,
+    name: String,
+    config: UpstreamConfig,
+}
+
 impl Controller {
-    fn get_stats(&self) -> Result<Arc<ClientStatistics>, ErrorResponse> {
+    fn get_stats(&self) -> HttpResult<Arc<ClientStatistics>> {
         Ok(self.current.1.clone())
     }
 
-    fn get_config(&self) -> Result<Arc<ClientConfig>, ErrorResponse> {
+    fn get_config(&self) -> HttpResult<Arc<ClientConfig>> {
         Ok(self.current.0.clone())
     }
 
-    async fn set_config(
-        &mut self,
-        new_config: ClientConfig,
-    ) -> Result<Arc<ClientConfig>, ErrorResponse> {
-        match self.get_config()? {
-            v if v.as_ref() == &new_config => {
-                return Ok(v);
-            }
-            _ => {}
-        }
-        let stats = Arc::new(ClientStatistics::new(&new_config));
-        let config = Arc::new(new_config);
+    async fn set_current_config(&mut self, c: ClientConfig, s: ClientStatistics) -> HttpResult<()> {
+        let stats = Arc::new(s);
+        let config = Arc::new(c);
 
         self.current = (config.clone(), stats.clone());
 
@@ -143,6 +143,7 @@ impl Controller {
 
         let _ = File::create(&self.config_file)
             .await
+            .context("Creating configuration file")
             .map_err(|e| ErrorResponse::Generic(e.into()))?
             .write_all(
                 serde_yaml::to_vec(config.as_ref())
@@ -150,9 +151,56 @@ impl Controller {
                     .as_slice(),
             )
             .await
+            .context("Writing configuration file")
             .map_err(|e| ErrorResponse::Generic(e.into()))?;
         log::info!("Config written successfully to {:?}", self.config_file);
-        self.get_config()
+        Ok(())
+    }
+
+    async fn update_upstreams(&mut self, updates: Vec<UpstreamUpdate>) -> HttpResult<()> {
+        let (mut new_config, mut new_stats) = (
+            self.current.0.as_ref().clone(),
+            self.current.1.as_ref().clone(),
+        );
+        for UpstreamUpdate {
+            old_name,
+            name,
+            config,
+        } in updates
+        {
+            let stats = if let Some(old_name) = old_name {
+                match new_config.upstreams.remove(&old_name) {
+                    Some(upstream) if upstream.address == config.address => {
+                        // Reuse the stats
+                        new_stats.upstreams.remove(&old_name)
+                    }
+                    Some(_) => {
+                        new_stats.upstreams.remove(&old_name);
+                        None
+                    }
+                    _ => None,
+                }
+            } else {
+                None
+            };
+
+            new_config.upstreams.insert(name.clone(), config);
+            new_stats.upstreams.insert(name, stats.unwrap_or_default());
+        }
+
+        self.set_current_config(new_config, new_stats).await
+    }
+
+    async fn delete_upstreams(&mut self, names: Vec<String>) -> HttpResult<()> {
+        let (mut new_config, mut new_stats) = (
+            self.current.0.as_ref().clone(),
+            self.current.1.as_ref().clone(),
+        );
+        for n in names {
+            let _ = new_config.upstreams.remove(&n);
+            let _ = new_stats.upstreams.remove(&n);
+        }
+        self.set_current_config(new_config, new_stats).await
     }
 
     async fn handle_client(
@@ -187,9 +235,16 @@ impl Controller {
                         _ => Err(ErrorResponse::NotFound(original_p.to_string())),
                     }
                 }
-                ("post", p, true) if p.starts_with("/api/config") => match parse_json(&body) {
+                ("post", p, true) if p.starts_with("/api/upstream") => match parse_json(&body) {
                     Ok(body) => self
-                        .set_config(body)
+                        .update_upstreams(body)
+                        .await
+                        .map(|r| Response::Json(Box::new(r))),
+                    Err(e) => Err(e),
+                },
+                ("delete", p, true) if p.starts_with("/api/upstream") => match parse_json(&body) {
+                    Ok(body) => self
+                        .delete_upstreams(body)
                         .await
                         .map(|r| Response::Json(Box::new(r))),
                     Err(e) => Err(e),
@@ -201,53 +256,28 @@ impl Controller {
 
         match result {
             Ok(Response::Empty) => {
-                sock.write_all(
-                    b"HTTP/1.1 201\r\n\
-                Access-Control-Allow-Origin: *\r\n\
-                Access-Control-Allow-Headers: *\r\n\
-                \r\n",
-                )
-                .await?;
+                write_http_response(&mut sock, 201, Some("OK"), None, &[]).await?
             }
             Ok(Response::Json(buf)) => {
-                let buf = buf.to_json();
-                sock.write_all(
-                    format!(
-                        "HTTP/1.1 200\r\n\
-                    Content-Type: application/json\r\n\
-                    Access-Control-Allow-Origin: *\r\n\
-                    Access-Control-Allow-Headers: *\r\n\
-                    Content-Length: {}\r\n\
-                    \r\n",
-                        buf.len()
-                    )
-                    .as_bytes(),
+                write_http_response(
+                    &mut sock,
+                    200,
+                    Some("OK"),
+                    Some("application/json"),
+                    buf.to_json().as_slice(),
                 )
-                .await?;
-                sock.write_all(buf.as_slice()).await?;
+                .await?
             }
             Ok(Response::EmbedFile { path, file }) => {
                 let mime = mime_guess::from_path(path);
-                let mime = match mime.first() {
-                    Some(v) => Cow::Owned(v.to_string()),
-                    None => Cow::Borrowed("application/octet-stream"),
-                };
-
-                sock.write_all(
-                    format!(
-                        "HTTP/1.1 200 OK\r\n\
-                Content-Type: {}\r\n\
-                Content-Length: {}\r\n\
-                Access-Control-Allow-Headers: *\r\n\
-                Access-Control-Allow-Origin: *\r\n\
-                \r\n",
-                        mime,
-                        file.data.as_ref().len()
-                    )
-                    .as_bytes(),
+                write_http_response(
+                    &mut sock,
+                    200,
+                    Some("OK"),
+                    mime.first_raw(),
+                    file.data.as_ref(),
                 )
-                .await?;
-                sock.write_all(file.data.as_ref()).await?;
+                .await?
             }
             Err(e) => {
                 let (code, msg) = match e {
@@ -255,21 +285,8 @@ impl Controller {
                     ErrorResponse::InvalidRequest(e) => (400, e.to_string()),
                     ErrorResponse::NotFound(s) => (404, format!("Resource {s} not found")),
                 };
-                let msg = msg.as_bytes();
-                sock.write_all(
-                    format!(
-                        "HTTP/1.1 {code}\r\n\
-                    Content-Type: text/plain\r\n\
-                    Content-Length: {}\r\n\
-                    Access-Control-Allow-Headers: *\r\n\
-                    Access-Control-Allow-Origin: *\r\n\
-                    \r\n",
-                        msg.len()
-                    )
-                    .as_bytes(),
-                )
-                .await?;
-                sock.write_all(msg).await?;
+                write_http_response(&mut sock, code, None, Some("text/plain"), msg.as_bytes())
+                    .await?
             }
         };
         Ok(())
@@ -283,7 +300,13 @@ pub async fn run_controller(
     let listener = TcpListener::bind(&Address::IP(bind_address.clone())).await?;
 
     let config = if config_file.exists() {
-        Arc::new(serde_yaml::from_reader(std::fs::File::open(config_file)?)?)
+        Arc::new(
+            serde_yaml::from_reader(
+                std::fs::File::open(config_file)
+                    .with_context(|| format!("Opening config file {config_file:?}"))?,
+            )
+            .with_context(|| format!("Parsing config file {config_file:?}"))?,
+        )
     } else {
         Default::default()
     };

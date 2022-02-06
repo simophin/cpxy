@@ -239,6 +239,34 @@ impl<T: Serialize> JsonSerializable for T {
     }
 }
 
+pub async fn write_http_response(
+    w: &mut (impl AsyncWrite + Unpin + Send + Sync),
+    code: u16,
+    status_msg: Option<&str>,
+    content_type: Option<&str>,
+    body: &[u8],
+) -> anyhow::Result<()> {
+    w.write_all(
+        format!(
+            "HTTP/1.1 {code}{}\r\n\
+    Content-Type: {}\r\n\
+    Content-Length: {}\r\n\
+    Access-Control-Allow-Headers: *\r\n\
+    Access-Control-Allow-Origin: *\r\n\
+    \r\n",
+            status_msg.map(|m| format!(" {m}")).unwrap_or(String::new()),
+            content_type.unwrap_or("application/octet-stream"),
+            body.len()
+        )
+        .as_bytes(),
+    )
+    .await?;
+    if !body.is_empty() {
+        w.write_all(body).await?;
+    }
+    Ok(())
+}
+
 #[cfg(test)]
 mod test {
     use super::*;

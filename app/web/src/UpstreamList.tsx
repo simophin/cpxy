@@ -76,6 +76,7 @@ export default function UpstreamList({ reloadList }: Props) {
         return _.map(data?.upstreams, (value, name) => {
             const stats = clientStats?.upstreams?.[name];
             return <ListItem
+                key={name}
                 onClick={() => {
                     if (selectMode) {
                         if (selected.indexOf(name) >= 0) {

@@ -4,7 +4,7 @@ use std::collections::HashMap;
 use std::net::SocketAddr;
 use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
 use std::sync::Arc;
-use std::time::{UNIX_EPOCH, Duration};
+use std::time::{Duration, UNIX_EPOCH};
 
 use crate::config::*;
 use crate::handshake::Handshaker;
@@ -26,7 +26,7 @@ pub struct UpstreamStatistics {
     pub last_latency: Arc<AtomicUsize>,
 }
 
-#[derive(Default, Serialize, Deserialize, Debug)]
+#[derive(Default, Serialize, Deserialize, Debug, Clone)]
 pub struct ClientStatistics {
     pub upstreams: HashMap<String, UpstreamStatistics>,
 }
@@ -44,8 +44,12 @@ impl ClientStatistics {
 
     pub fn update_upstream(&self, name: &str, latency: Duration) {
         if let Some(stats) = self.upstreams.get(name) {
-            stats.last_activity.store(UNIX_EPOCH.elapsed().unwrap().as_secs(), Ordering::Relaxed);
-            stats.last_latency.store(latency.as_millis() as usize, Ordering::Relaxed);
+            stats
+                .last_activity
+                .store(UNIX_EPOCH.elapsed().unwrap().as_secs(), Ordering::Relaxed);
+            stats
+                .last_latency
+                .store(latency.as_millis() as usize, Ordering::Relaxed);
         }
     }
 }
@@ -145,7 +149,9 @@ async fn serve_proxy_client(
     stats: Arc<ClientStatistics>,
 ) -> anyhow::Result<()> {
     let mut buf = RWBuffer::default();
-    let (handshaker, req) = Handshaker::start(&mut socks, &mut buf).await.context("Handshaking")?;
+    let (handshaker, req) = Handshaker::start(&mut socks, &mut buf)
+        .await
+        .context("Handshaking")?;
     log::info!("Requesting to proxy {req:?}");
 
     match &req {
@@ -160,16 +166,22 @@ async fn serve_proxy_client(
                         Ok((ProxyResult::Granted { bound_address }, upstream, latency)) => {
                             handshaker.respond_ok(&mut socks, bound_address).await?;
                             stats.update_upstream(name, latency);
-                            let (upstream_tx_bytes, upstream_rx_bytes) = match stats.upstreams.get(name)
-                            {
-                                Some(stats) => (Some(stats.tx.clone()), Some(stats.rx.clone())),
-                                None => (None, None),
-                            };
-                            return copy_duplex(upstream, socks, upstream_rx_bytes, upstream_tx_bytes).await
+                            let (upstream_tx_bytes, upstream_rx_bytes) =
+                                match stats.upstreams.get(name) {
+                                    Some(stats) => (Some(stats.tx.clone()), Some(stats.rx.clone())),
+                                    None => (None, None),
+                                };
+                            return copy_duplex(
+                                upstream,
+                                socks,
+                                upstream_rx_bytes,
+                                upstream_tx_bytes,
+                            )
+                            .await;
                         }
                         Ok((result, _, _)) => {
                             handshaker.respond_err(&mut socks).await?;
-                            return Err(result.into())
+                            return Err(result.into());
                         }
                         Err(e) => {
                             log::debug!("Upstream error: {e}");

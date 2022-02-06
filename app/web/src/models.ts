@@ -22,3 +22,9 @@ export type UpstreamStatistics = {
 export type ClientStatistics = {
     upstreams: { [name: string]: UpstreamStatistics },
 }
+
+export type UpstreamUpdate = {
+    old_name?: string;
+    name: string;
+    config: UpstreamConfig;
+}
