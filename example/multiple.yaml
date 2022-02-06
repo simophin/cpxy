@@ -1,26 +1,35 @@
-
+---
 upstreams:
   us-west-cloudflare1:
-    address: oracle-us-west.fanchao.nz:80
+    address: "oracle-us-west.fanchao.nz:80"
     accept:
       - gfwlist
-
-  us-west-cloudflare2:
-    address: oracle-us-west.fanchao.nz:80
+    reject: []
+    priority: 0
+  nz1:
+    address: "oracle-sydney-direct.fanchao.nz:80"
     accept:
-      - gfwlist
-
-  us-west-cloudflare3:
-    address: oracle-us-west.fanchao.nz:80
-    accept:
-      - gfwlist
-    
+      - "network:192.168.11.0/24"
+    reject: []
+    priority: 0
   us-west:
-    address: oracle-us-west-direct.fanchao.nz:80
+    address: "oracle-us-west-direct.fanchao.nz:80"
+    accept: []
     reject:
-      - geoip:nz
-      - geoip:cn
-  nz:
-    address: oracle-sydney-direct.fanchao.nz:80
+      - "geoip:nz"
+      - "geoip:cn"
+    priority: 0
+  us-west-cloudflare3:
+    address: "oracle-us-west.fanchao.nz:80"
     accept:
-      - network:192.168.11.0/24
+      - gfwlist
+    reject: []
+    priority: 0
+  us-west-cloudflare2:
+    address: "oracle-us-west.fanchao.nz:80"
+    accept:
+      - gfwlist
+    reject: []
+    priority: 0
+socks5_address: "127.0.0.1:5000"
+socks5_udp_host: 0.0.0.0

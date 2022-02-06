@@ -3,17 +3,17 @@ use crate::client::{run_client, ClientStatistics};
 use crate::config::ClientConfig;
 use crate::io::TcpListener;
 use crate::socks5::Address;
-use crate::utils::RWBuffer;
+use crate::utils::{JsonSerializable, RWBuffer};
 use anyhow::anyhow;
 use async_broadcast::Sender;
 use futures_lite::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
 use rust_embed::RustEmbed;
-use serde::Serialize;
+use serde::de::DeserializeOwned;
 use smol::fs::File;
 use smol::spawn;
 use std::borrow::Cow;
 use std::net::SocketAddr;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use std::sync::Arc;
 
 struct Controller {
@@ -22,10 +22,78 @@ struct Controller {
     config_file: PathBuf,
 }
 
-fn to_json(s: impl Serialize) -> Result<Response, ErrorResponse> {
-    Ok(Response::Json(
-        serde_json::to_vec(&s).map_err(|e| ErrorResponse::Generic(e.into()))?,
-    ))
+fn parse_json<T: DeserializeOwned>(s: &RWBuffer) -> Result<T, ErrorResponse> {
+    serde_json::from_slice(s.read_buf()).map_err(|e| ErrorResponse::Generic(e.into()))
+}
+
+struct HttpParseResult {
+    method: String,
+    path: String,
+    is_json: bool,
+    body: RWBuffer,
+}
+
+async fn parse_request(
+    input: &mut (impl AsyncRead + Unpin + Send + Sync),
+) -> anyhow::Result<HttpParseResult> {
+    let mut buf = RWBuffer::with_capacity(65536);
+    loop {
+        match input.read(buf.write_buf()).await? {
+            0 => return Err(anyhow!("Unexpected EOF")),
+            v => buf.advance_write(v),
+        };
+
+        let mut headers = [httparse::EMPTY_HEADER; 20];
+        let mut req = httparse::Request::new(&mut headers);
+        match req.parse(buf.read_buf())? {
+            httparse::Status::Complete(offset) => {
+                let method = req.method.unwrap_or("").to_ascii_lowercase();
+                let path = req.path.unwrap_or("").to_ascii_lowercase();
+
+                let content_length = req
+                    .headers
+                    .iter()
+                    .find(|h| h.name.eq_ignore_ascii_case("content-length"))
+                    .and_then(|h| String::from_utf8_lossy(h.value).parse().ok())
+                    .unwrap_or(0usize);
+
+                let content_type = req
+                    .headers
+                    .iter()
+                    .find(|h| h.name.eq_ignore_ascii_case("content-type"))
+                    .map(|h| String::from_utf8_lossy(h.value).to_ascii_lowercase());
+
+                let is_json = match content_type {
+                    Some(c) if c.starts_with("application/json") => true,
+                    _ => false,
+                };
+
+                drop(req);
+                drop(headers);
+
+                buf.advance_read(offset);
+                buf.compact();
+
+                if buf.capacity() < content_length {
+                    return Err(anyhow!("Payload too big"));
+                }
+
+                if content_length > buf.remaining_read() {
+                    let to_read = content_length - buf.remaining_read();
+                    input.read_exact(&mut buf.write_buf()[..to_read]).await?;
+                    buf.advance_write(to_read);
+                }
+
+                return Ok(HttpParseResult {
+                    path,
+                    method,
+                    is_json,
+                    body: buf,
+                });
+            }
+            httparse::Status::Partial => {}
+        }
+    }
 }
 
 #[derive(RustEmbed)]
@@ -34,7 +102,7 @@ struct Asset;
 
 enum Response {
     Empty,
-    Json(Vec<u8>),
+    Json(Box<dyn JsonSerializable>),
     EmbedFile {
         path: String,
         file: rust_embed::EmbeddedFile,
@@ -43,8 +111,8 @@ enum Response {
 
 enum ErrorResponse {
     Generic(anyhow::Error),
-    NotFound(Option<String>),
-    InvalidRequest,
+    NotFound(String),
+    InvalidRequest(anyhow::Error),
 }
 
 impl Controller {
@@ -64,7 +132,7 @@ impl Controller {
             v if v.as_ref() == &new_config => {
                 return Ok(v);
             }
-            _ => {},
+            _ => {}
         }
         let stats = Arc::new(ClientStatistics::new(&new_config));
         let config = Arc::new(new_config);
@@ -91,107 +159,64 @@ impl Controller {
         &mut self,
         mut sock: impl AsyncRead + AsyncWrite + Unpin + Send + Sync,
     ) -> anyhow::Result<()> {
-        let mut buf = RWBuffer::with_capacity(65536);
-        let result: Result<Response, ErrorResponse> = loop {
-            match sock.read(buf.write_buf()).await? {
-                0 => return Err(anyhow!("Unexpected EOF")),
-                v => buf.advance_write(v),
-            };
-
-            let mut headers = [httparse::EMPTY_HEADER; 40];
-            let mut req = httparse::Request::new(&mut headers);
-            match req.parse(buf.read_buf())? {
-                httparse::Status::Complete(v) => match (req.method, req.path) {
-                    (Some(m), _) if m.eq_ignore_ascii_case("option") => {
-                        break Ok(Response::Empty);
+        let result = match parse_request(&mut sock).await {
+            Ok(HttpParseResult {
+                method,
+                path,
+                is_json,
+                body,
+            }) => match (method.as_str(), path.as_str(), is_json) {
+                ("options", _, _) => Ok(Response::Empty),
+                ("get", p, _) if p.starts_with("/api/config") => {
+                    self.get_config().map(|r| Response::Json(Box::new(r)))
+                }
+                ("get", p, _) if p.starts_with("/api/stats") => {
+                    self.get_stats().map(|r| Response::Json(Box::new(r)))
+                }
+                ("get", original_p, _) => {
+                    let p = if original_p == "/" || original_p.is_empty() {
+                        "index.html"
+                    } else {
+                        &original_p[1..]
+                    };
+                    match Asset::get(p) {
+                        Some(file) => Ok(Response::EmbedFile {
+                            path: p.to_string(),
+                            file,
+                        }),
+                        _ => Err(ErrorResponse::NotFound(original_p.to_string())),
                     }
-                    (Some(m), Some(p))
-                        if m.eq_ignore_ascii_case("get")
-                            && p.starts_with("/api/config") =>
-                    {
-                        break self.get_config().and_then(to_json);
-                    }
-                    (Some(m), Some(p))
-                        if m.eq_ignore_ascii_case("get")
-                            && p.starts_with("/api/stats") =>
-                    {
-                        break self.get_stats().and_then(to_json);
-                    }
-                    (Some(m), Some(p))
-                        if m.eq_ignore_ascii_case("post")
-                            && p.starts_with("/api/config") =>
-                    {
-                        let content_length: Option<usize> = req
-                            .headers
-                            .iter()
-                            .find(|h| h.name.eq_ignore_ascii_case("content-type"))
-                            .and_then(|h| String::from_utf8_lossy(h.value).as_ref().parse().ok());
-
-                        if content_length.is_none() {
-                            break Err(ErrorResponse::InvalidRequest);
-                        }
-                        let content_length = content_length.unwrap();
-
-                        drop(req);
-                        drop(headers);
-                        buf.advance_read(v);
-
-                        buf.compact();
-                        if buf.capacity() < content_length {
-                            break Err(ErrorResponse::InvalidRequest);
-                        }
-
-                        let buf_to_read = content_length - buf.read_buf().len();
-
-                        let req: ClientConfig =
-                            match sock.read_exact(&mut buf.write_buf()[..buf_to_read]).await {
-                                Ok(_) => {
-                                    buf.advance_write(buf_to_read);
-                                    match serde_json::from_slice(buf.read_buf()) {
-                                        Ok(v) => v,
-                                        Err(e) => break Err(ErrorResponse::Generic(e.into())),
-                                    }
-                                }
-                                Err(e) => break Err(ErrorResponse::Generic(e.into())),
-                            };
-
-                        break self.set_config(req).await.and_then(to_json);
-                    }
-                    (Some(m), Some(p)) if m.eq_ignore_ascii_case("get") => {
-                        let p = match p {
-                            "/" => "index.html",
-                            v if v.starts_with('/') => &p[1..],
-                            v => v,
-                        };
-                        match Asset::get(p) {
-                            Some(file) => {
-                                break Ok(Response::EmbedFile {
-                                    path: p.to_string(),
-                                    file,
-                                })
-                            }
-                            None => break Err(ErrorResponse::NotFound(Some(p.to_string()))),
-                        };
-                    }
-                    _ => break Err(ErrorResponse::NotFound(req.path.map(|v| v.to_string()))),
+                }
+                ("post", p, true) if p.starts_with("/api/config") => match parse_json(&body) {
+                    Ok(body) => self
+                        .set_config(body)
+                        .await
+                        .map(|r| Response::Json(Box::new(r))),
+                    Err(e) => Err(e),
                 },
-                httparse::Status::Partial => continue,
-            };
+                _ => Err(ErrorResponse::NotFound(path)),
+            },
+            Err(e) => Err(ErrorResponse::InvalidRequest(e)),
         };
-
-        buf.clear();
 
         match result {
             Ok(Response::Empty) => {
-                sock.write_all(b"HTTP/1.1 201\r\nAccess-Control-Allow-Origin: *\r\n\r\n")
-                    .await?;
+                sock.write_all(
+                    b"HTTP/1.1 201\r\n\
+                Access-Control-Allow-Origin: *\r\n\
+                Access-Control-Allow-Headers: *\r\n\
+                \r\n",
+                )
+                .await?;
             }
             Ok(Response::Json(buf)) => {
+                let buf = buf.to_json();
                 sock.write_all(
                     format!(
                         "HTTP/1.1 200\r\n\
                     Content-Type: application/json\r\n\
                     Access-Control-Allow-Origin: *\r\n\
+                    Access-Control-Allow-Headers: *\r\n\
                     Content-Length: {}\r\n\
                     \r\n",
                         buf.len()
@@ -213,6 +238,8 @@ impl Controller {
                         "HTTP/1.1 200 OK\r\n\
                 Content-Type: {}\r\n\
                 Content-Length: {}\r\n\
+                Access-Control-Allow-Headers: *\r\n\
+                Access-Control-Allow-Origin: *\r\n\
                 \r\n",
                         mime,
                         file.data.as_ref().len()
@@ -225,10 +252,8 @@ impl Controller {
             Err(e) => {
                 let (code, msg) = match e {
                     ErrorResponse::Generic(e) => (500, e.to_string()),
-                    ErrorResponse::InvalidRequest => (400, String::new()),
-                    ErrorResponse::NotFound(s) => {
-                        (404, format!("Resource {} not found", s.unwrap_or_default()))
-                    }
+                    ErrorResponse::InvalidRequest(e) => (400, e.to_string()),
+                    ErrorResponse::NotFound(s) => (404, format!("Resource {s} not found")),
                 };
                 let msg = msg.as_bytes();
                 sock.write_all(
@@ -236,6 +261,8 @@ impl Controller {
                         "HTTP/1.1 {code}\r\n\
                     Content-Type: text/plain\r\n\
                     Content-Length: {}\r\n\
+                    Access-Control-Allow-Headers: *\r\n\
+                    Access-Control-Allow-Origin: *\r\n\
                     \r\n",
                         msg.len()
                     )
@@ -249,7 +276,10 @@ impl Controller {
     }
 }
 
-pub async fn run_controller(bind_address: SocketAddr, config_file: &Path) -> anyhow::Result<()> {
+pub async fn run_controller(
+    bind_address: SocketAddr,
+    config_file: &std::path::Path,
+) -> anyhow::Result<()> {
     let listener = TcpListener::bind(&Address::IP(bind_address.clone())).await?;
 
     let config = if config_file.exists() {

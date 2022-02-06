@@ -21,7 +21,9 @@ async fn copy_with_stats(
             0 => return Ok(()),
             v => {
                 stat.fetch_add(v, Ordering::Relaxed);
-                w.write_all(&buf.as_slice()[..v]).await.context("Writing to")?;
+                w.write_all(&buf.as_slice()[..v])
+                    .await
+                    .context("Writing to")?;
             }
         }
     }
@@ -224,6 +226,16 @@ pub async fn read_bincode_lengthed_async<T: DeserializeOwned>(
             log::error!("Error decoding json: {e}");
             Err(e.into())
         }
+    }
+}
+
+pub trait JsonSerializable {
+    fn to_json(&self) -> Vec<u8>;
+}
+
+impl<T: Serialize> JsonSerializable for T {
+    fn to_json(&self) -> Vec<u8> {
+        serde_json::to_vec(self).expect("Encode json")
     }
 }
 

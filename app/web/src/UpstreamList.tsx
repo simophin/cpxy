@@ -5,6 +5,7 @@ import { BASE_URL } from './config';
 import _ from 'lodash';
 import { Button, Checkbox, Chip, Fab, List, ListItem, ListItemText, Typography } from "@mui/material";
 import { Add, ArrowDownward, ArrowUpward } from "@mui/icons-material";
+import UpstreamEdit from "./UpstreamEdit";
 
 type Props = {
     reloadList?: any,
@@ -42,22 +43,34 @@ function formatStatistics({ tx, rx, last_latency }: UpstreamStatistics) {
     </>
 }
 
+type EditState<T> = {
+    state: 'editing',
+    value: T
+} | {
+    state: 'adding'
+} | {
+    state: 'idle'
+};
+
 export default function UpstreamList({ reloadList }: Props) {
     const [reload, setReload] = useState(Date.now());
     const [reloadStats, setReloadStats] = useState(Date.now());
-    const { loading, error, data } = useFetch<ClientConfig>(`${BASE_URL}/api/config?t=${reload}`, {}, [reload]);
-    const { data: clientStats } = useFetch<ClientStatistics>(`${BASE_URL}/api/stats?t=${reloadStats}`, {}, [reloadStats]);
+    const { loading, error, data } = useFetch<ClientConfig>(`${BASE_URL}/api/config?t=${reload}`, { timeout: 1000, }, [reload]);
+    const { data: clientStats, error: clientStatsError } = useFetch<ClientStatistics>(`${BASE_URL}/api/stats?t=${reloadStats}`, {
+        timeout: 1000,
+    }, [reloadStats]);
 
     const [selectMode, setSelectMode] = useState(false);
     const [selected, setSelected] = useState<string[]>([]);
+    const [editing, setEditing] = useState<EditState<string>>({ state: 'idle' });
 
     useEffect(() => {
-        const handle = setInterval(() => {
+        const handle = setTimeout(() => {
             setReloadStats(Date.now());
-        }, 1000);
+        }, clientStatsError ? 2000 : 1000);
 
-        return () => clearInterval(handle);
-    }, [setReloadStats]);
+        return () => clearTimeout(handle);
+    }, [setReloadStats, clientStats, clientStatsError]);
 
     const items = useMemo(() => {
         return _.map(data?.upstreams, (value, name) => {
@@ -71,7 +84,7 @@ export default function UpstreamList({ reloadList }: Props) {
                             setSelected([...selected, name]);
                         }
                     } else {
-                        //TODO: edit upstream
+                        setEditing({ state: 'editing', value: name });
                     }
                 }}
                 secondaryAction={
@@ -115,8 +128,21 @@ export default function UpstreamList({ reloadList }: Props) {
             <List>{items}</List>
         }
 
-        <Fab color='primary' style={{ position: 'absolute', right: 24, bottom: 24 }}>
+        <Fab
+            color='primary'
+            style={{ position: 'absolute', right: 24, bottom: 24 }}
+            onClick={() => setEditing({ state: 'adding' })}>
             <Add />
         </Fab>
+
+        {editing.state !== 'idle' && data && <UpstreamEdit
+            editing={editing.state === 'editing' ? editing.value : undefined}
+            current_config={data}
+            onCancelled={() => setEditing({ state: 'idle' })}
+            onChanged={() => {
+                setReload(Date.now());
+                setEditing({ state: 'idle' });
+            }} />
+        }
     </>;
 }
