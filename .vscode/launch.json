@@ -32,7 +32,6 @@
                     "build",
                     "--bin=proxy",
                     "--package=cjk-proxy"
-                    
                 ],
                 "filter": {
                     "name": "proxy",
@@ -41,10 +40,7 @@
             },
             "args": [
                 "client",
-                "--remote-host=127.0.0.1",
-                "--remote-port=4200",
-                "--socks5-host=0.0.0.0",
-                "--socks5-port=5000"
+                "--config=example/multiple.yaml",
             ],
             "env": {
                 "RUST_LOG": "debug"
@@ -60,7 +56,6 @@
                     "build",
                     "--bin=proxy",
                     "--package=cjk-proxy"
-                    
                 ],
                 "filter": {
                     "name": "proxy",
@@ -86,7 +81,6 @@
                     "build",
                     "--bin=proxy",
                     "--package=cjk-proxy"
-                    
                 ],
                 "filter": {
                     "name": "proxy",

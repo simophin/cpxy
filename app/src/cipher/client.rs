@@ -97,7 +97,7 @@ pub async fn connect<T: AsyncRead + AsyncWrite + Unpin>(
     }
 
     // Parse and check response
-    initial_data.resize(1024, 0); // Reuse this vector
+    initial_data.resize(2048, 0); // Reuse this vector
     let mut buf = RWBuffer::new(initial_data);
     loop {
         match stream.read(buf.write_buf()).await? {
@@ -107,7 +107,7 @@ pub async fn connect<T: AsyncRead + AsyncWrite + Unpin>(
 
         let mut headers = [httparse::EMPTY_HEADER; 20];
         let mut res = httparse::Response::new(&mut headers);
-        match res.parse(buf.read_buf())? {
+        match res.parse(buf.read_buf()).context("Parse upstream response")? {
             httparse::Status::Complete(offset) => {
                 if let Err(e) = check_server_response(res) {
                     debug_http_error(stream, buf).await;

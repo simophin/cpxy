@@ -1,10 +1,10 @@
-use anyhow::anyhow;
+use anyhow::{anyhow, Context};
 use bytes::{Buf, BufMut};
 use futures_lite::future::race;
 use futures_lite::io::{copy, split};
 use futures_lite::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
 use serde::{de::DeserializeOwned, Serialize};
-use smol::Executor;
+use smol::spawn;
 use std::cmp::min;
 use std::io::{Read, Write};
 use std::sync::atomic::{AtomicUsize, Ordering};
@@ -21,22 +21,21 @@ async fn copy_with_stats(
             0 => return Ok(()),
             v => {
                 stat.fetch_add(v, Ordering::Relaxed);
-                w.write_all(&buf.as_slice()[..v]).await?;
+                w.write_all(&buf.as_slice()[..v]).await.context("Writing to")?;
             }
         }
     }
 }
 
-pub async fn copy_duplex<'a>(
-    d1: impl AsyncRead + AsyncWrite + Unpin + Send + Sync + 'a,
-    d2: impl AsyncRead + AsyncWrite + Unpin + Send + Sync + 'a,
+pub async fn copy_duplex(
+    d1: impl AsyncRead + AsyncWrite + Unpin + Send + Sync + 'static,
+    d2: impl AsyncRead + AsyncWrite + Unpin + Send + Sync + 'static,
     d1d2_count: Option<Arc<AtomicUsize>>,
     d2d1_count: Option<Arc<AtomicUsize>>,
 ) -> anyhow::Result<()> {
-    let executor = Executor::new();
     let (d1r, d1w) = split(d1);
     let (d2r, d2w) = split(d2);
-    let task1 = executor.spawn(async move {
+    let task1 = spawn(async move {
         if let Some(count) = d1d2_count {
             let _ = copy_with_stats(d1r, d2w, count.as_ref()).await?;
         } else {
@@ -44,7 +43,7 @@ pub async fn copy_duplex<'a>(
         }
         anyhow::Result::<()>::Ok(())
     });
-    let task2 = executor.spawn(async move {
+    let task2 = spawn(async move {
         if let Some(count) = d2d1_count {
             let _ = copy_with_stats(d2r, d1w, count.as_ref()).await?;
         } else {

@@ -213,7 +213,7 @@ impl ClientConfig {
         &self,
         stats: &ClientStatistics,
         target: &Address,
-    ) -> Option<(&str, &UpstreamConfig)> {
+    ) -> Vec<(&str, &UpstreamConfig)> {
         let country_code = match target {
             Address::IP(addr) => find_geoip(&addr.ip()),
             _ => None,
@@ -232,17 +232,8 @@ impl ClientConfig {
         };
 
         upstreams.sort_by_key(|(_, _, score)| *score);
-        match upstreams.pop() {
-            Some((name, config, score)) => {
-                log::debug!("Best upstream = {name}, address = {target}, country_code = {country_code:?}, score = {score}");
-                if let Some(upstream) = stats.upstreams.get(name) {
-                    upstream
-                        .last_activity
-                        .store(UNIX_EPOCH.elapsed().unwrap().as_secs(), Ordering::Relaxed)
-                }
-                Some((name, config))
-            }
-            None => None,
-        }
+        upstreams.into_iter()
+            .map(|(n, c, _)| (n, c))
+            .collect()
     }
 }

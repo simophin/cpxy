@@ -142,15 +142,15 @@ impl Relay {
         };
 
         let UdpPacket { addr, .. } = UdpPacket::parse_udp(buf.as_slice())?;
+        let mut upstreams = c.find_best_upstream(stats.as_ref(), &addr);
 
-        // Find out where we want to go
-        match c.find_best_upstream(stats.as_ref(), &addr) {
-            None => {
-                log::debug!("Connecting to udp://{addr} directly");
-                serve_socks5_udp_directly(socket, buf, socks5_remote_addr).await
-            }
-            Some((name, upstream)) => {
-                log::debug!("Requesting UDP proxy upstream: {name} for {addr}");
+        if upstreams.is_empty() {
+            log::debug!("Connecting to udp://{addr} directly");
+            serve_socks5_udp_directly(socket, buf, socks5_remote_addr).await
+        } else {
+            let mut last_error = None;
+            while let Some((name, upstream)) = upstreams.pop() {
+                log::debug!("Trying UDP proxy upstream: {name} for {addr}");
                 match request_proxy_upstream(upstream, &ProxyRequest::UDP).await {
                     Ok((ProxyResult::Granted { .. }, upstream)) => {
                         let (tx_count, rx_count) = stats
@@ -158,7 +158,8 @@ impl Relay {
                             .get(name)
                             .map(|stat| (stat.rx.clone(), stat.tx.clone()))
                             .unwrap_or_else(|| (Default::default(), Default::default()));
-                        serve_socks5_udp_stream_relay(
+                        stats.update_upstream(name);
+                        return serve_socks5_udp_stream_relay(
                             socket,
                             buf,
                             socks5_remote_addr,
@@ -168,10 +169,14 @@ impl Relay {
                         )
                         .await
                     }
-                    Ok((r, _)) => Err(r.into()),
-                    Err(e) => Err(e.into()),
+                    Ok((r, _)) => return Err(r.into()),
+                    Err(e) => {
+                        last_error = Some(e);
+                    },
                 }
             }
+            log::debug!("No upstream is able to handle {addr}");
+            Err(last_error.unwrap())
         }
     }
 }

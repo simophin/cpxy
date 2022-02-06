@@ -1,11 +1,11 @@
-use anyhow::anyhow;
+use anyhow::Context;
 use bytes::Bytes;
 use std::collections::HashMap;
 use std::net::SocketAddr;
-use std::sync::atomic::{AtomicU64, AtomicUsize};
+use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
 use std::sync::Arc;
+use std::time::UNIX_EPOCH;
 
-use crate::broadcast::bounded;
 use crate::config::*;
 use crate::handshake::Handshaker;
 use crate::io::{TcpListener, TcpStream};
@@ -15,9 +15,8 @@ use crate::udp_relay;
 use crate::utils::{copy_duplex, RWBuffer};
 use futures_lite::future::race;
 use futures_lite::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt, Stream, StreamExt};
-use futures_util::{select, FutureExt};
 use serde::{Deserialize, Serialize};
-use smol::{spawn, Executor, Task};
+use smol::{spawn, Task};
 
 #[derive(Default, Serialize, Deserialize, Debug, Clone)]
 pub struct UpstreamStatistics {
@@ -41,27 +40,32 @@ impl ClientStatistics {
                 .collect(),
         }
     }
+
+    pub fn update_upstream(&self, name: &str) {
+        if let Some(stats) = self.upstreams.get(name) {
+            stats.last_activity.store(UNIX_EPOCH.elapsed().unwrap().as_secs(), Ordering::Relaxed);
+        }
+    }
 }
 
-pub async fn run_client<'a>(
+pub async fn run_client(
     mut config_stream: impl Stream<Item = (Arc<ClientConfig>, Arc<ClientStatistics>)>
         + Send
         + Sync
-        + Unpin
-        + 'a,
+        + Unpin,
 ) -> anyhow::Result<()> {
-    let (shutdown_tx, shutdown_rx) = bounded::<()>(None, 1);
     let mut current_task: Option<Task<anyhow::Result<()>>> = None;
-    let executor = Executor::new();
 
     loop {
-        let (config, stats) = config_stream
-            .next()
-            .await
-            .ok_or_else(|| anyhow!("No initial config found"))?;
+        let (config, stats) = match config_stream.next().await {
+            Some(v) => v,
+            None => {
+                log::info!("Socks5 server stopped");
+                return Ok(());
+            }
+        };
 
         log::debug!("Using configuration {config:?}");
-        shutdown_tx.broadcast(()).await?;
         if let Some(task) = current_task {
             let _ = task.cancel().await;
         }
@@ -74,30 +78,27 @@ pub async fn run_client<'a>(
                 continue;
             }
         };
+        log::info!("Socks5 server listening on {}", config.socks5_address);
 
-        let mut shutdown_rx = shutdown_rx.clone();
         let config = config.clone();
         let stats = stats.clone();
-        current_task = Some(executor.spawn(async move {
+        current_task = Some(spawn(async move {
             loop {
-                let (sock, addr) = select! {
-                    v = listener.accept().fuse() => v?,
-                    _ = shutdown_rx.next().fuse() => return Ok(()),
+                let (sock, addr) = match listener.accept().await {
+                    Ok(v) => v,
+                    Err(e) => {
+                        log::error!("Error listening on {}", config.socks5_address);
+                        return Err(e.into());
+                    }
                 };
 
-                let mut shutdown_rx = shutdown_rx.clone();
                 let config = config.clone();
                 let stats = stats.clone();
                 spawn(async move {
                     log::info!("Client {addr} connected");
 
-                    select! {
-                        v = serve_proxy_client(sock.is_v4(), sock, config, stats).fuse() => {
-                            if let Err(e) = v {
-                                log::error!("Error serving client {addr}: {e}");
-                            }
-                        },
-                        _ = shutdown_rx.next().fuse() => {},
+                    if let Err(e) = serve_proxy_client(sock.is_v4(), sock, config, stats).await {
+                        log::error!("Error serving client {addr}: {e}");
                     }
 
                     log::info!("Client {addr} disconnected");
@@ -135,39 +136,49 @@ async fn drain_socks(
     Ok(())
 }
 
-async fn serve_proxy_client<'a>(
+async fn serve_proxy_client(
     is_v4: bool,
-    mut socks: impl AsyncRead + AsyncWrite + Unpin + Send + Sync + 'a,
+    mut socks: impl AsyncRead + AsyncWrite + Unpin + Send + Sync + 'static,
     config: Arc<ClientConfig>,
     stats: Arc<ClientStatistics>,
 ) -> anyhow::Result<()> {
     let mut buf = RWBuffer::default();
-    let (handshaker, req) = Handshaker::start(&mut socks, &mut buf).await?;
+    let (handshaker, req) = Handshaker::start(&mut socks, &mut buf).await.context("Handshaking")?;
     log::info!("Requesting to proxy {req:?}");
 
     match &req {
         ProxyRequest::TCP { dst } | ProxyRequest::Http { dst, .. } => {
-            if let Some((name, config)) = config.find_best_upstream(stats.as_ref(), &dst) {
-                log::info!("Using upstream {name} for {dst}");
-                match request_proxy_upstream(&config, &req).await {
-                    Ok((ProxyResult::Granted { bound_address }, upstream)) => {
-                        handshaker.respond_ok(&mut socks, bound_address).await?;
-                        let (upstream_tx_bytes, upstream_rx_bytes) = match stats.upstreams.get(name)
-                        {
-                            Some(stats) => (Some(stats.tx.clone()), Some(stats.rx.clone())),
-                            None => (None, None),
-                        };
-                        copy_duplex(upstream, socks, upstream_rx_bytes, upstream_tx_bytes).await
-                    }
-                    Ok((result, _)) => {
-                        handshaker.respond_err(&mut socks).await?;
-                        Err(result.into())
-                    }
-                    Err(e) => {
-                        handshaker.respond_err(&mut socks).await?;
-                        Err(e.into())
-                    }
+            let mut upstreams = config.find_best_upstream(stats.as_ref(), &dst);
+
+            if !upstreams.is_empty() {
+                let mut last_error = None;
+                while let Some((name, config)) = upstreams.pop() {
+                    log::info!("Trying upstream {name} for {dst}");
+                    match request_proxy_upstream(&config, &req).await {
+                        Ok((ProxyResult::Granted { bound_address }, upstream)) => {
+                            handshaker.respond_ok(&mut socks, bound_address).await?;
+                            stats.update_upstream(name);
+                            let (upstream_tx_bytes, upstream_rx_bytes) = match stats.upstreams.get(name)
+                            {
+                                Some(stats) => (Some(stats.tx.clone()), Some(stats.rx.clone())),
+                                None => (None, None),
+                            };
+                            return copy_duplex(upstream, socks, upstream_rx_bytes, upstream_tx_bytes).await
+                        }
+                        Ok((result, _)) => {
+                            handshaker.respond_err(&mut socks).await?;
+                            return Err(result.into())
+                        }
+                        Err(e) => {
+                            log::debug!("Upstream error: {e}");
+                            last_error = Some(e);
+                        }
+                    };
                 }
+
+                log::info!("No usable upstreams for {dst}, last_error = {last_error:?}");
+                handshaker.respond_err(&mut socks).await?;
+                Err(last_error.unwrap())
             } else {
                 log::info!("Connecting directly to {dst}");
                 match prepare_direct_tcp(&req).await {

@@ -8,8 +8,8 @@ use crate::proxy::tcp::{serve_http_proxy, serve_tcp_proxy};
 use crate::proxy::udp::serve_udp_proxy;
 use crate::utils::read_bincode_lengthed_async;
 
-pub async fn serve_client<'a>(
-    stream: impl AsyncRead + AsyncWrite + Unpin + Send + Sync + 'a,
+pub async fn serve_client(
+    stream: impl AsyncRead + AsyncWrite + Unpin + Send + Sync + 'static,
 ) -> anyhow::Result<()> {
     let mut stream = super::cipher::server::listen(stream).await?;
     let req: ProxyRequest = read_bincode_lengthed_async(&mut stream).await?;
