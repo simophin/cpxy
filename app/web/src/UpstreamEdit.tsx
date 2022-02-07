@@ -8,7 +8,7 @@ import _ from 'lodash';
 type Props = {
     editing: string | undefined,
     current_config: ClientConfig,
-    onChanged: () => unknown,
+    onChanged: (name: string, action: 'saved' | 'deleted') => unknown,
     onCancelled: () => unknown,
 }
 
@@ -93,7 +93,7 @@ export default function UpstreamEdit({ onChanged, onCancelled, editing, current_
     const accept = useEditState(existing?.accept?.join('\n') ?? '', undefined, transformRule);
     const reject = useEditState(existing?.reject?.join('\n') ?? '', undefined, transformRule);
     const priority = useEditState(existing?.priority?.toString() ?? '0', mandatory('Priority'));
-    const request = useFetch(`${BASE_URL}/api/upstream`);
+    const request = useFetch(`${BASE_URL}/api/upstream`, { headers: { "Content-Type": "application/json" } });
     const [error, setError] = useState<string>();
     const handleSave = async () => {
         setError(undefined);
@@ -114,10 +114,22 @@ export default function UpstreamEdit({ onChanged, onCancelled, editing, current_
                 setError(await request.response.text());
             } else {
                 setError(undefined);
-                onChanged();
+                onChanged(update.name, 'saved');
             }
         } catch (e) {
             // Do nothing
+        }
+    };
+
+    const handleDelete = async () => {
+        if (editing) {
+            await request.delete([editing]);
+            if (request.response.status != 200) {
+                setError(await request.response.text());
+            } else {
+                setError(undefined);
+                onChanged(editing, 'deleted');
+            }
         }
     };
 
@@ -183,6 +195,7 @@ export default function UpstreamEdit({ onChanged, onCancelled, editing, current_
         </DialogContent>
         <DialogActions>
             <Button onClick={onCancelled} disabled={request.loading}>Cancel</Button>
+            {editing && <Button onClick={handleDelete} disabled={request.loading} color='error' variant='contained'>Delete</Button>}
             <Button onClick={handleSave} variant='contained' disabled={request.loading}>
                 {request.loading ? 'Saving' : 'Save'}
             </Button>

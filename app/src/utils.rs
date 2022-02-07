@@ -253,6 +253,7 @@ pub async fn write_http_response(
     Content-Length: {}\r\n\
     Access-Control-Allow-Headers: *\r\n\
     Access-Control-Allow-Origin: *\r\n\
+    Access-Control-Allow-Methods: *\r\n\
     \r\n",
             status_msg.map(|m| format!(" {m}")).unwrap_or(String::new()),
             content_type.unwrap_or("application/octet-stream"),

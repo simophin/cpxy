@@ -3,9 +3,10 @@ import useFetch from "use-http";
 import { ClientConfig, ClientStatistics, UpstreamStatistics } from "./models";
 import { BASE_URL } from './config';
 import _ from 'lodash';
-import { Button, Checkbox, Chip, Fab, List, ListItem, ListItemText, Typography } from "@mui/material";
+import { Button, Chip, Fab, List, ListItem, ListItemText, Typography } from "@mui/material";
 import { Add, ArrowDownward, ArrowUpward } from "@mui/icons-material";
 import UpstreamEdit from "./UpstreamEdit";
+import useSnackbar from "./useSnackbar";
 
 type Props = {
     reloadList?: any,
@@ -34,8 +35,8 @@ function formatBytes(v: number) {
 
 function formatStatistics({ tx, rx, last_latency }: UpstreamStatistics) {
     return <>
-        <Chip style={{ marginRight: 4 }}
-            color='primary' label={`${last_latency}ms`} size='small' />
+        {last_latency > 0 && <Chip style={{ marginRight: 4 }}
+            color='primary' label={`${last_latency}ms`} size='small' />}
         <Chip icon={<ArrowUpward />} style={{ marginRight: 4 }}
             color='info' label={formatBytes(tx)} size='small' />
         <Chip icon={<ArrowDownward />}
@@ -52,7 +53,7 @@ type EditState<T> = {
     state: 'idle'
 };
 
-export default function UpstreamList({ reloadList }: Props) {
+export default function UpstreamList({ }: Props) {
     const [reload, setReload] = useState(Date.now());
     const [reloadStats, setReloadStats] = useState(Date.now());
     const { loading, error, data } = useFetch<ClientConfig>(`${BASE_URL}/api/config?t=${reload}`, { timeout: 1000, }, [reload]);
@@ -60,14 +61,13 @@ export default function UpstreamList({ reloadList }: Props) {
         timeout: 1000,
     }, [reloadStats]);
 
-    const [selectMode, setSelectMode] = useState(false);
-    const [selected, setSelected] = useState<string[]>([]);
     const [editing, setEditing] = useState<EditState<string>>({ state: 'idle' });
+    const [snackbar, showSnackbar] = useSnackbar();
 
     useEffect(() => {
         const handle = setTimeout(() => {
             setReloadStats(Date.now());
-        }, clientStatsError ? 2000 : 1000);
+        }, clientStatsError ? 20000 : 10000);
 
         return () => clearTimeout(handle);
     }, [setReloadStats, clientStats, clientStatsError]);
@@ -77,32 +77,18 @@ export default function UpstreamList({ reloadList }: Props) {
             const stats = clientStats?.upstreams?.[name];
             return <ListItem
                 key={name}
-                onClick={() => {
-                    if (selectMode) {
-                        if (selected.indexOf(name) >= 0) {
-                            setSelected(selected.filter(n => n != name));
-                        } else {
-                            setSelected([...selected, name]);
-                        }
-                    } else {
-                        setEditing({ state: 'editing', value: name });
-                    }
-                }}
+                onClick={() => setEditing({ state: 'editing', value: name })}
                 secondaryAction={
                     <>
                         {stats && formatStatistics(stats)}
-                        {selectMode && <Checkbox checked={selected.indexOf(name) >= 0} />}
                     </>
                 }>
-                <ListItemText primary={<>
-                    {name}
-
-                </>} secondary={value.address}>
+                <ListItemText primary={name} secondary={value.address}>
                 </ListItemText>
 
             </ListItem >;
         });
-    }, [data, selectMode, selected, clientStats]);
+    }, [data, clientStats]);
 
     return <>
         {loading && !data && <Typography style={{ padding: 16 }}>
@@ -140,10 +126,13 @@ export default function UpstreamList({ reloadList }: Props) {
             editing={editing.state === 'editing' ? editing.value : undefined}
             current_config={data}
             onCancelled={() => setEditing({ state: 'idle' })}
-            onChanged={() => {
+            onChanged={(name, action) => {
                 setReload(Date.now());
                 setEditing({ state: 'idle' });
+                showSnackbar(`Upstream ${name} ${action}`);
             }} />
         }
+
+        {snackbar}
     </>;
 }

@@ -138,15 +138,14 @@ impl Controller {
         let config = Arc::new(c);
 
         self.current = (config.clone(), stats.clone());
-
         let _ = self.broadcaster.broadcast((config.clone(), stats)).await;
-
         let _ = File::create(&self.config_file)
             .await
             .context("Creating configuration file")
             .map_err(|e| ErrorResponse::Generic(e.into()))?
             .write_all(
                 serde_yaml::to_vec(config.as_ref())
+                    .context("Writing YAML file")
                     .map_err(|e| ErrorResponse::Generic(e.into()))?
                     .as_slice(),
             )
