@@ -1,5 +1,6 @@
 use anyhow::Context;
 use bytes::Bytes;
+use futures_util::{select, FutureExt};
 use std::collections::HashMap;
 use std::net::SocketAddr;
 use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
@@ -61,8 +62,11 @@ pub async fn run_client(
         + Unpin,
 ) -> anyhow::Result<()> {
     let mut current_task: Option<Task<anyhow::Result<()>>> = None;
+    let (mut shutdown_tx, shutdown_rx) = async_broadcast::broadcast::<()>(1);
+    shutdown_tx.set_overflow(true);
 
     loop {
+        log::debug!("Listening for next config");
         let (config, stats) = match config_stream.next().await {
             Some(v) => v,
             None => {
@@ -73,7 +77,8 @@ pub async fn run_client(
 
         log::debug!("Using configuration {config:?}");
         if let Some(task) = current_task {
-            let _ = task.cancel().await;
+            let _ = dbg!(shutdown_tx.try_broadcast(()));
+            let _ = dbg!(task.await);
         }
 
         let listener = match TcpListener::bind(&config.socks5_address).await {
@@ -88,24 +93,33 @@ pub async fn run_client(
 
         let config = config.clone();
         let stats = stats.clone();
+        let mut shutdown_rx = shutdown_rx.clone();
         current_task = Some(spawn(async move {
             loop {
-                let (sock, addr) = match listener.accept().await {
-                    Ok(v) => v,
-                    Err(e) => {
-                        log::error!("Error listening on {}", config.socks5_address);
-                        return Err(e.into());
+                let (sock, addr) = select! {
+                    v1 = listener.accept().fuse() => v1.context("Listening for SOCKS5 connection")?,
+                    _ = shutdown_rx.recv().fuse() => {
+                        log::info!("Socks5 listening cancelled");
+                        return Ok(());
                     }
                 };
 
                 let config = config.clone();
                 let stats = stats.clone();
+                let mut shutdown_rx = shutdown_rx.clone();
                 spawn(async move {
                     log::info!("Client {addr} connected");
 
-                    if let Err(e) = serve_proxy_client(sock.is_v4(), sock, config, stats).await {
-                        log::error!("Error serving client {addr}: {e}");
-                    }
+                    select! {
+                        result = serve_proxy_client(sock.is_v4(), sock, config, stats).fuse() => {
+                            if let Err(e) = result {
+                                log::error!("Error serving client {addr}: {e}");
+                            }
+                        },
+                        _ = shutdown_rx.recv().fuse() => {
+                            log::info!("Cancelling service of SOCKS5 client {addr}");
+                        }
+                    };
 
                     log::info!("Client {addr} disconnected");
                 })

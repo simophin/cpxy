@@ -151,7 +151,7 @@ impl Controller {
             .with_context(|| format!("Creating configuration file: {:?}", self.config_file))?;
 
         let _ = file
-            .write_all(dbg!(config_text).as_bytes())
+            .write_all(config_text.as_bytes())
             .await
             .with_context(|| format!("Writing configuration file: {:?}", self.config_file))?;
 
