@@ -2,7 +2,6 @@ use crate::broadcast::bounded;
 use crate::client::{run_client, ClientStatistics};
 use crate::config::{ClientConfig, UpstreamConfig};
 use crate::io::TcpListener;
-use crate::socks5::Address;
 use crate::utils::{write_http_response, JsonSerializable, RWBuffer};
 use anyhow::{anyhow, Context};
 use async_broadcast::Sender;
@@ -12,7 +11,6 @@ use serde::de::DeserializeOwned;
 use serde::Deserialize;
 use smol::fs::File;
 use smol::spawn;
-use std::net::SocketAddr;
 use std::path::PathBuf;
 use std::sync::Arc;
 
@@ -96,7 +94,7 @@ struct Asset;
 
 enum Response {
     Empty,
-    Json(Box<dyn JsonSerializable>),
+    Json(Box<dyn JsonSerializable + Send + Sync>),
     EmbedFile {
         path: String,
         file: rust_embed::EmbeddedFile,
@@ -302,11 +300,9 @@ impl Controller {
 }
 
 pub async fn run_controller(
-    bind_address: SocketAddr,
+    listener: TcpListener,
     config_file: &std::path::Path,
 ) -> anyhow::Result<()> {
-    let listener = TcpListener::bind(&Address::IP(bind_address.clone())).await?;
-
     let config = if config_file.exists() {
         Arc::new(
             serde_yaml::from_reader(
@@ -319,9 +315,7 @@ pub async fn run_controller(
         Default::default()
     };
 
-    log::info!("Started controller on {bind_address}. Config: {config:?}");
     let stats = Arc::new(ClientStatistics::new(&config));
-
     let (broadcaster, rx) = bounded(Some((config.clone(), stats.clone())), 1);
 
     let mut controller = Controller {

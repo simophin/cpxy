@@ -1,7 +1,9 @@
+use anyhow::Context;
 use clap::{AppSettings, Parser, Subcommand};
 use proxy::controller::run_controller;
+use proxy::io::TcpListener;
 use proxy::server::run_server;
-use smol::net::TcpListener;
+use proxy::socks5::Address;
 use std::net::{IpAddr, SocketAddr};
 use std::path::Path;
 
@@ -18,7 +20,7 @@ enum Command {
     Server {
         /// The address to listen on
         #[clap(default_value = "0.0.0.0", long)]
-        host: String,
+        host: IpAddr,
         /// The HTTP port to listen on
         #[clap(default_value_t = 80, long)]
         port: u16,
@@ -49,17 +51,26 @@ fn main() -> anyhow::Result<()> {
         let Cli { cmd } = Cli::parse();
         match cmd {
             Command::Server { host, port } => {
-                let listen_address = format!("{host}:{port}");
-                log::info!("Start server at {listen_address}");
-                run_server(TcpListener::bind(listen_address).await?).await
+                let addr = SocketAddr::new(host, port);
+                log::info!("Start server at {addr}");
+                run_server(
+                    TcpListener::bind(&Address::IP(addr))
+                        .await
+                        .context("Binding server socket")?,
+                )
+                .await
             }
             Command::Client {
                 config,
                 controller_host,
                 controller_port,
             } => {
+                let addr = SocketAddr::new(controller_host, controller_port);
+                log::info!("Start controller at {addr}");
                 run_controller(
-                    SocketAddr::new(controller_host, controller_port),
+                    TcpListener::bind(&Address::IP(addr))
+                        .await
+                        .context("Binding controller socket")?,
                     Path::new(&config),
                 )
                 .await

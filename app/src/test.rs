@@ -3,7 +3,7 @@ use crate::cipher::server::listen;
 use crate::cipher::strategy::EncryptionStrategy;
 use crate::client::{run_client, ClientStatistics};
 use crate::config::{ClientConfig, UpstreamConfig};
-use crate::io::{TcpStream, UdpSocket};
+use crate::io::{TcpListener, TcpStream, UdpSocket};
 use crate::proxy::protocol::{ProxyRequest, ProxyResult};
 use crate::server::run_server;
 use crate::socks5::{Address, UdpPacket};
@@ -17,7 +17,6 @@ use futures_util::join;
 use maplit::hashmap;
 use rand::Rng;
 use smol::channel::unbounded;
-use smol::net::TcpListener;
 use smol::{spawn, Timer};
 use smol_timeout::TimeoutExt;
 use std::borrow::Cow;
@@ -31,7 +30,9 @@ pub async fn duplex(
     impl AsyncRead + AsyncWrite + Unpin + Send + Sync + 'static,
     impl AsyncRead + AsyncWrite + Unpin + Send + Sync + 'static,
 ) {
-    let listener = TcpListener::bind("127.0.0.1:0").await.expect("To listen");
+    let listener = TcpListener::bind(&"127.0.0.1:0".parse().unwrap())
+        .await
+        .expect("To listen");
     let addr = Address::IP(listener.local_addr().expect("To have local addr"));
 
     let (client, server) = join!(TcpStream::connect(&addr), listener.accept());
@@ -175,7 +176,9 @@ fn test_client_server_udp() {
             }
         });
 
-        let server = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let server = TcpListener::bind(&"127.0.0.1:0".parse().unwrap())
+            .await
+            .unwrap();
         let server_addr = server.local_addr().unwrap();
 
         // Run the proxy
@@ -194,6 +197,7 @@ fn test_client_server_udp() {
                             address: Address::IP(server_addr),
                             accept: Default::default(),
                             reject: Default::default(),
+                            enabled: true,
                             priority: 0,
                         }
                     },

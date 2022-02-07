@@ -7,13 +7,13 @@ mod handshake;
 mod parse;
 mod proxy;
 pub mod server;
-mod socks5;
+pub mod socks5;
 mod utils;
 
 // #[cfg(target_os = "android")]
-// mod jni_export;
+mod jni_export;
 
-mod io;
+pub mod io;
 #[cfg(test)]
 mod test;
 

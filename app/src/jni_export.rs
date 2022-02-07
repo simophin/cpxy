@@ -1,31 +1,17 @@
-use crate::client::run_client;
-use crate::config::ClientConfig;
+use crate::controller::run_controller;
 use jni::objects::{JClass, JString};
 use jni::sys::jlong;
 use jni::JNIEnv;
 use smol::{spawn, Async, Task};
-use std::net::TcpListener;
-use std::sync::Arc;
+use std::path::Path;
 
-struct Instance(Task<anyhow::Result<()>>);
-
-#[no_mangle]
-pub extern "system" fn Java_dev_fanchao_CJKProxy_verifyConfig(
-    env: JNIEnv,
-    _: JClass,
-    config: JString,
-) {
-    let config: String = env.get_string(config).expect("To get config string").into();
-    if let Err(e) = serde_yaml::from_str::<ClientConfig>(config.as_str()) {
-        let _ = env.throw_new("java/lang/RuntimeException", e.to_string());
-    }
-}
+struct Instance(u16, Task<anyhow::Result<()>>);
 
 #[no_mangle]
 pub extern "system" fn Java_dev_fanchao_CJKProxy_start(
     env: JNIEnv,
     _: JClass,
-    config: JString,
+    config_path: JString,
 ) -> jlong {
     #[cfg(target_os = "android")]
     android_logger::init_once(
@@ -34,33 +20,48 @@ pub extern "system" fn Java_dev_fanchao_CJKProxy_start(
             .with_tag("proxy_rust"),
     );
 
-    let config: String = env.get_string(config).expect("To get config string").into();
+    let config_path: String = env
+        .get_string(config_path)
+        .expect("To get config string")
+        .into();
 
-    let config: ClientConfig = match serde_yaml::from_str(config.as_str()) {
-        Ok(c) => c,
-        Err(e) => {
-            let _ = env.throw_new(
-                "java/lang/RuntimeException",
-                format!("Error parsing config: {e}"),
-            );
-            return 0;
-        }
-    };
-
-    let listener = match TcpListener::bind(config.socks5_address.to_string()) {
-        Ok(v) => smol::net::TcpListener::from(Async::new(v).expect("Async")),
+    let listener = match std::net::TcpListener::bind("127.0.0.1:0") {
+        Ok(v) => v,
         Err(e) => {
             let _ = env.throw_new(
                 "java/lang/Exception",
-                format!("Unable to bind address at {}: {e}", config.socks5_address),
+                format!("Unable to bind controller socket: {e}"),
             );
             return 0;
         }
     };
 
-    Box::leak(Box::new(Instance(spawn(async move {
-        run_client(listener, Arc::new(config)).await
-    })))) as *mut Instance as jlong
+    let port = match listener.local_addr() {
+        Ok(v) => v.port(),
+        Err(e) => {
+            let _ = env.throw_new(
+                "java/lang/Exception",
+                format!("Unable to get bound port: {e}"),
+            );
+            return 0;
+        }
+    };
+
+    let listener = match Async::new(listener) {
+        Ok(v) => crate::io::TcpListener::from(smol::net::TcpListener::from(v)),
+        Err(e) => {
+            let _ = env.throw_new(
+                "java/lang/Exception",
+                format!("Unable to create async listener socket: {e}"),
+            );
+            return 0;
+        }
+    };
+
+    Box::leak(Box::new(Instance(
+        port,
+        spawn(async move { run_controller(listener, Path::new(&config_path)).await }),
+    ))) as *mut Instance as jlong
 }
 
 #[no_mangle]

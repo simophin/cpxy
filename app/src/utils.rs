@@ -107,11 +107,6 @@ impl<T> RWBuffer<T> {
             self.write_cursor = 0;
         }
     }
-
-    pub fn clear(&mut self) {
-        self.read_cursor = 0;
-        self.write_cursor = 0;
-    }
 }
 
 impl<T: AsMut<[u8]> + AsRef<[u8]>> RWBuffer<T> {

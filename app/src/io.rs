@@ -171,6 +171,14 @@ impl AsyncWrite for TcpStream {
 pub struct TcpListener(AsyncTcpListener);
 
 impl TcpListener {
+    pub fn from(v: AsyncTcpListener) -> Self {
+        Self(v)
+    }
+
+    pub fn local_addr(&self) -> smol::io::Result<SocketAddr> {
+        self.0.local_addr()
+    }
+
     pub async fn bind(addr: &Address) -> smol::io::Result<Self> {
         let inner = match addr {
             Address::IP(addr) => AsyncTcpListener::bind(addr).await?,

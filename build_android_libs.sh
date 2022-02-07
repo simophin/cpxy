@@ -7,7 +7,6 @@ configs=(
   x86_64-linux-android x86_64
 )
 
-rustup override set nightly
 cargo install cross
 
 LIBS_ROOT=app/android/app/src/main/jniLibs
