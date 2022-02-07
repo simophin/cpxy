@@ -3,11 +3,11 @@ use bytes::Bytes;
 use futures_util::{select, FutureExt};
 use std::collections::HashMap;
 use std::net::SocketAddr;
-use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
 use std::sync::Arc;
 use std::time::{Duration, UNIX_EPOCH};
 
 use crate::config::*;
+use crate::counter::Counter;
 use crate::handshake::Handshaker;
 use crate::io::{TcpListener, TcpStream};
 use crate::proxy::protocol::{ProxyRequest, ProxyResult};
@@ -21,10 +21,10 @@ use smol::{spawn, Task};
 
 #[derive(Default, Serialize, Deserialize, Debug, Clone)]
 pub struct UpstreamStatistics {
-    pub tx: Arc<AtomicUsize>,
-    pub rx: Arc<AtomicUsize>,
-    pub last_activity: Arc<AtomicU64>,
-    pub last_latency: Arc<AtomicUsize>,
+    pub tx: Arc<Counter>,
+    pub rx: Arc<Counter>,
+    pub last_activity: Arc<Counter>,
+    pub last_latency: Arc<Counter>,
 }
 
 #[derive(Default, Serialize, Deserialize, Debug, Clone)]
@@ -47,10 +47,8 @@ impl ClientStatistics {
         if let Some(stats) = self.upstreams.get(name) {
             stats
                 .last_activity
-                .store(UNIX_EPOCH.elapsed().unwrap().as_secs(), Ordering::Relaxed);
-            stats
-                .last_latency
-                .store(latency.as_millis() as usize, Ordering::Relaxed);
+                .set(UNIX_EPOCH.elapsed().unwrap().as_secs() as usize);
+            stats.last_latency.set(latency.as_millis() as usize);
         }
     }
 }

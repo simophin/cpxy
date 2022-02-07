@@ -3,7 +3,6 @@ use std::collections::HashMap;
 use std::fmt::{Display, Formatter};
 use std::net::IpAddr;
 use std::str::FromStr;
-use std::sync::atomic::Ordering;
 use std::time::UNIX_EPOCH;
 
 use ipnetwork::IpNetwork;
@@ -208,7 +207,7 @@ impl ClientConfig {
     fn calc_last_visit_score(stats: &ClientStatistics, upstream_name: &String) -> usize {
         (match stats.upstreams.get(upstream_name) {
             Some(stat) => {
-                let last = stat.last_activity.load(Ordering::Relaxed);
+                let last = stat.last_activity.get() as u64;
                 let now = UNIX_EPOCH.elapsed().unwrap().as_secs();
                 now.checked_sub(last)
                     .unwrap_or(0)

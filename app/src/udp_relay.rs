@@ -1,5 +1,6 @@
 use crate::client::ClientStatistics;
 use crate::config::ClientConfig;
+use crate::counter::Counter;
 use crate::io::{copy_udp_and_stream, copy_udp_and_udp, UdpSocket};
 use crate::proxy::protocol::{ProxyRequest, ProxyResult};
 use crate::proxy::request_proxy_upstream;
@@ -7,7 +8,6 @@ use crate::socks5::{Address, UdpPacket};
 use futures_lite::{AsyncRead, AsyncWrite};
 use std::borrow::Cow;
 use std::net::SocketAddr;
-use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
 
 async fn serve_socks5_udp_stream_relay<'a>(
@@ -15,8 +15,8 @@ async fn serve_socks5_udp_stream_relay<'a>(
     mut socks5_buf: Vec<u8>,
     socks5_remote_addr: SocketAddr,
     mut upstream: impl AsyncRead + AsyncWrite + Unpin + Send + Sync + 'a,
-    upstream_tx_count: &'a AtomicUsize,
-    upstream_rx_count: &'a AtomicUsize,
+    upstream_tx_count: &'a Counter,
+    upstream_rx_count: &'a Counter,
 ) -> anyhow::Result<()> {
     match UdpPacket::parse_udp(socks5_buf.as_slice()) {
         Ok(v) if v.frag_no == 0 => {
@@ -35,7 +35,7 @@ async fn serve_socks5_udp_stream_relay<'a>(
             p if p.frag_no == 0 => {
                 let mut hdr_buf = hdr_buf.unwrap();
                 UdpPacket::write_tcp_headers(&mut hdr_buf, &p.addr, p.data.len())?;
-                upstream_tx_count.fetch_add(hdr_buf.len() + out_buf.len(), Ordering::Relaxed);
+                upstream_tx_count.inc(hdr_buf.len() + out_buf.len());
                 Ok(())
             }
             _ => {
@@ -49,7 +49,7 @@ async fn serve_socks5_udp_stream_relay<'a>(
             Some((offset, p)) => {
                 out.clear();
                 p.write_udp_sync(out)?;
-                upstream_rx_count.fetch_add(out.len(), Ordering::Relaxed);
+                upstream_rx_count.inc(out.len());
                 Ok(Some((offset, Address::IP(socks5_remote_addr.clone()))))
             }
         },
@@ -167,12 +167,12 @@ impl Relay {
                             tx_count.as_ref(),
                             rx_count.as_ref(),
                         )
-                        .await
+                        .await;
                     }
                     Ok((r, _, _)) => return Err(r.into()),
                     Err(e) => {
                         last_error = Some(e);
-                    },
+                    }
                 }
             }
             log::debug!("No upstream is able to handle {addr}");

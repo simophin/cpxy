@@ -7,20 +7,21 @@ use serde::{de::DeserializeOwned, Serialize};
 use smol::spawn;
 use std::cmp::min;
 use std::io::{Read, Write};
-use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
+
+use crate::counter::Counter;
 
 async fn copy_with_stats(
     mut r: impl AsyncRead + Unpin + Send + Sync,
     mut w: impl AsyncWrite + Unpin + Send + Sync,
-    stat: &AtomicUsize,
+    stat: &Counter,
 ) -> anyhow::Result<()> {
     let mut buf = vec![0u8; 8192];
     loop {
         match r.read(buf.as_mut_slice()).await? {
             0 => return Ok(()),
             v => {
-                stat.fetch_add(v, Ordering::Relaxed);
+                stat.inc(v);
                 w.write_all(&buf.as_slice()[..v])
                     .await
                     .context("Writing to")?;
@@ -32,8 +33,8 @@ async fn copy_with_stats(
 pub async fn copy_duplex(
     d1: impl AsyncRead + AsyncWrite + Unpin + Send + Sync + 'static,
     d2: impl AsyncRead + AsyncWrite + Unpin + Send + Sync + 'static,
-    d1d2_count: Option<Arc<AtomicUsize>>,
-    d2d1_count: Option<Arc<AtomicUsize>>,
+    d1d2_count: Option<Arc<Counter>>,
+    d2d1_count: Option<Arc<Counter>>,
 ) -> anyhow::Result<()> {
     let (d1r, d1w) = split(d1);
     let (d2r, d2w) = split(d2);

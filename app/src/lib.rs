@@ -10,6 +10,8 @@ pub mod server;
 pub mod socks5;
 mod utils;
 
+mod counter;
+
 // #[cfg(target_os = "android")]
 mod jni_export;
 
