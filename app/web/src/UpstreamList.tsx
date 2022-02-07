@@ -1,12 +1,12 @@
 import { useEffect, useMemo, useState } from "react";
-import useFetch from "use-http";
-import { ClientConfig, ClientStatistics, UpstreamStatistics } from "./models";
+import { ClientConfig, ClientStatistics, UpstreamConfig, UpstreamStatistics, UpstreamUpdate } from "./models";
 import { BASE_URL } from './config';
 import _ from 'lodash';
-import { Button, Chip, Fab, List, ListItem, ListItemText, Typography } from "@mui/material";
+import { Button, Chip, Fab, List, ListItem, ListItemIcon, ListItemText, Switch, Typography } from "@mui/material";
 import { Add, ArrowDownward, ArrowUpward } from "@mui/icons-material";
 import UpstreamEdit from "./UpstreamEdit";
 import useSnackbar from "./useSnackbar";
+import useHttp from "./useHttp";
 
 type Props = {
     reloadList?: any,
@@ -54,60 +54,100 @@ type EditState<T> = {
 };
 
 export default function UpstreamList({ }: Props) {
-    const [reload, setReload] = useState(Date.now());
-    const [reloadStats, setReloadStats] = useState(Date.now());
-    const { loading, error, data } = useFetch<ClientConfig>(`${BASE_URL}/api/config?t=${reload}`, { timeout: 1000, }, [reload]);
-    const { data: clientStats, error: clientStatsError } = useFetch<ClientStatistics>(`${BASE_URL}/api/stats?t=${reloadStats}`, {
-        timeout: 1000,
-    }, [reloadStats]);
+    const configRequest = useHttp<ClientConfig>(`${BASE_URL}/api/config`);
+    const statsRequest = useHttp<ClientStatistics>(`${BASE_URL}/api/stats`);
+    const upstreamRequest = useHttp(`${BASE_URL}/api/upstream`, { headers: { 'content-type': 'application/json' } });
 
     const [editing, setEditing] = useState<EditState<string>>({ state: 'idle' });
     const [snackbar, showSnackbar] = useSnackbar();
 
+    const { data: statsData, error: statsError } = statsRequest;
+    const { data: configData, error: configError } = configRequest;
+
+    // Start querying right away
+    useEffect(() => {
+        statsRequest.execute();
+        configRequest.execute();
+    }, []);
+
+    // Repeat stats query
     useEffect(() => {
         const handle = setTimeout(() => {
-            setReloadStats(Date.now());
-        }, clientStatsError ? 20000 : 10000);
+            statsRequest.execute();
+        }, 1000);
 
         return () => clearTimeout(handle);
-    }, [setReloadStats, clientStats, clientStatsError]);
+    }, [statsData, statsError]);
+
+    // Repeat error config
+    useEffect(() => {
+        if (configError) {
+            const handle = setTimeout(() => {
+                configRequest.execute();
+            }, 1000);
+
+            return () => clearTimeout(handle);
+        }
+    }, [configError]);
+
+    const toggleUpstream = async (name: string, config: UpstreamConfig) => {
+        try {
+            await upstreamRequest.execute('post', [{
+                old_name: name,
+                name,
+                config: {
+                    ...config,
+                    enabled: !config.enabled,
+                }
+            } as UpstreamUpdate]);
+            configRequest.execute();
+        } catch (e: any) {
+            showSnackbar(`Error: ${e.message}`);
+        }
+    };
 
     const items = useMemo(() => {
-        return _.map(data?.upstreams, (value, name) => {
-            const stats = clientStats?.upstreams?.[name];
-            return <ListItem
-                key={name}
-                onClick={() => setEditing({ state: 'editing', value: name })}
-                secondaryAction={
-                    <>
-                        {stats && formatStatistics(stats)}
-                    </>
-                }>
-                <ListItemText primary={name} secondary={value.address}>
-                </ListItemText>
+        return _.sortBy(_.map(configData?.upstreams, (value, name) => ({ value, name })), ({ value, name }) => name)
+            .map(({ value, name }) => {
+                const stats = statsData?.upstreams?.[name];
+                return <ListItem
+                    key={name}
+                    secondaryAction={
+                        <>
+                            {stats && formatStatistics(stats)}
+                        </>
+                    }>
+                    <ListItemIcon>
+                        <Switch checked={value.enabled}
+                            onChange={() => toggleUpstream(name, value)} />
+                    </ListItemIcon>
+                    <ListItemText
+                        role='link'
+                        onClick={() => setEditing({ state: 'editing', value: name })}
+                        primary={name} secondary={value.address} />
 
-            </ListItem >;
-        });
-    }, [data, clientStats]);
+                </ListItem >;
+            });
+    }, [configData, statsData]);
 
     return <>
-        {loading && !data && <Typography style={{ padding: 16 }}>
+        {configRequest.loading && !configRequest.data && <Typography style={{ padding: 16 }}>
             Loading...
         </Typography>}
 
-        {error && <div style={{ padding: 16 }}>
+        {configRequest.error && !configRequest.data && <div style={{ padding: 16 }}>
             <p>Error loading configurations: </p>
-            <p>{error.message}</p>
+            <p>{configRequest.error.message}</p>
             <p>
                 <Button
                     variant='contained'
-                    onClick={() => setReload(Date.now())}>
+                    onClick={() => configRequest.execute()}>
                     Reload
                 </Button>
             </p>
         </div>}
 
-        {data && _.isEmpty(data.upstreams) &&
+        {configData && _.isEmpty(configData.upstreams) &&
             <Typography style={{ padding: 16 }}>No upstream configs</Typography>
         }
 
@@ -122,12 +162,12 @@ export default function UpstreamList({ }: Props) {
             <Add />
         </Fab>
 
-        {editing.state !== 'idle' && data && <UpstreamEdit
+        {editing.state !== 'idle' && configData && <UpstreamEdit
             editing={editing.state === 'editing' ? editing.value : undefined}
-            current_config={data}
+            current_config={configData}
             onCancelled={() => setEditing({ state: 'idle' })}
             onChanged={(name, action) => {
-                setReload(Date.now());
+                configRequest.execute();
                 setEditing({ state: 'idle' });
                 showSnackbar(`Upstream ${name} ${action}`);
             }} />

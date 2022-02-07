@@ -127,6 +127,10 @@ impl UpstreamRule {
     }
 }
 
+const fn default_upstream_enabled() -> bool {
+    true
+}
+
 #[derive(Debug, Serialize, Deserialize, PartialEq, Eq, Clone)]
 pub struct UpstreamConfig {
     pub address: Address,
@@ -136,10 +140,16 @@ pub struct UpstreamConfig {
     pub reject: Vec<UpstreamRule>,
     #[serde(default)]
     pub priority: u16,
+    #[serde(default = "default_upstream_enabled")]
+    pub enabled: bool,
 }
 
 impl UpstreamConfig {
     fn calc_score(&self, target: &Address, country_code: Option<CountryCode>) -> usize {
+        if !self.enabled {
+            return 0;
+        }
+
         let ip = match target {
             Address::IP(a) => Some(a.ip()),
             _ => None,

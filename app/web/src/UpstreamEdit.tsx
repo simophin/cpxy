@@ -1,9 +1,10 @@
-import { Button, Dialog, DialogActions, DialogContent, DialogContentText, DialogTitle, Stack, TextField } from "@mui/material"
+import { Button, Dialog, DialogActions, DialogContent, DialogTitle, Stack, TextField } from "@mui/material"
 import { useEffect, useState } from "react";
 import useFetch from "use-http";
 import { BASE_URL } from "./config";
 import { ClientConfig, UpstreamUpdate } from "./models"
 import _ from 'lodash';
+import useHttp from "./useHttp";
 
 type Props = {
     editing: string | undefined,
@@ -13,10 +14,6 @@ type Props = {
 }
 
 type FindError = (value: string) => string | undefined;
-
-function trimming(value: string) {
-    return value.trim();
-}
 
 function mandatory(fieldName: string, next?: FindError): FindError {
     return (value: string) => {
@@ -93,15 +90,14 @@ export default function UpstreamEdit({ onChanged, onCancelled, editing, current_
     const accept = useEditState(existing?.accept?.join('\n') ?? '', undefined, transformRule);
     const reject = useEditState(existing?.reject?.join('\n') ?? '', undefined, transformRule);
     const priority = useEditState(existing?.priority?.toString() ?? '0', mandatory('Priority'));
-    const request = useFetch(`${BASE_URL}/api/upstream`, { headers: { "Content-Type": "application/json" } });
-    const [error, setError] = useState<string>();
+    const request = useHttp(`${BASE_URL}/api/upstream`, { headers: { "Content-Type": "application/json" } });
     const handleSave = async () => {
-        setError(undefined);
         try {
             const update: UpstreamUpdate = {
                 old_name: editing,
                 name: name.validate(),
                 config: {
+                    enabled: existing?.enabled ?? true,
                     address: address.validate(),
                     accept: accept.validate(),
                     reject: reject.validate(),
@@ -109,13 +105,8 @@ export default function UpstreamEdit({ onChanged, onCancelled, editing, current_
                 }
             };
 
-            await request.post([update]);
-            if (request.response.status != 200) {
-                setError(await request.response.text());
-            } else {
-                setError(undefined);
-                onChanged(update.name, 'saved');
-            }
+            await request.execute('post', [update]);
+            onChanged(update.name, 'saved');
         } catch (e) {
             // Do nothing
         }
@@ -123,13 +114,10 @@ export default function UpstreamEdit({ onChanged, onCancelled, editing, current_
 
     const handleDelete = async () => {
         if (editing) {
-            await request.delete([editing]);
-            if (request.response.status != 200) {
-                setError(await request.response.text());
-            } else {
-                setError(undefined);
+            try {
+                await request.execute('delete', [editing]);
                 onChanged(editing, 'deleted');
-            }
+            } catch (e) { }
         }
     };
 
@@ -187,9 +175,9 @@ export default function UpstreamEdit({ onChanged, onCancelled, editing, current_
                     helperText={priority.error}
                     onChange={v => priority.setValue(v.currentTarget.value)} />
 
-                {(error || request.error) && <>
+                {(request.error) && <>
                     <p>Error saving configuration: <br />
-                        {error || request.error?.message || 'Unknown error'}</p>
+                        {request.error ?? 'Unknown error'}</p>
                 </>}
             </Stack>
         </DialogContent>

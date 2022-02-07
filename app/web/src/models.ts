@@ -4,6 +4,7 @@ export type UpstreamConfig = {
     accept: string[],
     reject: string[],
     priority: number,
+    enabled: boolean,
 }
 
 export type ClientConfig = {

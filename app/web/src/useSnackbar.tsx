@@ -7,7 +7,7 @@ export default function useSnackbar(): [ReactElement, (v: string) => unknown] {
         if (text.length > 0) {
             const handle = setTimeout(() => {
                 setText('');
-            }, 1000);
+            }, 3000);
             return () => clearTimeout(handle);
         }
     }, [text]);

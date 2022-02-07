@@ -109,6 +109,12 @@ enum ErrorResponse {
     InvalidRequest(anyhow::Error),
 }
 
+impl From<anyhow::Error> for ErrorResponse {
+    fn from(e: anyhow::Error) -> Self {
+        Self::Generic(e)
+    }
+}
+
 type HttpResult<T> = Result<T, ErrorResponse>;
 
 struct Controller {
@@ -137,22 +143,25 @@ impl Controller {
         let stats = Arc::new(s);
         let config = Arc::new(c);
 
+        let config_text = serde_yaml::to_string(config.as_ref())
+            .with_context(|| format!("Writing YAML file: {:?}", self.config_file))?;
+
+        let mut file = File::create(&self.config_file)
+            .await
+            .with_context(|| format!("Creating configuration file: {:?}", self.config_file))?;
+
+        let _ = file
+            .write_all(dbg!(config_text).as_bytes())
+            .await
+            .with_context(|| format!("Writing configuration file: {:?}", self.config_file))?;
+
+        file.flush()
+            .await
+            .with_context(|| format!("Flushing file: {:?}", self.config_file))?;
+
+        log::info!("Config written successfully to {:?}", self.config_file);
         self.current = (config.clone(), stats.clone());
         let _ = self.broadcaster.broadcast((config.clone(), stats)).await;
-        let _ = File::create(&self.config_file)
-            .await
-            .context("Creating configuration file")
-            .map_err(|e| ErrorResponse::Generic(e.into()))?
-            .write_all(
-                serde_yaml::to_vec(config.as_ref())
-                    .context("Writing YAML file")
-                    .map_err(|e| ErrorResponse::Generic(e.into()))?
-                    .as_slice(),
-            )
-            .await
-            .context("Writing configuration file")
-            .map_err(|e| ErrorResponse::Generic(e.into()))?;
-        log::info!("Config written successfully to {:?}", self.config_file);
         Ok(())
     }
 
