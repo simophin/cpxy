@@ -77,8 +77,8 @@ pub async fn run_client(
 
         log::debug!("Using configuration {config:?}");
         if let Some(task) = current_task {
-            let _ = dbg!(shutdown_tx.try_broadcast(()));
-            let _ = dbg!(task.await);
+            let _ = shutdown_tx.broadcast(()).await;
+            let _ = task.await;
         }
 
         let listener = match TcpListener::bind(&config.socks5_address).await {

@@ -7,6 +7,7 @@ export default function useHttp<T = any>(
     options?: {
         headers?: Record<string, string>,
         defaultMethod?: Method,
+        timeoutMills?: number,
     }) {
     const [data, setData] = useState<T>();
     const [error, setError] = useState<Error>();
@@ -17,11 +18,15 @@ export default function useHttp<T = any>(
         execute: async (method?: Method, body?: any) => {
             setLoading(false);
             setError(undefined);
+            const timeout = options?.timeoutMills ?? 2000;
+            const controller = new AbortController();
+            const id = setTimeout(() => controller.abort(), timeout);
             try {
                 const res = await fetch(url, {
                     headers: options?.headers,
                     method: method ?? options?.defaultMethod ?? 'get',
                     body: typeof body === 'object' ? JSON.stringify(body) : body,
+                    signal: controller.signal
                 });
 
                 if (res.status >= 200 && res.status < 300) {
@@ -41,6 +46,7 @@ export default function useHttp<T = any>(
                 throw e;
             } finally {
                 setLoading(false);
+                clearTimeout(id);
             }
         }
     }
