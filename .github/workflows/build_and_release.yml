@@ -46,7 +46,7 @@ jobs:
         node-version: '14'
     - name: Build web app
       working-directory: app/web
-      run: yarn build
+      run: yarn install && yarn build
     - name: rust-toolchain
       uses: actions-rs/toolchain@v1
       with:
@@ -135,7 +135,7 @@ jobs:
           node-version: '14'
       - name: Build web app
         working-directory: app/web
-        run: yarn build
+        run: yarn install && yarn build
       - name: Build native libs
         run: ./build_android_libs.sh
       - name: Build with Gradle
