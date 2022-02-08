@@ -201,6 +201,8 @@ fn test_client_server_udp() {
                             priority: 0,
                         }
                     },
+                    direct_accept: Default::default(),
+                    direct_reject: Default::default(),
                     socks5_address: "127.0.0.1:5001".parse().unwrap(),
                     socks5_udp_host: "127.0.0.1".to_string(),
                 }),

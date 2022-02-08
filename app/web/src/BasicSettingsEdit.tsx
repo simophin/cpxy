@@ -1,7 +1,7 @@
 import { Button, Dialog, DialogActions, DialogContent, DialogTitle, MenuItem, Select, Stack, TextField } from "@mui/material";
-import { useState } from "react";
 import { BASE_URL } from "./config";
 import { ClientConfig } from "./models";
+import { transformRule } from "./trafficRules";
 import { mandatory, useEditState, validAddress } from "./useEditState";
 import useHttp from "./useHttp";
 
@@ -14,12 +14,16 @@ type Props = {
 export default function BasicSettingsEdit({ onSaved, onCancelled, current_config }: Props) {
     const address = useEditState(current_config.socks5_address ?? '', mandatory('Address', validAddress))
     const udpHost = useEditState(current_config.socks5_udp_host ?? '', mandatory('UDP host'));
+    const accept = useEditState(current_config.direct_accept?.join('\n') ?? '', undefined, transformRule);
+    const reject = useEditState(current_config.direct_reject?.join('\n') ?? '', undefined, transformRule);
     const request = useHttp(`${BASE_URL}/api/config`, { headers: { "Content-Type": "application/json" } });
 
     const handleSave = async () => {
         try {
             let config: ClientConfig = {
                 ...current_config,
+                direct_accept: accept.validate(),
+                direct_reject: reject.validate(),
                 socks5_address: address.validate(),
                 socks5_udp_host: udpHost.validate(),
             };
@@ -44,6 +48,23 @@ export default function BasicSettingsEdit({ onSaved, onCancelled, current_config
                     fullWidth
                     variant='outlined'
                 />
+                <TextField
+                    value={accept.value}
+                    label='Direct accept rules'
+                    margin='dense'
+                    multiline
+                    error={!!accept.error}
+                    helperText={accept.error}
+                    onChange={v => accept.setValue(v.currentTarget.value)} />
+
+                <TextField
+                    value={reject.value}
+                    label='Direct reject rules'
+                    margin='dense'
+                    multiline
+                    error={!!reject.error}
+                    helperText={reject.error}
+                    onChange={v => reject.setValue(v.currentTarget.value)} />
                 <TextField
                     label='SOCKS5 UDP Host'
                     helperText={udpHost.error}

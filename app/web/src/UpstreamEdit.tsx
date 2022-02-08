@@ -1,10 +1,10 @@
 import { Button, Dialog, DialogActions, DialogContent, DialogTitle, Stack, TextField } from "@mui/material"
-import { useEffect, useState } from "react";
 import { BASE_URL } from "./config";
 import { ClientConfig, UpstreamUpdate } from "./models"
 import _ from 'lodash';
 import useHttp from "./useHttp";
 import { FindError, mandatory, useEditState, validAddress } from "./useEditState";
+import { transformRule } from "./trafficRules";
 
 type Props = {
     editing: string | undefined,
@@ -21,27 +21,6 @@ function uniqueUpstreamName(editing: string | undefined, config: ClientConfig): 
         }
     }
 }
-
-const GEOIP_PAT = /^geoip:[a-z]{2}$/i;
-const GFWLIST_PAT = /^gfwlist$/i;
-const NETWORK_PAT = /^network:.+?$/i;
-const DOMAIN_PAT = /^domain:.+?$/i;
-
-const transformRule = (value: string): string[] => {
-    const separator = value.indexOf("\r\n") >= 0 ? "\r\n" : "\n";
-    return _.map(value.split(separator), (item) => {
-        const trimmed = item.trim();
-        if (trimmed.length === 0) {
-            return undefined;
-        }
-        if (trimmed.match(GEOIP_PAT) || trimmed.match(GFWLIST_PAT) || trimmed.match(NETWORK_PAT) || trimmed.match(DOMAIN_PAT)) {
-            return trimmed;
-        } else {
-            throw new Error(`Rule ${trimmed} is invalid`);
-        }
-    }).filter((s) => !!s).map((s) => s ?? '');
-}
-
 
 export default function UpstreamEdit({ onChanged, onCancelled, editing, current_config }: Props) {
     const existing = editing ? current_config.upstreams[editing] : undefined;

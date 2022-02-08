@@ -205,7 +205,7 @@ async fn serve_proxy_client(
                 log::info!("No usable upstreams for {dst}, last_error = {last_error:?}");
                 handshaker.respond_err(&mut socks).await?;
                 Err(last_error.unwrap())
-            } else {
+            } else if config.allow_direct(dst) {
                 log::info!("Connecting directly to {dst}");
                 match prepare_direct_tcp(&req).await {
                     Ok((bound_address, upstream)) => {
@@ -217,6 +217,10 @@ async fn serve_proxy_client(
                         Err(e.into())
                     }
                 }
+            } else {
+                log::info!("Blocking connection to {dst}");
+                handshaker.respond_err(&mut socks).await?;
+                Ok(())
             }
         }
 

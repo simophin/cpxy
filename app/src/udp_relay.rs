@@ -144,10 +144,7 @@ impl Relay {
         let UdpPacket { addr, .. } = UdpPacket::parse_udp(buf.as_slice())?;
         let mut upstreams = c.find_best_upstream(stats.as_ref(), &addr);
 
-        if upstreams.is_empty() {
-            log::debug!("Connecting to udp://{addr} directly");
-            serve_socks5_udp_directly(socket, buf, socks5_remote_addr).await
-        } else {
+        if !upstreams.is_empty() {
             let mut last_error = None;
             while let Some((name, upstream)) = upstreams.pop() {
                 log::debug!("Trying UDP proxy upstream: {name} for {addr}");
@@ -177,6 +174,14 @@ impl Relay {
             }
             log::debug!("No upstream is able to handle {addr}");
             Err(last_error.unwrap())
+        }
+        else if c.allow_direct(&addr) {
+            log::debug!("Connecting to udp://{addr} directly");
+            serve_socks5_udp_directly(socket, buf, socks5_remote_addr).await
+        }
+        else {
+            log::info!("Blocking direct UDP connection to {addr}");
+            Ok(())
         }
     }
 }

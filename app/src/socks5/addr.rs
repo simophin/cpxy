@@ -2,7 +2,7 @@ use anyhow::anyhow;
 use serde::de::{Deserialize, Error, Visitor};
 use serde::ser::Serialize;
 use std::borrow::Cow;
-use std::fmt::{Debug, Formatter};
+use std::fmt::Formatter;
 use std::io::Cursor;
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr, SocketAddrV4, SocketAddrV6};
 use std::str::FromStr;
@@ -13,7 +13,7 @@ use serde::{Deserializer, Serializer};
 
 use crate::parse::ParseError;
 
-#[derive(Debug, Eq, PartialEq, Clone)]
+#[derive(Eq, PartialEq, Clone)]
 pub enum Address {
     IP(SocketAddr),
     Name { host: String, port: u16 },
@@ -256,5 +256,11 @@ impl std::fmt::Display for Address {
             Self::IP(addr) => std::fmt::Display::fmt(addr, f),
             Self::Name { host, port } => f.write_fmt(format_args!("{host}:{port}")),
         }
+    }
+}
+
+impl std::fmt::Debug for Address {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        std::fmt::Display::fmt(self, f)
     }
 }

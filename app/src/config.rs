@@ -16,7 +16,7 @@ use crate::pattern::Pattern;
 use crate::socks5::Address;
 
 #[derive(Debug, Clone)]
-pub enum UpstreamRule {
+pub enum TrafficMatchRule {
     GeoIP(CountryCode),
     Network(IpNetwork),
     Domain(Pattern),
@@ -24,10 +24,10 @@ pub enum UpstreamRule {
     AdBlockList,
 }
 
-struct UpstreamRuleVisitor;
+struct TrafficMatchRuleVisitor;
 
-impl<'de> Visitor<'de> for UpstreamRuleVisitor {
-    type Value = UpstreamRule;
+impl<'de> Visitor<'de> for TrafficMatchRuleVisitor {
+    type Value = TrafficMatchRule;
 
     fn expecting(&self, formatter: &mut std::fmt::Formatter) -> std::fmt::Result {
         formatter.write_str("Upstream rule")
@@ -42,16 +42,16 @@ impl<'de> Visitor<'de> for UpstreamRuleVisitor {
     }
 }
 
-impl<'de> Deserialize<'de> for UpstreamRule {
+impl<'de> Deserialize<'de> for TrafficMatchRule {
     fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
     where
         D: Deserializer<'de>,
     {
-        deserializer.deserialize_str(UpstreamRuleVisitor)
+        deserializer.deserialize_str(TrafficMatchRuleVisitor)
     }
 }
 
-impl Serialize for UpstreamRule {
+impl Serialize for TrafficMatchRule {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
     where
         S: Serializer,
@@ -60,7 +60,7 @@ impl Serialize for UpstreamRule {
     }
 }
 
-impl FromStr for UpstreamRule {
+impl FromStr for TrafficMatchRule {
     type Err = anyhow::Error;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
@@ -94,7 +94,7 @@ impl FromStr for UpstreamRule {
     }
 }
 
-impl Display for UpstreamRule {
+impl Display for TrafficMatchRule {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         match self {
             Self::GeoIP(c) => f.write_fmt(format_args!("geoip:{c}")),
@@ -106,32 +106,21 @@ impl Display for UpstreamRule {
     }
 }
 
-impl UpstreamRule {
-    pub fn matches(
+impl TrafficMatchRule {
+    pub fn calc_match_score(
         &self,
         country_code: Option<CountryCode>,
         ip: Option<IpAddr>,
         addr: &Address,
-    ) -> bool {
+    ) -> usize {
         match (self, country_code, ip, addr) {
-            (Self::GeoIP(cc), Some(c), _, _) => cc == &c,
-            (Self::Network(network), _, Some(ip), _) => network.contains(ip),
-            (Self::GfwList, _, _, Address::Name { .. }) => matches_gfw_list(addr),
-            (Self::AdBlockList, _, _, _) => matches_adblock_list(addr),
-            (Self::Domain(p), _, _, Address::Name { host, .. }) => p.matches(host.as_str()),
-            _ => false,
+            (Self::GeoIP(cc), Some(c), _, _) if cc == &c => 10,
+            (Self::Network(network), _, Some(ip), _) if network.contains(ip) => 20,
+            (Self::GfwList, _, _, Address::Name { .. }) if matches_gfw_list(addr) => 15,
+            (Self::AdBlockList, _, _, _) if matches_adblock_list(addr) => 20,
+            (Self::Domain(p), _, _, Address::Name { host, .. }) if p.matches(host.as_str()) => 20,
+            _ => 0,
         }
-    }
-
-    fn matches_any<'a>(
-        mut rules: impl Iterator<Item = &'a UpstreamRule>,
-        country_code: Option<CountryCode>,
-        ip: Option<IpAddr>,
-        addr: &Address,
-    ) -> bool {
-        rules
-            .find(|r| r.matches(country_code.clone(), ip.clone(), addr))
-            .is_some()
     }
 }
 
@@ -143,9 +132,9 @@ const fn default_upstream_enabled() -> bool {
 pub struct UpstreamConfig {
     pub address: Address,
     #[serde(default)]
-    pub accept: Vec<UpstreamRule>,
+    pub accept: Vec<TrafficMatchRule>,
     #[serde(default)]
-    pub reject: Vec<UpstreamRule>,
+    pub reject: Vec<TrafficMatchRule>,
     #[serde(default)]
     pub priority: u16,
     #[serde(default = "default_upstream_enabled")]
@@ -165,17 +154,25 @@ impl UpstreamConfig {
 
         let mut score = 5;
         if !self.accept.is_empty() {
-            if UpstreamRule::matches_any(self.accept.iter(), country_code, ip, target) {
-                score += 5;
-            } else {
+            score = self.accept.iter().fold(0usize, |acc, item| {
+                usize::max(item.calc_match_score(country_code, ip, &target), acc)
+            });
+
+            if score == 0 {
+                // No match for accept rules
                 return 0;
             }
         }
 
-        if !self.reject.is_empty()
-            && UpstreamRule::matches_any(self.reject.iter(), country_code, ip, target)
-        {
-            return 0;
+        if !self.reject.is_empty() {
+            let has_reject_rule = self
+                .reject
+                .iter()
+                .find(|r| r.calc_match_score(country_code, ip, &target) > 0)
+                .is_some();
+            if has_reject_rule {
+                return 0;
+            }
         }
 
         score += (u16::MAX - self.priority) as usize;
@@ -196,6 +193,12 @@ pub struct ClientConfig {
     #[serde(default)]
     pub upstreams: HashMap<String, UpstreamConfig>,
 
+    #[serde(default)]
+    pub direct_accept: Vec<TrafficMatchRule>,
+
+    #[serde(default)]
+    pub direct_reject: Vec<TrafficMatchRule>,
+
     #[serde(default = "default_socks5_address")]
     pub socks5_address: Address,
 
@@ -209,6 +212,8 @@ impl Default for ClientConfig {
             upstreams: Default::default(),
             socks5_address: default_socks5_address(),
             socks5_udp_host: default_socks5_udp_host(),
+            direct_accept: Default::default(),
+            direct_reject: Default::default(),
         }
     }
 }
@@ -252,5 +257,36 @@ impl ClientConfig {
 
         upstreams.sort_by_key(|(_, _, score)| *score);
         upstreams.into_iter().map(|(n, c, _)| (n, c)).collect()
+    }
+
+    pub fn allow_direct(&self, target: &Address) -> bool {
+        let (ip, country_code) = match target {
+            Address::IP(addr) => (Some(addr.ip()), find_geoip(&addr.ip())),
+            _ => (None, None),
+        };
+
+        if !self.direct_accept.is_empty() {
+            if self
+                .direct_accept
+                .iter()
+                .find(|r| r.calc_match_score(country_code, ip, target) > 0)
+                .is_none()
+            {
+                return false;
+            }
+        }
+
+        if !self.direct_reject.is_empty() {
+            if self
+                .direct_reject
+                .iter()
+                .find(|r| r.calc_match_score(country_code, ip, target) > 0)
+                .is_some()
+            {
+                return false;
+            }
+        }
+
+        true
     }
 }
