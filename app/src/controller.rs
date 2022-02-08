@@ -163,6 +163,17 @@ impl Controller {
         Ok(())
     }
 
+    async fn set_basic_config(&mut self, mut c: ClientConfig) -> HttpResult<()> {
+        let (ClientConfig { upstreams, .. }, new_stats) = (
+            self.current.0.as_ref().clone(),
+            self.current.1.as_ref().clone(),
+        );
+
+        c.upstreams = upstreams;
+
+        self.set_current_config(c, new_stats).await
+    }
+
     async fn update_upstreams(&mut self, updates: Vec<UpstreamUpdate>) -> HttpResult<()> {
         let (mut new_config, mut new_stats) = (
             self.current.0.as_ref().clone(),
@@ -224,6 +235,13 @@ impl Controller {
                 ("get", p, _) if p.starts_with("/api/config") => {
                     self.get_config().map(|r| Response::Json(Box::new(r)))
                 }
+                ("post", p, true) if p.starts_with("/api/config") => match parse_json(&body) {
+                    Ok(body) => self
+                        .set_basic_config(body)
+                        .await
+                        .map(|r| Response::Json(Box::new(r))),
+                    Err(e) => Err(e),
+                },
                 ("get", p, _) if p.starts_with("/api/stats") => {
                     self.get_stats().map(|r| Response::Json(Box::new(r)))
                 }

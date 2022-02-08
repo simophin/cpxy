@@ -352,6 +352,7 @@ dependencies = [
  "mime_guess",
  "pin-project-lite 0.2.8",
  "rand",
+ "regex",
  "rust-embed",
  "serde",
  "serde_json",

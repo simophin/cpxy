@@ -5,6 +5,7 @@ mod cipher;
 mod client;
 mod handshake;
 mod parse;
+mod pattern;
 mod proxy;
 pub mod server;
 pub mod socks5;

@@ -12,12 +12,14 @@ use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use crate::abp::{matches_adblock_list, matches_gfw_list};
 use crate::client::ClientStatistics;
 use crate::geoip::{find_geoip, CountryCode};
+use crate::pattern::Pattern;
 use crate::socks5::Address;
 
-#[derive(Debug, Eq, PartialEq, Clone)]
+#[derive(Debug, Clone)]
 pub enum UpstreamRule {
     GeoIP(CountryCode),
     Network(IpNetwork),
+    Domain(Pattern),
     GfwList,
     AdBlockList,
 }
@@ -81,6 +83,11 @@ impl FromStr for UpstreamRule {
             Ok(Self::GfwList)
         } else if t.eq_ignore_ascii_case("adblock") {
             Ok(Self::AdBlockList)
+        } else if t.eq_ignore_ascii_case("domain") {
+            Ok(Self::Domain(
+                v.and_then(|d| d.parse().ok())
+                    .ok_or_else(|| anyhow!("Invalid domain pattern"))?,
+            ))
         } else {
             Err(anyhow::anyhow!("Invalid rule: {s}"))
         }
@@ -92,6 +99,7 @@ impl Display for UpstreamRule {
         match self {
             Self::GeoIP(c) => f.write_fmt(format_args!("geoip:{c}")),
             Self::Network(n) => f.write_fmt(format_args!("network:{n}")),
+            Self::Domain(p) => f.write_fmt(format_args!("domain:{p}")),
             Self::GfwList => f.write_str("gfwlist"),
             Self::AdBlockList => f.write_str("adblocklist"),
         }
@@ -110,6 +118,7 @@ impl UpstreamRule {
             (Self::Network(network), _, Some(ip), _) => network.contains(ip),
             (Self::GfwList, _, _, Address::Name { .. }) => matches_gfw_list(addr),
             (Self::AdBlockList, _, _, _) => matches_adblock_list(addr),
+            (Self::Domain(p), _, _, Address::Name { host, .. }) => p.matches(host.as_str()),
             _ => false,
         }
     }
@@ -130,7 +139,7 @@ const fn default_upstream_enabled() -> bool {
     true
 }
 
-#[derive(Debug, Serialize, Deserialize, PartialEq, Eq, Clone)]
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct UpstreamConfig {
     pub address: Address,
     #[serde(default)]
@@ -182,8 +191,9 @@ fn default_socks5_address() -> Address {
     "127.0.0.1:5000".parse().unwrap()
 }
 
-#[derive(Debug, Serialize, Deserialize, PartialEq, Eq, Clone)]
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct ClientConfig {
+    #[serde(default)]
     pub upstreams: HashMap<String, UpstreamConfig>,
 
     #[serde(default = "default_socks5_address")]

@@ -7,6 +7,7 @@ import { Add, ArrowDownward, ArrowUpward } from "@mui/icons-material";
 import UpstreamEdit from "./UpstreamEdit";
 import useSnackbar from "./useSnackbar";
 import useHttp from "./useHttp";
+import BasicSettingsEdit from "./BasicSettingsEdit";
 
 const ONE_KB = 1024;
 const ONE_MB = ONE_KB * 1024;
@@ -31,9 +32,7 @@ function formatBytes(v: number) {
 
 function formatStatistics({ tx, rx, last_latency }: UpstreamStatistics) {
     return <>
-        {last_latency > 0 && <Chip style={{ marginRight: 4 }}
-            color='primary' label={`${last_latency}ms`} size='small' />}
-        <Chip icon={<ArrowUpward />} style={{ marginRight: 4 }}
+        <Chip icon={<ArrowUpward />} style={{ margin: 8 }}
             color='info' label={formatBytes(tx)} size='small' />
         <Chip icon={<ArrowDownward />}
             color='success' label={formatBytes(rx)} size='small' />
@@ -49,7 +48,7 @@ type EditState<T> = {
     state: 'idle'
 };
 
-export default function UpstreamList() {
+export default function UpstreamList({ showSettings, onSettingsClosed }: { showSettings: boolean, onSettingsClosed: () => unknown }) {
     const configRequest = useHttp<ClientConfig>(`${BASE_URL}/api/config`);
     const statsRequest = useHttp<ClientStatistics>(`${BASE_URL}/api/stats`);
     const upstreamRequest = useHttp(`${BASE_URL}/api/upstream`, { headers: { 'content-type': 'application/json' } });
@@ -107,12 +106,7 @@ export default function UpstreamList() {
             .map(({ value, name }) => {
                 const stats = statsData?.upstreams?.[name];
                 return <ListItem
-                    key={name}
-                    secondaryAction={
-                        <>
-                            {stats && formatStatistics(stats)}
-                        </>
-                    }>
+                    key={name}>
                     <ListItemIcon>
                         <Switch checked={value.enabled}
                             onChange={() => toggleUpstream(name, value)} />
@@ -120,7 +114,10 @@ export default function UpstreamList() {
                     <ListItemText
                         role='link'
                         onClick={() => setEditing({ state: 'editing', value: name })}
-                        primary={name} secondary={value.address} />
+                        primary={
+                            <>{name}{stats && formatStatistics(stats)}</>
+                        }
+                        secondary={value.address} />
 
                 </ListItem >;
             });
@@ -170,5 +167,15 @@ export default function UpstreamList() {
         }
 
         {snackbar}
+
+        {showSettings && configData && <BasicSettingsEdit
+            current_config={configData}
+            onCancelled={onSettingsClosed}
+            onSaved={() => {
+                showSnackbar('Settings saved');
+                configRequest.execute('get');
+                onSettingsClosed();
+            }}
+        />}
     </>;
 }

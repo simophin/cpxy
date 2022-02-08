@@ -4,6 +4,7 @@ import { BASE_URL } from "./config";
 import { ClientConfig, UpstreamUpdate } from "./models"
 import _ from 'lodash';
 import useHttp from "./useHttp";
+import { FindError, mandatory, useEditState, validAddress } from "./useEditState";
 
 type Props = {
     editing: string | undefined,
@@ -12,47 +13,6 @@ type Props = {
     onCancelled: () => unknown,
 }
 
-type FindError = (value: string) => string | undefined;
-
-function mandatory(fieldName: string, next?: FindError): FindError {
-    return (value: string) => {
-        const new_value = value.trim();
-        if (new_value.length === 0) {
-            return `${fieldName} can not be empty`;
-        }
-
-        if (next) {
-            return next(new_value);
-        }
-    }
-}
-
-function useEditState<T = string>(initial: string, findError?: FindError, transform?: (value: string) => T) {
-    const [text, setText] = useState(initial);
-    const [error, setError] = useState<string>();
-    useEffect(() => {
-        if (text.length > 0) setError(undefined)
-    }, [text]);
-
-    return {
-        value: text,
-        setValue: setText,
-        error,
-        validate: (): T => {
-            const newError = findError ? findError(text) : undefined;
-            setError(newError);
-            if (newError) {
-                throw newError;
-            }
-            try {
-                return transform ? transform(text.trim()) : (text.trim() as unknown as T);
-            } catch (e: any) {
-                setError(e?.message ?? 'Invalid value');
-                throw e;
-            }
-        }
-    }
-}
 
 function uniqueUpstreamName(editing: string | undefined, config: ClientConfig): FindError {
     return (value: string) => {
@@ -65,6 +25,7 @@ function uniqueUpstreamName(editing: string | undefined, config: ClientConfig): 
 const GEOIP_PAT = /^geoip:[a-z]{2}$/i;
 const GFWLIST_PAT = /^gfwlist$/i;
 const NETWORK_PAT = /^network:.+?$/i;
+const DOMAIN_PAT = /^domain:.+?$/i;
 
 const transformRule = (value: string): string[] => {
     const separator = value.indexOf("\r\n") >= 0 ? "\r\n" : "\n";
@@ -73,7 +34,7 @@ const transformRule = (value: string): string[] => {
         if (trimmed.length === 0) {
             return undefined;
         }
-        if (trimmed.match(GEOIP_PAT) || trimmed.match(GFWLIST_PAT) || trimmed.match(NETWORK_PAT)) {
+        if (trimmed.match(GEOIP_PAT) || trimmed.match(GFWLIST_PAT) || trimmed.match(NETWORK_PAT) || trimmed.match(DOMAIN_PAT)) {
             return trimmed;
         } else {
             throw new Error(`Rule ${trimmed} is invalid`);
@@ -85,7 +46,7 @@ const transformRule = (value: string): string[] => {
 export default function UpstreamEdit({ onChanged, onCancelled, editing, current_config }: Props) {
     const existing = editing ? current_config.upstreams[editing] : undefined;
     const name = useEditState(editing ?? '', mandatory('Name', uniqueUpstreamName(editing, current_config)));
-    const address = useEditState(existing?.address ?? '', mandatory('Address'));
+    const address = useEditState(existing?.address ?? '', mandatory('Address', validAddress));
     const accept = useEditState(existing?.accept?.join('\n') ?? '', undefined, transformRule);
     const reject = useEditState(existing?.reject?.join('\n') ?? '', undefined, transformRule);
     const priority = useEditState(existing?.priority?.toString() ?? '0', mandatory('Priority'));

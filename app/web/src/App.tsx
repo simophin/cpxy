@@ -1,18 +1,24 @@
-import { AppBar, Toolbar, Typography } from '@mui/material';
+import { AppBar, Button, Toolbar, Typography } from '@mui/material';
 import { Box } from '@mui/system';
+import { useState } from 'react';
 import './App.css';
+import BasicSettingsEdit from './BasicSettingsEdit';
 import UpstreamList from './UpstreamList';
 
 function App() {
+  const [showSettings, setShowSettings] = useState(false);
+
   return (
     <Box sx={{ flexGrow: 1 }}>
       <AppBar position='static'>
         <Toolbar>
-          <Typography variant='h6'>Proxy admin</Typography>
+          <Typography variant='h6' sx={{ flexGrow: 1 }}>Proxy admin</Typography>
+          <Button color="inherit" onClick={() => setShowSettings(true)}>Settings</Button>
         </Toolbar>
       </AppBar>
 
-      <UpstreamList />
+      <UpstreamList showSettings={showSettings} onSettingsClosed={() => setShowSettings(false)} />
+
     </Box >
   );
 }
