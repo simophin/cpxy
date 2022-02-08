@@ -1,6 +1,5 @@
 import { Button, Dialog, DialogActions, DialogContent, DialogTitle, Stack, TextField } from "@mui/material"
 import { useEffect, useState } from "react";
-import useFetch from "use-http";
 import { BASE_URL } from "./config";
 import { ClientConfig, UpstreamUpdate } from "./models"
 import _ from 'lodash';

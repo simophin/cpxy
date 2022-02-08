@@ -41,6 +41,12 @@ jobs:
         path: target
         # An explicit key for restoring and saving the cache
         key: ${{ runner.os }}-${{ hashFiles('**/Cargo.lock') }}
+    - uses: actions/setup-node@v2
+      with:
+        node-version: '14'
+    - name: Build web app
+      working-directory: app/web
+      run: yarn build
     - name: rust-toolchain
       uses: actions-rs/toolchain@v1
       with:
@@ -124,16 +130,22 @@ jobs:
         uses: actions-rs/toolchain@v1
         with:
           toolchain: stable
+      - uses: actions/setup-node@v2
+        with:
+          node-version: '14'
+      - name: Build web app
+        working-directory: app/web
+        run: yarn build
       - name: Build native libs
         run: ./build_android_libs.sh
       - name: Build with Gradle
-        working-directory: ./android
+        working-directory: app/android
         run: ./gradlew app:assembleDebug
       - name: Upload Artifact
         uses: actions/upload-artifact@v2
         with:
           name: android_artifact
-          path: android/app/build/outputs/apk/debug/app-debug.apk
+          path: app/android/app/build/outputs/apk/debug/app-debug.apk
   release:
     runs-on: self-hosted
     if: startsWith(github.ref, 'refs/tags/')

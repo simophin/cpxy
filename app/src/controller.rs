@@ -89,7 +89,7 @@ async fn parse_request(
 }
 
 #[derive(RustEmbed)]
-#[folder = "$OUT_DIR/webapp"]
+#[folder = "web/build"]
 struct Asset;
 
 enum Response {
