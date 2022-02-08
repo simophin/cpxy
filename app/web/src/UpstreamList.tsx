@@ -8,10 +8,6 @@ import UpstreamEdit from "./UpstreamEdit";
 import useSnackbar from "./useSnackbar";
 import useHttp from "./useHttp";
 
-type Props = {
-    reloadList?: any,
-}
-
 const ONE_KB = 1024;
 const ONE_MB = ONE_KB * 1024;
 const ONE_GB = ONE_MB * 1024;
@@ -53,7 +49,7 @@ type EditState<T> = {
     state: 'idle'
 };
 
-export default function UpstreamList({ }: Props) {
+export default function UpstreamList() {
     const configRequest = useHttp<ClientConfig>(`${BASE_URL}/api/config`);
     const statsRequest = useHttp<ClientStatistics>(`${BASE_URL}/api/stats`);
     const upstreamRequest = useHttp(`${BASE_URL}/api/upstream`, { headers: { 'content-type': 'application/json' } });
