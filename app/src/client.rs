@@ -136,7 +136,7 @@ async fn prepare_direct_tcp(
     let (dst, init_req) = match req {
         ProxyRequest::TCP { dst } => (dst, Bytes::new()),
         ProxyRequest::Http { dst, request } => (dst, request.clone()),
-        ProxyRequest::UDP => unreachable!("Unexpected request type for direct tcp: {req:}"),
+        ProxyRequest::UDP => unreachable!("Unexpected request type for direct tcp: {req:?}"),
     };
 
     let mut stream = TcpStream::connect(&dst).await?;
