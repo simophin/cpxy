@@ -1,10 +1,8 @@
 package dev.fanchao.cjkproxy.ui
 
 import android.content.Intent
-import android.net.Uri
 import android.os.Bundle
 import androidx.appcompat.app.AppCompatActivity
-import androidx.browser.customtabs.CustomTabsIntent
 import dev.fanchao.cjkproxy.Service
 import dev.fanchao.cjkproxy.databinding.ActivityMainBinding
 import io.reactivex.rxjava3.disposables.Disposable
@@ -34,8 +32,9 @@ class MainActivity : AppCompatActivity() {
         admin.isEnabled = Service.runningPort != null
         Service.runningPort?.let { port ->
             admin.setOnClickListener {
-                CustomTabsIntent.Builder().build()
-                    .launchUrl(this@MainActivity, Uri.parse("http://localhost:$port"))
+                startActivity(Intent(this@MainActivity, AdminActivity::class.java)
+                        .putExtra("port", port)
+                )
             }
         }
     }
