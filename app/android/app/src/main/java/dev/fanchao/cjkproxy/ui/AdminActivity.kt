@@ -41,4 +41,10 @@ class AdminActivity : AppCompatActivity() {
 
         webView.onResume()
     }
+
+    override fun onDestroy() {
+        super.onDestroy()
+
+        webView.destroy()
+    }
 }
