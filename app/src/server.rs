@@ -28,7 +28,7 @@ pub async fn run_server(listener: TcpListener) -> anyhow::Result<()> {
         log::info!("Accepted client {addr}");
         spawn(async move {
             if let Err(e) = serve_client(TcpStream::from(stream)).await {
-                log::error!("Error serving client {addr}: {e}");
+                log::error!("Error serving client {addr}: {e:?}");
             }
             log::info!("Client {addr} disconnected");
         })

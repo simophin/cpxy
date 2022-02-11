@@ -92,7 +92,10 @@ pub async fn connect<T: AsyncRead + AsyncWrite + Unpin>(
     // Send initial data encrypted
     if initial_data.len() > 0 {
         wr_cipher.apply_keystream(initial_data.as_mut_slice());
-        stream.write_all(initial_data.as_slice()).await?;
+        stream
+            .write_all(initial_data.as_slice())
+            .await
+            .context("Write initial data")?;
         initial_data.clear();
     }
 
@@ -107,7 +110,10 @@ pub async fn connect<T: AsyncRead + AsyncWrite + Unpin>(
 
         let mut headers = [httparse::EMPTY_HEADER; 20];
         let mut res = httparse::Response::new(&mut headers);
-        match res.parse(buf.read_buf()).context("Parse upstream response")? {
+        match res
+            .parse(buf.read_buf())
+            .context("Parse upstream response")?
+        {
             httparse::Status::Complete(offset) => {
                 if let Err(e) = check_server_response(res) {
                     debug_http_error(stream, buf).await;

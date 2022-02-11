@@ -3,12 +3,16 @@ extern crate core;
 mod broadcast;
 mod cipher;
 mod client;
+mod fetch;
 mod handshake;
+mod http;
 mod parse;
 mod pattern;
 mod proxy;
 pub mod server;
 pub mod socks5;
+mod stream;
+mod tls;
 mod utils;
 
 mod counter;

@@ -111,7 +111,7 @@ pub async fn run_client(
                     select! {
                         result = serve_proxy_client(sock.is_v4(), sock, config, stats).fuse() => {
                             if let Err(e) = result {
-                                log::error!("Error serving client {addr}: {e}");
+                                log::error!("Error serving client {addr}: {e:?}");
                             }
                         },
                         _ = shutdown_rx.recv().fuse() => {

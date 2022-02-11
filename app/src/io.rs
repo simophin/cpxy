@@ -79,6 +79,10 @@ impl Drop for UdpSocket {
 pub struct TcpStream(AsyncTcpStream);
 
 impl TcpStream {
+    pub async fn connect_raw(a: impl smol::net::AsyncToSocketAddrs) -> smol::io::Result<Self> {
+        Ok(Self::from(AsyncTcpStream::connect(a).await?))
+    }
+
     pub async fn connect(a: &Address) -> smol::io::Result<Self> {
         match a {
             Address::IP(addr) => Ok(TcpStream::from(AsyncTcpStream::connect(addr).await?)),

@@ -89,11 +89,11 @@ impl RWBuffer<Vec<u8>> {
     }
 }
 
-impl<T: AsRef<[u8]>> RWBuffer<T> {
-    pub fn capacity(&self) -> usize {
-        self.buf.as_ref().len()
-    }
-}
+// impl<T: AsRef<[u8]>> RWBuffer<T> {
+//     pub fn capacity(&self) -> usize {
+//         self.buf.as_ref().len()
+//     }
+// }
 
 impl<T> RWBuffer<T> {
     pub fn remaining_read(&self) -> usize {

@@ -15,7 +15,7 @@ export default function useHttp<T = any>(
 
     return {
         data, error, loading,
-        execute: async (method?: Method, body?: any) => {
+        execute: async (method?: Method, body?: any): Promise<T> => {
             setLoading(false);
             setError(undefined);
             const timeout = options?.timeoutMills ?? 2000;
@@ -31,13 +31,16 @@ export default function useHttp<T = any>(
 
                 if (res.status >= 200 && res.status < 300) {
                     const contentType = res.headers.get('content-type')?.toLowerCase() ?? '';
+                    let data;
                     if (contentType.startsWith('application/json')) {
-                        setData(await res.json());
+                        data = await res.json();
                     } else if (contentType.startsWith("text/")) {
-                        setData(await res.text() as unknown as T);
+                        data = await res.text() as unknown as T;
                     } else {
-                        setData(res as unknown as T);
+                        data = res as unknown as T;
                     }
+                    setData(data);
+                    return data;
                 } else {
                     throw new Error(await res.text());
                 }

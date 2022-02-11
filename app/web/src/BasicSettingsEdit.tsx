@@ -4,6 +4,7 @@ import { ClientConfig } from "./models";
 import { transformRule } from "./trafficRules";
 import { mandatory, useEditState, validAddress } from "./useEditState";
 import useHttp from "./useHttp";
+import useSnackbar from "./useSnackbar";
 
 type Props = {
     current_config: ClientConfig,
@@ -11,12 +12,37 @@ type Props = {
     onCancelled: () => unknown
 };
 
+type RuleUpdateResult = {
+    num_updated: number,
+}
+
 export default function BasicSettingsEdit({ onSaved, onCancelled, current_config }: Props) {
     const address = useEditState(current_config.socks5_address ?? '', mandatory('Address', validAddress))
     const udpHost = useEditState(current_config.socks5_udp_host ?? '', mandatory('UDP host'));
     const accept = useEditState(current_config.direct_accept?.join('\n') ?? '', undefined, transformRule);
     const reject = useEditState(current_config.direct_reject?.join('\n') ?? '', undefined, transformRule);
     const request = useHttp(`${BASE_URL}/api/config`, { headers: { "Content-Type": "application/json" } });
+    const [snackbar, showSnackbar] = useSnackbar();
+    const updateGfw = useHttp<RuleUpdateResult>(`${BASE_URL}/api/gfwlist`, { timeoutMills: 40000 });
+    const updateAbp = useHttp<RuleUpdateResult>(`${BASE_URL}/api/abplist`, { timeoutMills: 40000 });
+
+    const handleUpdateGfw = async () => {
+        try {
+            const { num_updated } = await updateGfw.execute('post');
+            showSnackbar(`Updated ${num_updated} items`)
+        } catch (e: any) {
+            showSnackbar(`Error updating GFW List: ${e.message}`)
+        }
+    };
+
+    const handleUpdateAbp = async () => {
+        try {
+            const { num_updated } = await updateAbp.execute('post');
+            showSnackbar(`Updated ${num_updated} items`)
+        } catch (e: any) {
+            showSnackbar(`Error updating GFW List: ${e.message}`)
+        }
+    };
 
     const handleSave = async () => {
         try {
@@ -74,11 +100,23 @@ export default function BasicSettingsEdit({ onSaved, onCancelled, current_config
                     fullWidth
                     onChange={(e) => udpHost.setValue(e.target.value)}
                     variant='outlined' />
+                <div>
+                    <Button onClick={handleUpdateGfw}
+                        variant='contained'
+                        disabled={updateGfw.loading}>Update GFW List</Button>
+                    &nbsp;
+                    <Button onClick={handleUpdateAbp}
+                        variant='contained'
+                        disabled={updateAbp.loading}>Update ABP List</Button>
+                </div>
+
             </Stack>
         </DialogContent>
         <DialogActions>
             <Button onClick={onCancelled} disabled={request.loading}>Cancel</Button>
+
             <Button onClick={handleSave} variant='contained' disabled={request.loading}>Save</Button>
         </DialogActions>
+        {snackbar}
     </Dialog>;
 }

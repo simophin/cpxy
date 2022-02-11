@@ -1,91 +1,64 @@
+use crate::abp::{update_abp_list, update_gfw_list};
 use crate::broadcast::bounded;
 use crate::client::{run_client, ClientStatistics};
 use crate::config::{ClientConfig, UpstreamConfig};
+use crate::http::HttpRequest;
 use crate::io::TcpListener;
 use crate::utils::{write_http_response, JsonSerializable, RWBuffer};
-use anyhow::{anyhow, Context};
+use anyhow::{bail, Context};
 use async_broadcast::Sender;
+use futures_lite::io::split;
 use futures_lite::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
 use rust_embed::RustEmbed;
 use serde::de::DeserializeOwned;
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use smol::fs::File;
 use smol::spawn;
 use std::path::PathBuf;
 use std::sync::Arc;
 
-fn parse_json<T: DeserializeOwned>(s: &RWBuffer) -> Result<T, ErrorResponse> {
-    serde_json::from_slice(s.read_buf()).map_err(|e| ErrorResponse::Generic(e.into()))
+fn parse_json<T: DeserializeOwned>(s: &impl AsRef<[u8]>) -> Result<T, ErrorResponse> {
+    serde_json::from_slice(s.as_ref()).map_err(|e| ErrorResponse::Generic(e.into()))
 }
 
 struct HttpParseResult {
     method: String,
     path: String,
     is_json: bool,
-    body: RWBuffer,
+    body: Vec<u8>,
 }
 
 async fn parse_request(
-    input: &mut (impl AsyncRead + Unpin + Send + Sync),
+    input: impl AsyncRead + Unpin + Send + Sync,
 ) -> anyhow::Result<HttpParseResult> {
-    let mut buf = RWBuffer::with_capacity(65536);
-    loop {
-        match input.read(buf.write_buf()).await? {
-            0 => return Err(anyhow!("Unexpected EOF")),
-            v => buf.advance_write(v),
-        };
+    let mut req = super::http::parse_request(input, RWBuffer::with_capacity(65536)).await?;
+    let is_json = match req.get_content_type() {
+        Some(value) if value.starts_with("application/json") => true,
+        _ => false,
+    };
 
-        let mut headers = [httparse::EMPTY_HEADER; 20];
-        let mut req = httparse::Request::new(&mut headers);
-        match req.parse(buf.read_buf())? {
-            httparse::Status::Complete(offset) => {
-                let method = req.method.unwrap_or("").to_ascii_lowercase();
-                let path = req.path.unwrap_or("").to_ascii_lowercase();
+    let content_length = req.get_content_length().unwrap_or_default();
 
-                let content_length = req
-                    .headers
-                    .iter()
-                    .find(|h| h.name.eq_ignore_ascii_case("content-length"))
-                    .and_then(|h| String::from_utf8_lossy(h.value).parse().ok())
-                    .unwrap_or(0usize);
-
-                let content_type = req
-                    .headers
-                    .iter()
-                    .find(|h| h.name.eq_ignore_ascii_case("content-type"))
-                    .map(|h| String::from_utf8_lossy(h.value).to_ascii_lowercase());
-
-                let is_json = match content_type {
-                    Some(c) if c.starts_with("application/json") => true,
-                    _ => false,
-                };
-
-                drop(req);
-                drop(headers);
-
-                buf.advance_read(offset);
-                buf.compact();
-
-                if buf.capacity() < content_length {
-                    return Err(anyhow!("Payload too big"));
-                }
-
-                if content_length > buf.remaining_read() {
-                    let to_read = content_length - buf.remaining_read();
-                    input.read_exact(&mut buf.write_buf()[..to_read]).await?;
-                    buf.advance_write(to_read);
-                }
-
-                return Ok(HttpParseResult {
-                    path,
-                    method,
-                    is_json,
-                    body: buf,
-                });
-            }
-            httparse::Status::Partial => {}
-        }
+    if content_length > 65536 {
+        bail!("Payload is too big");
     }
+
+    let body = if content_length > 0 {
+        let mut buf = Vec::with_capacity(content_length);
+        req.read_exact(&mut buf).await?;
+        buf
+    } else {
+        Vec::new()
+    };
+
+    let HttpRequest { method, path, .. } = req.into_init();
+
+    Ok(HttpParseResult {
+        method,
+        path,
+        is_json,
+        body,
+    })
 }
 
 #[derive(RustEmbed)]
@@ -114,6 +87,11 @@ impl From<anyhow::Error> for ErrorResponse {
 }
 
 type HttpResult<T> = Result<T, ErrorResponse>;
+
+#[derive(Serialize)]
+struct RuleUpdateResult {
+    num_updated: usize,
+}
 
 struct Controller {
     current: (Arc<ClientConfig>, Arc<ClientStatistics>),
@@ -222,9 +200,10 @@ impl Controller {
 
     async fn handle_client(
         &mut self,
-        mut sock: impl AsyncRead + AsyncWrite + Unpin + Send + Sync,
+        sock: impl AsyncRead + AsyncWrite + Unpin + Send + Sync,
     ) -> anyhow::Result<()> {
-        let result = match parse_request(&mut sock).await {
+        let (r, mut w) = split(sock);
+        let result = match parse_request(r).await {
             Ok(HttpParseResult {
                 method,
                 path,
@@ -259,6 +238,18 @@ impl Controller {
                         _ => Err(ErrorResponse::NotFound(original_p.to_string())),
                     }
                 }
+                ("post", p, _) if p.starts_with("/api/gfwlist") => {
+                    update_gfw_list(&self.current.0.socks5_address)
+                        .await
+                        .map(|num| Response::Json(Box::new(RuleUpdateResult { num_updated: num })))
+                        .map_err(|e| ErrorResponse::Generic(e))
+                }
+                ("post", p, _) if p.starts_with("/api/abplist") => {
+                    update_abp_list(&self.current.0.socks5_address)
+                        .await
+                        .map(|num| Response::Json(Box::new(RuleUpdateResult { num_updated: num })))
+                        .map_err(|e| ErrorResponse::Generic(e))
+                }
                 ("post", p, true) if p.starts_with("/api/upstream") => match parse_json(&body) {
                     Ok(body) => self
                         .update_upstreams(body)
@@ -279,12 +270,10 @@ impl Controller {
         };
 
         match result {
-            Ok(Response::Empty) => {
-                write_http_response(&mut sock, 201, Some("OK"), None, &[]).await?
-            }
+            Ok(Response::Empty) => write_http_response(&mut w, 201, Some("OK"), None, &[]).await?,
             Ok(Response::Json(buf)) => {
                 write_http_response(
-                    &mut sock,
+                    &mut w,
                     200,
                     Some("OK"),
                     Some("application/json"),
@@ -295,7 +284,7 @@ impl Controller {
             Ok(Response::EmbedFile { path, file }) => {
                 let mime = mime_guess::from_path(path);
                 write_http_response(
-                    &mut sock,
+                    &mut w,
                     200,
                     Some("OK"),
                     mime.first_raw(),
@@ -309,8 +298,7 @@ impl Controller {
                     ErrorResponse::InvalidRequest(e) => (400, e.to_string()),
                     ErrorResponse::NotFound(s) => (404, format!("Resource {s} not found")),
                 };
-                write_http_response(&mut sock, code, None, Some("text/plain"), msg.as_bytes())
-                    .await?
+                write_http_response(&mut w, code, None, Some("text/plain"), msg.as_bytes()).await?
             }
         };
         Ok(())
@@ -350,7 +338,7 @@ pub async fn run_controller(
         match controller.handle_client(socket).await {
             Ok(_) => {}
             Err(e) => {
-                log::error!("Error serving client {addr}: {e}");
+                log::error!("Error serving client {addr}: {e:?}");
             }
         }
         log::info!("Client {addr} disconnected");

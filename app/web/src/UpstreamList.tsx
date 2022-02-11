@@ -66,13 +66,13 @@ export default function UpstreamList({ showSettings, onSettingsClosed }: { showS
     }, []);
 
     // Repeat stats query
-    useEffect(() => {
-        const handle = setTimeout(() => {
-            statsRequest.execute();
-        }, 1000);
+    // useEffect(() => {
+    //     const handle = setTimeout(() => {
+    //         statsRequest.execute();
+    //     }, 1000);
 
-        return () => clearTimeout(handle);
-    }, [statsData, statsError]);
+    //     return () => clearTimeout(handle);
+    // }, [statsData, statsError]);
 
     // Repeat error config
     useEffect(() => {
