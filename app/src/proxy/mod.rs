@@ -9,6 +9,7 @@ use protocol::{ProxyRequest, ProxyResult};
 use smol_timeout::TimeoutExt;
 use std::time::{Duration, Instant};
 
+pub mod dns;
 pub mod protocol;
 pub mod tcp;
 pub mod udp;

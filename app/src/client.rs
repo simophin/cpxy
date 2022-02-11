@@ -1,4 +1,4 @@
-use anyhow::Context;
+use anyhow::{bail, Context};
 use bytes::Bytes;
 use futures_util::{select, FutureExt};
 use std::collections::HashMap;
@@ -136,7 +136,9 @@ async fn prepare_direct_tcp(
     let (dst, init_req) = match req {
         ProxyRequest::TCP { dst } => (dst, Bytes::new()),
         ProxyRequest::Http { dst, request } => (dst, request.clone()),
-        ProxyRequest::UDP => unreachable!("Unexpected request type for direct tcp: {req:?}"),
+        ProxyRequest::UDP | ProxyRequest::DNS { .. } => {
+            unreachable!("Unexpected request type for direct tcp: {req:?}")
+        }
     };
 
     let mut stream = TcpStream::connect(&dst).await?;
@@ -236,5 +238,9 @@ async fn serve_proxy_client(
                 Err(e.into())
             }
         },
+        ProxyRequest::DNS { .. } => {
+            handshaker.respond_err(&mut socks).await?;
+            bail!("Unsupported DNS request")
+        }
     }
 }
