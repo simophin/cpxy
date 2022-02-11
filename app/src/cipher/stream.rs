@@ -7,9 +7,11 @@ use std::pin::Pin;
 use std::task::{Context, Poll};
 
 pin_project! {
-    pub struct CipherStream<T> {
+    pub struct CipherStream<R, W> {
         #[pin]
-        pub(super) inner: T,
+        pub(super) r: R,
+        #[pin]
+        pub(super) w: W,
         pub(super) name: String,
         pub(super) rd_cipher: Option<BoxedStreamCipher>,
         pub(super) wr_cipher: Option<BoxedStreamCipher>,
@@ -18,15 +20,17 @@ pin_project! {
     }
 }
 
-impl<T> CipherStream<T> {
+impl<R, W> CipherStream<R, W> {
     pub fn new(
         name: String,
-        inner: T,
+        r: R,
+        w: W,
         rd_cipher: BoxedStreamCipher,
         wr_cipher: BoxedStreamCipher,
     ) -> Self {
         Self {
-            inner,
+            r,
+            w,
             rd_cipher: Some(rd_cipher),
             wr_cipher: Some(wr_cipher),
             name,
@@ -36,14 +40,14 @@ impl<T> CipherStream<T> {
     }
 }
 
-impl<T: AsyncRead> AsyncRead for CipherStream<T> {
+impl<T: AsyncRead, W> AsyncRead for CipherStream<T, W> {
     fn poll_read(
         self: Pin<&mut Self>,
         cx: &mut Context<'_>,
         buf: &mut [u8],
     ) -> Poll<std::io::Result<usize>> {
         let p = self.project();
-        let result = p.inner.poll_read(cx, buf);
+        let result = p.r.poll_read(cx, buf);
         // log::debug!(
         //     "{}: Read: polling for underlying data, cache size: {}, result = {result:?}",
         //     p.name,
@@ -69,7 +73,7 @@ impl<T: AsyncRead> AsyncRead for CipherStream<T> {
     }
 }
 
-impl<T: AsyncWrite> AsyncWrite for CipherStream<T> {
+impl<R, T: AsyncWrite> AsyncWrite for CipherStream<R, T> {
     fn poll_write(
         self: Pin<&mut Self>,
         cx: &mut Context<'_>,
@@ -85,7 +89,7 @@ impl<T: AsyncWrite> AsyncWrite for CipherStream<T> {
                 c.apply_keystream(this.wr_buf.as_mut());
 
                 let actual_written_len =
-                    match this.inner.as_mut().poll_write(cx, this.wr_buf.as_slice()) {
+                    match this.w.as_mut().poll_write(cx, this.wr_buf.as_slice()) {
                         Poll::Ready(Ok(v)) => v,
                         Poll::Pending => {
                             c.rewind(this.wr_buf.len());
@@ -121,7 +125,7 @@ impl<T: AsyncWrite> AsyncWrite for CipherStream<T> {
             None => {}
         };
 
-        let result = this.inner.as_mut().poll_write(cx, buf);
+        let result = this.w.as_mut().poll_write(cx, buf);
         // log::debug!(
         //     "{}: Plain write, desired = {}, result = {result:?}",
         //     this.name,
@@ -131,10 +135,10 @@ impl<T: AsyncWrite> AsyncWrite for CipherStream<T> {
     }
 
     fn poll_flush(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Result<(), Error>> {
-        self.project().inner.as_mut().poll_flush(cx)
+        self.project().w.as_mut().poll_flush(cx)
     }
 
     fn poll_close(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<std::io::Result<()>> {
-        self.project().inner.as_mut().poll_close(cx)
+        self.project().w.as_mut().poll_close(cx)
     }
 }

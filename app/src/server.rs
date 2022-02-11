@@ -12,6 +12,7 @@ pub async fn serve_client(
 ) -> anyhow::Result<()> {
     let mut stream = super::cipher::server::listen(stream).await?;
     let req: ProxyRequest = read_bincode_lengthed_async(&mut stream).await?;
+    log::debug!("Receive client request: {req:?}");
 
     match req {
         ProxyRequest::TCP { dst } => serve_tcp_proxy(&dst, stream).await,

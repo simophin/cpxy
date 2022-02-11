@@ -1,5 +1,6 @@
 use super::client::CipherParams;
 use anyhow::bail;
+use futures_lite::io::split;
 use futures_lite::{AsyncRead, AsyncWrite, AsyncWriteExt};
 
 use crate::http::{parse_request, HttpRequest};
@@ -54,6 +55,8 @@ pub async fn listen<T: AsyncRead + AsyncWrite + Send + Sync + Unpin>(
         }
     };
 
+    log::debug!("Got request: {req:?}");
+
     let (rd_cipher, wr_cipher) = match check_request(&req) {
         Ok(v) => v,
         Err((res, err)) => {
@@ -65,16 +68,19 @@ pub async fn listen<T: AsyncRead + AsyncWrite + Send + Sync + Unpin>(
     // Respond client with correct details
     req.write_all(
         b"HTTP/1.1 101 Switching Protocols\r\n\
-                    Upgrade: websocket\r\n\
+                    Upgrade: WebSocket\r\n\
                     Connection: Upgrade\r\n\
                     Sec-WebSocket-Accept: s3pPLMBiTxaQ9kYGzzhZRbK+xOo=\r\n\
                     \r\n",
     )
     .await?;
 
+    let (r, w) = split(req);
+
     Ok(CipherStream::new(
         "server".to_string(),
-        req,
+        r,
+        w,
         rd_cipher,
         wr_cipher,
     ))
@@ -115,8 +121,10 @@ mod test {
             });
 
             let data = b"hello, world";
+            let (client_r, client_w) = split(client);
             let mut client = connect(
-                client,
+                client_r,
+                client_w,
                 "localhost",
                 EncryptionStrategy::FirstN(5.try_into().unwrap()),
                 EncryptionStrategy::Always,

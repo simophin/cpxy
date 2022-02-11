@@ -1,10 +1,11 @@
-import { Button, Dialog, DialogActions, DialogContent, DialogTitle, Stack, TextField } from "@mui/material"
+import { Button, Dialog, DialogActions, DialogContent, DialogTitle, FormControl, FormControlLabel, FormGroup, Stack, Switch, TextField } from "@mui/material"
 import { BASE_URL } from "./config";
 import { ClientConfig, UpstreamUpdate } from "./models"
 import _ from 'lodash';
 import useHttp from "./useHttp";
 import { FindError, mandatory, useEditState, validAddress } from "./useEditState";
 import { transformRule } from "./trafficRules";
+import { useState } from "react";
 
 type Props = {
     editing: string | undefined,
@@ -26,6 +27,7 @@ export default function UpstreamEdit({ onChanged, onCancelled, editing, current_
     const existing = editing ? current_config.upstreams[editing] : undefined;
     const name = useEditState(editing ?? '', mandatory('Name', uniqueUpstreamName(editing, current_config)));
     const address = useEditState(existing?.address ?? '', mandatory('Address', validAddress));
+    const [tls, setTls] = useState(existing?.tls === true);
     const accept = useEditState(existing?.accept?.join('\n') ?? '', undefined, transformRule);
     const reject = useEditState(existing?.reject?.join('\n') ?? '', undefined, transformRule);
     const priority = useEditState(existing?.priority?.toString() ?? '0', mandatory('Priority'));
@@ -37,6 +39,7 @@ export default function UpstreamEdit({ onChanged, onCancelled, editing, current_
                 name: name.validate(),
                 config: {
                     enabled: existing?.enabled ?? true,
+                    tls,
                     address: address.validate(),
                     accept: accept.validate(),
                     reject: reject.validate(),
@@ -86,6 +89,19 @@ export default function UpstreamEdit({ onChanged, onCancelled, editing, current_
                     helperText={address.error}
                     onChange={v => address.setValue(v.currentTarget.value)}
                 />
+
+                <div>
+                    <FormControl>
+                        <FormControlLabel
+                            control={<Switch
+                                checked={tls}
+                                onChange={v => setTls(v.currentTarget.checked)}
+                            />}
+                            labelPlacement='start'
+                            label="TLS" />
+                    </FormControl>
+                </div>
+
 
                 <TextField
                     value={accept.value}

@@ -132,6 +132,8 @@ const fn default_upstream_enabled() -> bool {
 pub struct UpstreamConfig {
     pub address: Address,
     #[serde(default)]
+    pub tls: bool,
+    #[serde(default)]
     pub accept: Vec<TrafficMatchRule>,
     #[serde(default)]
     pub reject: Vec<TrafficMatchRule>,

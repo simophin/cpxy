@@ -1,6 +1,7 @@
 
 export type UpstreamConfig = {
     address: string,
+    tls: boolean,
     accept: string[],
     reject: string[],
     priority: number,

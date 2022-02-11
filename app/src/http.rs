@@ -1,4 +1,4 @@
-use std::ops::Deref;
+use std::{fmt::Debug, ops::Deref};
 
 use anyhow::{anyhow, bail};
 use futures_lite::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
@@ -67,6 +67,14 @@ pin_project! {
 
         #[pin]
         body: T
+    }
+}
+
+impl<I: Debug, T> Debug for AsyncHttpStream<I, T> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("AsyncHttpStream")
+            .field("init", &self.init)
+            .finish()
     }
 }
 
@@ -150,7 +158,7 @@ impl<I, T: AsyncRead> AsyncRead for AsyncHttpStream<I, T> {
             return std::task::Poll::Ready(Ok(copy_len));
         }
 
-        AsyncRead::poll_read(this.body.as_mut(), cx, buf)
+        this.body.as_mut().poll_read(cx, buf)
     }
 }
 
@@ -186,11 +194,10 @@ impl<I, T: AsyncWrite> AsyncWrite for AsyncHttpStream<I, T> {
     }
 }
 
-pub async fn parse_response(
-    mut stream: impl AsyncRead + AsyncWrite + Unpin + Send + Sync,
+pub async fn parse_response<T: AsyncRead + Unpin + Send + Sync>(
+    mut stream: T,
     mut buf: RWBuffer,
-) -> anyhow::Result<AsyncHttpStream<HttpResponse, impl AsyncRead + AsyncWrite + Unpin + Send + Sync>>
-{
+) -> anyhow::Result<AsyncHttpStream<HttpResponse, T>> {
     loop {
         match stream.read(buf.write_buf()).await? {
             0 => bail!("Unexpected EOF"),

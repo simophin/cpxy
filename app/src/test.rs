@@ -96,8 +96,10 @@ fn test_client_server_tcp() {
         let mut req_buf = Vec::new();
         write_bincode_lengthed(&mut req_buf, &proxy_request).unwrap();
 
+        let (client_r, client_w) = split(client);
         let mut client = connect(
-            client,
+            client_r,
+            client_w,
             "localhost",
             client_send_enc,
             client_receive_enc,
@@ -195,6 +197,7 @@ fn test_client_server_udp() {
                     upstreams: hashmap! {
                         "test".to_string() => UpstreamConfig {
                             address: Address::IP(server_addr),
+                            tls: false,
                             accept: Default::default(),
                             reject: Default::default(),
                             enabled: true,

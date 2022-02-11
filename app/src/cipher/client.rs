@@ -60,8 +60,9 @@ where
     }
 }
 
-pub async fn connect<T: AsyncRead + AsyncWrite + Send + Sync + Unpin>(
-    mut stream: T,
+pub async fn connect(
+    r: impl AsyncRead + Send + Sync + Unpin,
+    mut w: impl AsyncWrite + Send + Sync + Unpin,
     host: &str,
     send_strategy: EncryptionStrategy,
     recv_strategy: EncryptionStrategy,
@@ -78,25 +79,23 @@ pub async fn connect<T: AsyncRead + AsyncWrite + Send + Sync + Unpin>(
         cipher_type,
     };
 
-    stream
-        .write_all(
-            format!(
-                "GET {params} HTTP/1.1\r\n\
+    w.write_all(
+        format!(
+            "GET {params} HTTP/1.1\r\n\
                       Connection: Upgrade\r\n\
                       Host: {host}\r\n\
-                      Upgrade: websocket\r\n\
+                      Upgrade: WebSocket\r\n\
                       Sec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==\r\n\
-                      Sec-WebSocket-Version: 13\r\n\r\n"
-            )
-            .as_bytes(),
+                      Sec-WebSocket-Version: 20\r\n\r\n"
         )
-        .await?;
+        .as_bytes(),
+    )
+    .await?;
 
     // Send initial data encrypted
     if initial_data.len() > 0 {
         wr_cipher.apply_keystream(initial_data.as_mut_slice());
-        stream
-            .write_all(initial_data.as_slice())
+        w.write_all(initial_data.as_slice())
             .await
             .context("Write initial data")?;
         initial_data.clear();
@@ -105,9 +104,11 @@ pub async fn connect<T: AsyncRead + AsyncWrite + Send + Sync + Unpin>(
     // Parse and check response
     initial_data.resize(2048, 0); // Reuse this vector
 
-    let res = parse_response(stream, RWBuffer::new(initial_data))
+    let res = parse_response(r, RWBuffer::new(initial_data))
         .await
         .context("Parsing cipher response")?;
+
+    log::debug!("Cipher response = {res:?}");
 
     check_server_response(&res)?;
 
@@ -119,6 +120,7 @@ pub async fn connect<T: AsyncRead + AsyncWrite + Send + Sync + Unpin>(
     Ok(CipherStream::new(
         "client".to_string(),
         res,
+        w,
         rd_cipher,
         wr_cipher,
     ))

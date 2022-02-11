@@ -176,6 +176,7 @@ async fn serve_proxy_client(
                     log::info!("Trying upstream {name} for {dst}");
                     match request_proxy_upstream(&config, &req).await {
                         Ok((ProxyResult::Granted { bound_address }, upstream, latency)) => {
+                            log::debug!("Upstream granted with address = {bound_address}, latency = {latency:?}");
                             handshaker.respond_ok(&mut socks, bound_address).await?;
                             stats.update_upstream(name, latency);
                             let (upstream_tx_bytes, upstream_rx_bytes) =
@@ -192,6 +193,7 @@ async fn serve_proxy_client(
                             .await;
                         }
                         Ok((result, _, _)) => {
+                            log::debug!("Upstream deined with result = {result:?}");
                             handshaker.respond_err(&mut socks).await?;
                             return Err(result.into());
                         }

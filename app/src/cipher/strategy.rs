@@ -24,9 +24,10 @@ impl std::fmt::Display for EncryptionStrategy {
 }
 
 impl EncryptionStrategy {
-    pub fn pick_send(req: &ProxyRequest) -> Self {
-        match &req {
-            ProxyRequest::TCP { dst } if dst.get_port() == 443 => {
+    pub fn pick_send(req: &ProxyRequest, is_tls: bool) -> Self {
+        match (&req, is_tls) {
+            (_, true) => EncryptionStrategy::Never,
+            (ProxyRequest::TCP { dst }, _) if dst.get_port() == 443 => {
                 Self::FirstN(NonZeroUsize::try_from(512).unwrap())
             }
             _ => EncryptionStrategy::Always,
