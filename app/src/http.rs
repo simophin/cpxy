@@ -99,7 +99,7 @@ impl<I: Deref<Target = HttpCommon>, T: AsyncRead + Unpin + Send + Sync> AsyncHtt
                             final_buf.resize(buf_start + len, 0);
                             self.read_exact(&mut final_buf.as_mut_slice()[buf_start..])
                                 .await?;
-                            buf.compact();
+                            buf.advance_read(buf.remaining_read());
                         }
                         Ok(httparse::Status::Complete(_)) => return Ok(final_buf),
                         Ok(_) => continue,
@@ -199,6 +199,7 @@ pub async fn parse_response(
 
         let mut headers = [httparse::EMPTY_HEADER; 32];
         let mut response = httparse::Response::new(&mut headers);
+
         match response.parse(buf.read_buf())? {
             httparse::Status::Complete(offset) => {
                 let status_code = response.code.ok_or_else(|| anyhow!("No status code"))?;

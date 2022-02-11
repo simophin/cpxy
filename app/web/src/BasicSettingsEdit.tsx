@@ -103,11 +103,15 @@ export default function BasicSettingsEdit({ onSaved, onCancelled, current_config
                 <div>
                     <Button onClick={handleUpdateGfw}
                         variant='contained'
-                        disabled={updateGfw.loading}>Update GFW List</Button>
+                        disabled={updateGfw.loading}>
+                        {updateGfw.loading ? 'Updating' : 'Update GFW List'}
+                    </Button>
                     &nbsp;
                     <Button onClick={handleUpdateAbp}
                         variant='contained'
-                        disabled={updateAbp.loading}>Update ABP List</Button>
+                        disabled={updateAbp.loading}>
+                        {updateAbp.loading ? 'Updating' : 'Update ABP List'}
+                    </Button>
                 </div>
 
             </Stack>

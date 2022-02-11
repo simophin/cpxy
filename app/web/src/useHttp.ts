@@ -16,7 +16,7 @@ export default function useHttp<T = any>(
     return {
         data, error, loading,
         execute: async (method?: Method, body?: any): Promise<T> => {
-            setLoading(false);
+            setLoading(true);
             setError(undefined);
             const timeout = options?.timeoutMills ?? 2000;
             const controller = new AbortController();
