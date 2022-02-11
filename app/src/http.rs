@@ -1,8 +1,9 @@
 use std::ops::Deref;
 
 use anyhow::{anyhow, bail};
-use futures_lite::{AsyncRead, AsyncReadExt, AsyncWrite};
+use futures_lite::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
 use pin_project_lite::pin_project;
+use serde::de::DeserializeOwned;
 
 use crate::utils::RWBuffer;
 
@@ -69,12 +70,6 @@ pin_project! {
     }
 }
 
-impl<I, T> AsyncHttpStream<I, T> {
-    pub fn into_init(self) -> I {
-        self.init
-    }
-}
-
 impl<I: Deref<Target = HttpCommon>, T: AsyncRead + Unpin + Send + Sync> AsyncHttpStream<I, T> {
     pub async fn body(&mut self) -> anyhow::Result<Vec<u8>> {
         match (
@@ -117,6 +112,15 @@ impl<I: Deref<Target = HttpCommon>, T: AsyncRead + Unpin + Send + Sync> AsyncHtt
             }
             _ => Ok(Default::default()),
         }
+    }
+
+    pub async fn body_json<R: DeserializeOwned>(&mut self) -> anyhow::Result<R> {
+        match self.get_content_type() {
+            Some(v) if v.to_ascii_lowercase().starts_with("application/json") => {}
+            v => bail!("Invalid content type: {v:?}"),
+        };
+
+        Ok(serde_json::from_slice(self.body().await?.as_ref())?)
     }
 }
 
@@ -281,4 +285,33 @@ pub async fn parse_request<T: AsyncRead + Unpin + Send + Sync>(
             Err(e) => return Err((e.into(), stream)),
         };
     }
+}
+
+pub async fn write_http_response(
+    w: &mut (impl AsyncWrite + Unpin + Send + Sync),
+    code: u16,
+    status_msg: Option<&str>,
+    content_type: Option<&str>,
+    body: &[u8],
+) -> anyhow::Result<()> {
+    w.write_all(
+        format!(
+            "HTTP/1.1 {code}{}\r\n\
+    Content-Type: {}\r\n\
+    Content-Length: {}\r\n\
+    Access-Control-Allow-Headers: *\r\n\
+    Access-Control-Allow-Origin: *\r\n\
+    Access-Control-Allow-Methods: *\r\n\
+    \r\n",
+            status_msg.map(|m| format!(" {m}")).unwrap_or(String::new()),
+            content_type.unwrap_or("application/octet-stream"),
+            body.len()
+        )
+        .as_bytes(),
+    )
+    .await?;
+    if !body.is_empty() {
+        w.write_all(body).await?;
+    }
+    Ok(())
 }

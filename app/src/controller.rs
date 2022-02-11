@@ -2,66 +2,18 @@ use crate::abp::{update_abp_list, update_gfw_list};
 use crate::broadcast::bounded;
 use crate::client::{run_client, ClientStatistics};
 use crate::config::{ClientConfig, UpstreamConfig};
-use crate::http::HttpRequest;
+use crate::http::{parse_request, write_http_response};
 use crate::io::TcpListener;
-use crate::utils::{write_http_response, JsonSerializable, RWBuffer};
-use anyhow::{bail, Context};
+use anyhow::Context;
 use async_broadcast::Sender;
 use futures_lite::io::split;
-use futures_lite::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
+use futures_lite::{AsyncRead, AsyncWrite, AsyncWriteExt};
 use rust_embed::RustEmbed;
-use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
 use smol::fs::File;
 use smol::spawn;
 use std::path::PathBuf;
 use std::sync::Arc;
-
-fn parse_json<T: DeserializeOwned>(s: &impl AsRef<[u8]>) -> Result<T, ErrorResponse> {
-    serde_json::from_slice(s.as_ref()).map_err(|e| ErrorResponse::Generic(e.into()))
-}
-
-struct HttpParseResult {
-    method: String,
-    path: String,
-    is_json: bool,
-    body: Vec<u8>,
-}
-
-async fn parse_request(
-    input: impl AsyncRead + Unpin + Send + Sync,
-) -> anyhow::Result<HttpParseResult> {
-    let mut req = super::http::parse_request(input, RWBuffer::with_capacity(65536))
-        .await
-        .map_err(|(e, _)| e)?;
-    let is_json = match req.get_content_type() {
-        Some(value) if value.starts_with("application/json") => true,
-        _ => false,
-    };
-
-    let content_length = req.get_content_length().unwrap_or_default();
-
-    if content_length > 65536 {
-        bail!("Payload is too big");
-    }
-
-    let body = if content_length > 0 {
-        let mut buf = Vec::with_capacity(content_length);
-        req.read_exact(&mut buf).await?;
-        buf
-    } else {
-        Vec::new()
-    };
-
-    let HttpRequest { method, path, .. } = req.into_init();
-
-    Ok(HttpParseResult {
-        method,
-        path,
-        is_json,
-        body,
-    })
-}
 
 #[derive(RustEmbed)]
 #[folder = "web/build"]
@@ -69,11 +21,17 @@ struct Asset;
 
 enum Response {
     Empty,
-    Json(Box<dyn JsonSerializable + Send + Sync>),
+    Json(Vec<u8>),
     EmbedFile {
         path: String,
         file: rust_embed::EmbeddedFile,
     },
+}
+
+fn json_response(a: impl Serialize) -> Result<Response, ErrorResponse> {
+    Ok(Response::Json(
+        serde_json::to_vec(&a).map_err(|e| ErrorResponse::Generic(e.into()))?,
+    ))
 }
 
 enum ErrorResponse {
@@ -205,28 +163,20 @@ impl Controller {
         sock: impl AsyncRead + AsyncWrite + Unpin + Send + Sync,
     ) -> anyhow::Result<()> {
         let (r, mut w) = split(sock);
-        let result = match parse_request(r).await {
-            Ok(HttpParseResult {
-                method,
-                path,
-                is_json,
-                body,
-            }) => match (method.as_str(), path.as_str(), is_json) {
-                ("options", _, _) => Ok(Response::Empty),
-                ("get", p, _) if p.starts_with("/api/config") => {
-                    self.get_config().map(|r| Response::Json(Box::new(r)))
+        let result = match parse_request(r, Default::default()).await {
+            Ok(mut r) => match (r.method.as_str(), r.path.as_str()) {
+                ("options", _) => Ok(Response::Empty),
+                ("get", p) if p.starts_with("/api/config") => {
+                    self.get_config().and_then(json_response)
                 }
-                ("post", p, true) if p.starts_with("/api/config") => match parse_json(&body) {
-                    Ok(body) => self
-                        .set_basic_config(body)
-                        .await
-                        .map(|r| Response::Json(Box::new(r))),
-                    Err(e) => Err(e),
-                },
-                ("get", p, _) if p.starts_with("/api/stats") => {
-                    self.get_stats().map(|r| Response::Json(Box::new(r)))
+                ("post", p) if p.starts_with("/api/config") => self
+                    .set_basic_config(r.body_json().await?)
+                    .await
+                    .and_then(json_response),
+                ("get", p) if p.starts_with("/api/stats") => {
+                    self.get_stats().and_then(json_response)
                 }
-                ("get", original_p, _) => {
+                ("get", original_p) => {
                     let p = if original_p == "/" || original_p.is_empty() {
                         "index.html"
                     } else {
@@ -240,35 +190,29 @@ impl Controller {
                         _ => Err(ErrorResponse::NotFound(original_p.to_string())),
                     }
                 }
-                ("post", p, _) if p.starts_with("/api/gfwlist") => {
+                ("post", p) if p.starts_with("/api/gfwlist") => {
                     update_gfw_list(&self.current.0.socks5_address)
                         .await
-                        .map(|num| Response::Json(Box::new(RuleUpdateResult { num_updated: num })))
                         .map_err(|e| ErrorResponse::Generic(e))
+                        .and_then(|num| json_response(RuleUpdateResult { num_updated: num }))
                 }
-                ("post", p, _) if p.starts_with("/api/abplist") => {
+                ("post", p) if p.starts_with("/api/abplist") => {
                     update_abp_list(&self.current.0.socks5_address)
                         .await
-                        .map(|num| Response::Json(Box::new(RuleUpdateResult { num_updated: num })))
                         .map_err(|e| ErrorResponse::Generic(e))
+                        .and_then(|num| json_response(RuleUpdateResult { num_updated: num }))
                 }
-                ("post", p, true) if p.starts_with("/api/upstream") => match parse_json(&body) {
-                    Ok(body) => self
-                        .update_upstreams(body)
-                        .await
-                        .map(|r| Response::Json(Box::new(r))),
-                    Err(e) => Err(e),
-                },
-                ("delete", p, true) if p.starts_with("/api/upstream") => match parse_json(&body) {
-                    Ok(body) => self
-                        .delete_upstreams(body)
-                        .await
-                        .map(|r| Response::Json(Box::new(r))),
-                    Err(e) => Err(e),
-                },
-                _ => Err(ErrorResponse::NotFound(path)),
+                ("post", p) if p.starts_with("/api/upstream") => self
+                    .update_upstreams(r.body_json().await?)
+                    .await
+                    .and_then(json_response),
+                ("delete", p) if p.starts_with("/api/upstream") => self
+                    .delete_upstreams(r.body_json().await?)
+                    .await
+                    .and_then(json_response),
+                _ => Err(ErrorResponse::NotFound(r.path.clone())),
             },
-            Err(e) => Err(ErrorResponse::InvalidRequest(e)),
+            Err((e, _)) => Err(ErrorResponse::InvalidRequest(e)),
         };
 
         match result {
@@ -279,7 +223,7 @@ impl Controller {
                     200,
                     Some("OK"),
                     Some("application/json"),
-                    buf.to_json().as_slice(),
+                    buf.as_slice(),
                 )
                 .await?
             }
