@@ -128,9 +128,9 @@ impl<T: AsMut<[u8]> + AsRef<[u8]>> RWBuffer<T> {
         &mut self.buf.as_mut()[self.write_cursor..]
     }
 
-    pub fn read_buf_mut(&mut self) -> &mut [u8] {
-        &mut self.buf.as_mut()[self.read_cursor..self.write_cursor]
-    }
+    // pub fn read_buf_mut(&mut self) -> &mut [u8] {
+    //     &mut self.buf.as_mut()[self.read_cursor..self.write_cursor]
+    // }
 
     pub fn should_compact(&self) -> bool {
         self.remaining_write() < self.buf.as_ref().len() / 4

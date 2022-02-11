@@ -6,16 +6,19 @@ use pin_project_lite::pin_project;
 
 use crate::utils::RWBuffer;
 
+#[derive(Debug)]
 pub struct HttpCommon {
     pub headers: Vec<(String, String)>,
 }
 
+#[derive(Debug)]
 pub struct HttpRequest {
     common: HttpCommon,
     pub method: String,
     pub path: String,
 }
 
+#[derive(Debug)]
 pub struct HttpResponse {
     common: HttpCommon,
     pub status_code: u16,
@@ -69,6 +72,51 @@ pin_project! {
 impl<I, T> AsyncHttpStream<I, T> {
     pub fn into_init(self) -> I {
         self.init
+    }
+}
+
+impl<I: Deref<Target = HttpCommon>, T: AsyncRead + Unpin + Send + Sync> AsyncHttpStream<I, T> {
+    pub async fn body(&mut self) -> anyhow::Result<Vec<u8>> {
+        match (
+            self.deref().get_content_length(),
+            self.deref().get_header("transfer-encoding"),
+        ) {
+            (Some(len), _) if len > 0 => {
+                let mut buf = vec![0u8; len];
+                self.read_exact(buf.as_mut_slice()).await?;
+                Ok(buf)
+            }
+            (_, Some(e)) if e.eq_ignore_ascii_case("chunked") => {
+                let mut final_buf = Vec::new();
+                let mut buf = RWBuffer::with_capacity(128);
+                loop {
+                    match self.read(buf.write_buf()).await? {
+                        0 => return Ok(final_buf),
+                        v => buf.advance_write(v),
+                    };
+
+                    match httparse::parse_chunk_size(buf.read_buf()) {
+                        Ok(httparse::Status::Complete((offset, len))) if len > 0 => {
+                            buf.advance_read(offset);
+                            final_buf.extend_from_slice(buf.read_buf());
+                            let len = len as usize - buf.remaining_read();
+                            let buf_start = final_buf.len();
+                            final_buf.resize(buf_start + len, 0);
+                            self.read_exact(&mut final_buf.as_mut_slice()[buf_start..])
+                                .await?;
+                            buf.compact();
+                        }
+                        Ok(httparse::Status::Complete(_)) => return Ok(final_buf),
+                        Ok(_) => continue,
+                        Err(_) => bail!(
+                            "Invalid chunk size on buf: {}",
+                            String::from_utf8_lossy(buf.read_buf())
+                        ),
+                    }
+                }
+            }
+            _ => Ok(Default::default()),
+        }
     }
 }
 
@@ -186,22 +234,20 @@ pub async fn parse_response(
 pub async fn parse_request<T: AsyncRead + Unpin + Send + Sync>(
     mut stream: T,
     mut buf: RWBuffer,
-) -> anyhow::Result<AsyncHttpStream<HttpRequest, T>> {
+) -> Result<AsyncHttpStream<HttpRequest, T>, (anyhow::Error, T)> {
     loop {
-        match stream.read(buf.write_buf()).await? {
-            0 => bail!("Unexpected EOF"),
-            v => buf.advance_write(v),
+        match stream.read(buf.write_buf()).await {
+            Ok(0) => return Err((anyhow!("Unexpected EOF"), stream)),
+            Err(e) => return Err((e.into(), stream)),
+            Ok(v) => buf.advance_write(v),
         }
 
         let mut headers = [httparse::EMPTY_HEADER; 32];
         let mut req = httparse::Request::new(&mut headers);
-        match req.parse(buf.read_buf())? {
-            httparse::Status::Complete(offset) => {
-                let method = req
-                    .method
-                    .ok_or_else(|| anyhow!("No method"))?
-                    .to_ascii_lowercase();
-                let path = req.path.ok_or_else(|| anyhow!("No path"))?.to_string();
+        match req.parse(buf.read_buf()) {
+            Ok(httparse::Status::Complete(offset)) => {
+                let method = req.method.unwrap_or_default().to_ascii_lowercase();
+                let path = req.path.unwrap_or_default().to_string();
                 let headers = req
                     .headers
                     .iter()
@@ -231,7 +277,8 @@ pub async fn parse_request<T: AsyncRead + Unpin + Send + Sync>(
                     body: stream,
                 });
             }
-            httparse::Status::Partial => continue,
+            Ok(httparse::Status::Partial) => continue,
+            Err(e) => return Err((e.into(), stream)),
         };
     }
 }

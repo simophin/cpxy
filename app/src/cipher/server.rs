@@ -1,25 +1,22 @@
 use super::client::CipherParams;
-use anyhow::anyhow;
-use futures_lite::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
+use anyhow::bail;
+use futures_lite::{AsyncRead, AsyncWrite, AsyncWriteExt};
 
-use crate::utils::RWBuffer;
+use crate::http::{parse_request, HttpRequest};
 
 use super::stream::CipherStream;
 use super::suite::{create_cipher, BoxedStreamCipher};
 
 fn check_request(
-    req: httparse::Request,
+    req: &HttpRequest,
 ) -> Result<(BoxedStreamCipher, BoxedStreamCipher), (&'static str, &'static str)> {
     // log::debug!("Received request: {:?}", req);
-    match req.method {
-        Some(m) if m.eq_ignore_ascii_case("get") => {}
-        _ => {
-            return Err((
-                "HTTP/1.1 401 Unsupported method\r\n\r\n",
-                "Unsupported HTTP method",
-            ))
-        }
-    };
+    if req.method != "get" {
+        return Err((
+            "HTTP/1.1 401 Unsupported method\r\n\r\n",
+            "Unsupported HTTP method",
+        ));
+    }
 
     let CipherParams {
         key,
@@ -27,7 +24,7 @@ fn check_request(
         send_strategy: client_send_strategy,
         recv_strategy: client_receive_strategy,
         cipher_type,
-    } = match req.path.unwrap_or("").parse() {
+    } = match req.path.parse() {
         Ok(v) => v,
         Err(e) => {
             log::error!("Error parsing params: {e}");
@@ -46,75 +43,50 @@ fn check_request(
     Ok((rd_cipher, wr_cipher))
 }
 
-pub async fn listen<T: AsyncRead + AsyncWrite + Unpin>(
-    mut stream: T,
-) -> anyhow::Result<impl AsyncRead + AsyncWrite + Unpin> {
-    let mut buf = RWBuffer::default();
-
-    // Receive and check http request
-    let ((mut rd_cipher, wr_cipher), offset) = loop {
-        match stream.read(buf.write_buf()).await? {
-            0 => return Err(anyhow!("Unexpected EOF")),
-            v => buf.advance_write(v),
-        }
-
-        let mut headers = [httparse::EMPTY_HEADER; 20];
-        let mut req = httparse::Request::new(&mut headers);
-
-        match req.parse(buf.read_buf()) {
-            Ok(httparse::Status::Complete(offset)) => {
-                break (
-                    match check_request(req) {
-                        Ok(v) => v,
-                        Err((res, msg)) => {
-                            stream.write_all(res.as_bytes()).await?;
-                            return Err(anyhow!("Error listening: {}", msg));
-                        }
-                    },
-                    offset,
-                )
-            }
-            Err(e) => {
-                stream.write_all(b"HTTP/1.1 400 invalid request").await?;
-                return Err(e.into());
-            }
-            _ => {}
+pub async fn listen<T: AsyncRead + AsyncWrite + Send + Sync + Unpin>(
+    stream: T,
+) -> anyhow::Result<impl AsyncRead + AsyncWrite + Send + Sync + Unpin> {
+    let mut req = match parse_request(stream, Default::default()).await {
+        Ok(v) => v,
+        Err((e, mut stream)) => {
+            stream.write_all(b"HTTP/1.1 400 invalid request").await?;
+            return Err(e.into());
         }
     };
 
-    buf.advance_read(offset);
+    let (rd_cipher, wr_cipher) = match check_request(&req) {
+        Ok(v) => v,
+        Err((res, err)) => {
+            req.write_all(res.as_bytes()).await?;
+            bail!("{err}");
+        }
+    };
 
     // Respond client with correct details
-    stream
-        .write_all(
-            b"HTTP/1.1 101 Switching Protocols\r\n\
+    req.write_all(
+        b"HTTP/1.1 101 Switching Protocols\r\n\
                     Upgrade: websocket\r\n\
                     Connection: Upgrade\r\n\
                     Sec-WebSocket-Accept: s3pPLMBiTxaQ9kYGzzhZRbK+xOo=\r\n\
                     \r\n",
-        )
-        .await?;
-
-    // Decrypt the initial data
-    if buf.remaining_read() > 0 {
-        rd_cipher.apply_keystream(buf.read_buf_mut());
-    }
+    )
+    .await?;
 
     Ok(CipherStream::new(
         "server".to_string(),
-        stream,
+        req,
         rd_cipher,
         wr_cipher,
-        Some(buf),
     ))
 }
 
 #[cfg(test)]
 mod test {
-    use super::*;
     use super::super::client::connect;
     use super::super::strategy::EncryptionStrategy;
+    use super::*;
     use crate::test::duplex;
+    use futures_lite::AsyncReadExt;
     use rand::RngCore;
     use smol::spawn;
 

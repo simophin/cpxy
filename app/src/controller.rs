@@ -31,7 +31,9 @@ struct HttpParseResult {
 async fn parse_request(
     input: impl AsyncRead + Unpin + Send + Sync,
 ) -> anyhow::Result<HttpParseResult> {
-    let mut req = super::http::parse_request(input, RWBuffer::with_capacity(65536)).await?;
+    let mut req = super::http::parse_request(input, RWBuffer::with_capacity(65536))
+        .await
+        .map_err(|(e, _)| e)?;
     let is_json = match req.get_content_type() {
         Some(value) if value.starts_with("application/json") => true,
         _ => false,

@@ -1,6 +1,4 @@
 use super::suite::BoxedStreamCipher;
-use crate::utils::RWBuffer;
-use bytes::BufMut;
 use futures_lite::{AsyncRead, AsyncWrite};
 use pin_project_lite::pin_project;
 use std::cmp::{max, min};
@@ -15,7 +13,6 @@ pin_project! {
         pub(super) name: String,
         pub(super) rd_cipher: Option<BoxedStreamCipher>,
         pub(super) wr_cipher: Option<BoxedStreamCipher>,
-        pub(super) init_read_buf: Option<RWBuffer>,
         pub(super) last_written_size: Option<usize>,
         pub(super) wr_buf: Vec<u8>,
     }
@@ -27,14 +24,12 @@ impl<T> CipherStream<T> {
         inner: T,
         rd_cipher: BoxedStreamCipher,
         wr_cipher: BoxedStreamCipher,
-        init_read_buf: Option<RWBuffer>,
     ) -> Self {
         Self {
             inner,
             rd_cipher: Some(rd_cipher),
             wr_cipher: Some(wr_cipher),
             name,
-            init_read_buf,
             last_written_size: None,
             wr_buf: Default::default(),
         }
@@ -45,22 +40,9 @@ impl<T: AsyncRead> AsyncRead for CipherStream<T> {
     fn poll_read(
         self: Pin<&mut Self>,
         cx: &mut Context<'_>,
-        mut buf: &mut [u8],
+        buf: &mut [u8],
     ) -> Poll<std::io::Result<usize>> {
         let p = self.project();
-        match p.init_read_buf.as_mut() {
-            Some(initial) if initial.remaining_read() > 0 => {
-                let len = min(initial.remaining_read(), buf.len());
-                buf.put_slice(&initial.read_buf()[..len]);
-                // log::debug!("{}: Read {len} of initial data", p.name);
-                initial.advance_read(len);
-                cx.waker().wake_by_ref();
-                return Poll::Ready(Ok(len));
-            }
-            Some(_) => *p.init_read_buf = None,
-            _ => {}
-        };
-
         let result = p.inner.poll_read(cx, buf);
         // log::debug!(
         //     "{}: Read: polling for underlying data, cache size: {}, result = {result:?}",

@@ -251,7 +251,7 @@ async fn handshake_http(
     }: HttpProxyState,
 ) -> anyhow::Result<ProxyRequest> {
     if method.eq_ignore_ascii_case("connect") {
-        Ok(ProxyRequest::TCP{dst: address})
+        Ok(ProxyRequest::TCP { dst: address })
     } else {
         Ok(ProxyRequest::Http {
             dst: address,
@@ -278,9 +278,7 @@ async fn handshake_socks5(
             Some((offset, ClientConnRequest { cmd, address })) => match cmd {
                 Command::CONNECT_TCP => {
                     buf.advance_read(offset);
-                    return Ok(ProxyRequest::TCP {
-                        dst: address,
-                    });
+                    return Ok(ProxyRequest::TCP { dst: address });
                 }
                 Command::BIND_UDP => {
                     buf.advance_read(offset);

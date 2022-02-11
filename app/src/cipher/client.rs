@@ -2,14 +2,17 @@ use std::{borrow::Cow, fmt::Display, str::FromStr};
 
 use super::strategy::EncryptionStrategy;
 use super::stream::CipherStream;
-use crate::utils::RWBuffer;
+use crate::{
+    http::{parse_response, HttpResponse},
+    utils::RWBuffer,
+};
 use anyhow::{anyhow, Context};
 use base64::URL_SAFE_NO_PAD;
-use futures_lite::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
+use futures_lite::{AsyncRead, AsyncWrite, AsyncWriteExt};
 
-fn check_server_response(res: httparse::Response<'_, '_>) -> anyhow::Result<()> {
-    match res.code {
-        Some(101) => Ok(()),
+fn check_server_response(res: &HttpResponse) -> anyhow::Result<()> {
+    match res.status_code {
+        101 => Ok(()),
         _ => Err(anyhow!("Expecting http code = 101, got {res:?}")),
     }
 }
@@ -57,7 +60,7 @@ where
     }
 }
 
-pub async fn connect<T: AsyncRead + AsyncWrite + Unpin>(
+pub async fn connect<T: AsyncRead + AsyncWrite + Send + Sync + Unpin>(
     mut stream: T,
     host: &str,
     send_strategy: EncryptionStrategy,
@@ -101,57 +104,22 @@ pub async fn connect<T: AsyncRead + AsyncWrite + Unpin>(
 
     // Parse and check response
     initial_data.resize(2048, 0); // Reuse this vector
-    let mut buf = RWBuffer::new(initial_data);
-    loop {
-        match stream.read(buf.write_buf()).await? {
-            0 => return Err(anyhow!("Unexpected EOF")),
-            v => buf.advance_write(v),
-        };
 
-        let mut headers = [httparse::EMPTY_HEADER; 20];
-        let mut res = httparse::Response::new(&mut headers);
-        match res
-            .parse(buf.read_buf())
-            .context("Parse upstream response")?
-        {
-            httparse::Status::Complete(offset) => {
-                if let Err(e) = check_server_response(res) {
-                    debug_http_error(stream, buf).await;
-                    return Err(e);
-                }
-                buf.advance_read(offset);
-                break;
-            }
-            httparse::Status::Partial => {}
-        }
-    }
+    let res = parse_response(stream, RWBuffer::new(initial_data))
+        .await
+        .context("Parsing cipher response")?;
 
-    let mut rd_cipher = recv_strategy.wrap_cipher(
+    check_server_response(&res)?;
+
+    let rd_cipher = recv_strategy.wrap_cipher(
         super::suite::create_cipher(cipher_type, key.as_slice(), iv.as_slice())
             .expect("To have created a same cipher as wr_cipher"),
     );
 
-    // Decrypt the stream before handing over to CipherStream
-    if buf.remaining_read() > 0 {
-        rd_cipher.apply_keystream(buf.read_buf_mut());
-    }
-
     Ok(CipherStream::new(
         "client".to_string(),
-        stream,
+        res,
         rd_cipher,
         wr_cipher,
-        Some(buf),
     ))
-}
-
-async fn debug_http_error<T: AsyncRead + AsyncWrite + Unpin>(mut stream: T, buf: RWBuffer) {
-    let mut data = Vec::new();
-    data.extend_from_slice(buf.read_buf());
-    drop(buf);
-    let _ = stream.read_to_end(&mut data).await;
-    log::error!(
-        "Error response as: {}",
-        String::from_utf8_lossy(data.as_slice())
-    );
 }

@@ -13,7 +13,7 @@ use adblock::{
 };
 use anyhow::{anyhow, bail};
 use chrono::DateTime;
-use futures_lite::{AsyncReadExt, AsyncWriteExt};
+use futures_lite::AsyncWriteExt;
 use lazy_static::lazy_static;
 use rust_embed::RustEmbed;
 use smol::fs::File;
@@ -133,14 +133,7 @@ async fn update_engine(
         .map(|v| ("If-Modified-Since", v));
 
     let mut body = match fetch_http(rule_list_url, "GET", last_modified, proxy, None).await? {
-        mut r if r.status_code == 200 => {
-            let mut buf = Vec::with_capacity(
-                r.get_content_length()
-                    .ok_or_else(|| anyhow!("Expecting content length"))?,
-            );
-            r.read_exact(&mut buf).await?;
-            buf
-        }
+        mut r if r.status_code == 200 => r.body().await?,
         r if r.status_code == 304 => return Ok(0),
         r => bail!("Invalid http response: {}", r.status_code),
     };
@@ -157,7 +150,7 @@ async fn update_engine(
     for line in body.split(|x| *x == b'\n') {
         let line = String::from_utf8_lossy(line);
         let line = line.trim();
-        if line.starts_with("#") || line.is_empty() {
+        if line.starts_with("#") || line.starts_with("!") || line.is_empty() {
             continue;
         }
 
