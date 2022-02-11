@@ -114,6 +114,7 @@ export default function BasicSettingsEdit({ onSaved, onCancelled, current_config
                     </Button>
                 </div>
 
+                {request.error && `Error: ${request.error}`}
             </Stack>
         </DialogContent>
         <DialogActions>

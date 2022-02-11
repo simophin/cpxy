@@ -18,7 +18,7 @@ export function transformRule(value: string): string[] {
             return undefined;
         }
 
-        for (const pat in PATTERNS) {
+        for (const pat of PATTERNS) {
             if (trimmed.match(pat)) {
                 return trimmed;
             }

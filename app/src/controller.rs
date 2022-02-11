@@ -158,12 +158,8 @@ impl Controller {
         self.set_current_config(new_config, new_stats).await
     }
 
-    async fn handle_client(
-        &mut self,
-        sock: impl AsyncRead + AsyncWrite + Unpin + Send + Sync,
-    ) -> anyhow::Result<()> {
-        let (r, mut w) = split(sock);
-        let result = match parse_request(r, Default::default()).await {
+    async fn dispatch(&mut self, r: impl AsyncRead + Unpin + Send + Sync) -> HttpResult<Response> {
+        match parse_request(r, Default::default()).await {
             Ok(mut r) => match (r.method.as_str(), r.path.as_str()) {
                 ("options", _) => Ok(Response::Empty),
                 ("get", p) if p.starts_with("/api/config") => {
@@ -213,7 +209,15 @@ impl Controller {
                 _ => Err(ErrorResponse::NotFound(r.path.clone())),
             },
             Err((e, _)) => Err(ErrorResponse::InvalidRequest(e)),
-        };
+        }
+    }
+
+    async fn handle_client(
+        &mut self,
+        sock: impl AsyncRead + AsyncWrite + Unpin + Send + Sync,
+    ) -> anyhow::Result<()> {
+        let (r, mut w) = split(sock);
+        let result = self.dispatch(r).await;
 
         match result {
             Ok(Response::Empty) => write_http_response(&mut w, 201, Some("OK"), None, &[]).await?,

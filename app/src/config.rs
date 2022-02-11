@@ -81,7 +81,7 @@ impl FromStr for TrafficMatchRule {
             ))
         } else if t.eq_ignore_ascii_case("gfwlist") {
             Ok(Self::GfwList)
-        } else if t.eq_ignore_ascii_case("adblock") {
+        } else if t.eq_ignore_ascii_case("adblocklist") {
             Ok(Self::AdBlockList)
         } else if t.eq_ignore_ascii_case("domain") {
             Ok(Self::Domain(
