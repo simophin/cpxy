@@ -17,7 +17,7 @@ pub async fn resolve_domains(
         .map(|name| {
             spawn(async move {
                 log::info!("Resolving domain {name}");
-                let addresses = match resolve(&name).await {
+                let addresses = match resolve((name.as_str(), 80)).await {
                     Ok(v) => v.into_iter().map(|a| a.ip()).collect(),
                     Err(e) => {
                         log::error!("Error solving {name}: {e:?}");
@@ -48,6 +48,7 @@ mod test {
 
     #[test]
     fn test_resolve_works() {
+        let _ = env_logger::try_init();
         smol::block_on(async move {
             let (mut near, far) = duplex(1).await;
             resolve_domains(
@@ -61,6 +62,7 @@ mod test {
             .unwrap();
 
             let res: ProxyResult = read_bincode_lengthed_async(&mut near).await.unwrap();
+            println!("Got result: {res:?}");
             assert!(
                 matches!(res, ProxyResult::DNSResolved { addresses } if addresses.get("www.google.com").unwrap().len() > 0 && 
             addresses.get("www.facebook.com").unwrap().len() > 0)
