@@ -1,6 +1,6 @@
 pub use f::connect_tls;
 
-#[cfg(not(target_cpu = "mips"))]
+#[cfg(target_arch = "mips")]
 mod f {
     use anyhow::bail;
     use futures_lite::{AsyncRead, AsyncWrite};
@@ -13,7 +13,7 @@ mod f {
     }
 }
 
-#[cfg(target_cpu = "mips")]
+#[cfg(not(target_arch = "mips"))]
 mod f {
     use futures_lite::{AsyncRead, AsyncWrite};
     use std::sync::Arc;

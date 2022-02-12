@@ -48,7 +48,7 @@ android_logger = "0"
 crate-type = ["rlib", "dylib"]
 name = "proxy"
 
-[target.'cfg(not(target_cpu = "mips"))'.dependencies]
+[target.'cfg(not(target_arch = "mips"))'.dependencies]
 futures-rustls = "0"
 webpki-roots = "0"
 
