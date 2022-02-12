@@ -1,52 +1,71 @@
-use std::{fmt::Debug, ops::Deref};
+use std::{
+    borrow::Cow,
+    fmt::{Debug, Display},
+    ops::Deref,
+};
 
 use anyhow::{anyhow, bail};
 use futures_lite::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
 use pin_project_lite::pin_project;
-use serde::de::DeserializeOwned;
+use serde::{de::DeserializeOwned, Deserialize, Serialize};
 
-use crate::utils::RWBuffer;
+use crate::{socks5::Address, utils::RWBuffer};
 
-#[derive(Debug)]
-pub struct HttpCommon {
-    pub headers: Vec<(String, String)>,
+#[derive(Debug, Serialize, Deserialize)]
+pub struct HttpCommon<'a> {
+    pub headers: Vec<(Cow<'a, str>, Cow<'a, str>)>,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct HttpRequest<'a> {
+    #[serde(flatten)]
+    pub common: HttpCommon<'a>,
+    pub method: Cow<'a, str>,
+    pub path: Cow<'a, str>,
 }
 
 #[derive(Debug)]
-pub struct HttpRequest {
-    common: HttpCommon,
-    pub method: String,
-    pub path: String,
-}
-
-#[derive(Debug)]
-pub struct HttpResponse {
-    common: HttpCommon,
+pub struct HttpResponse<'a> {
+    common: HttpCommon<'a>,
     pub status_code: u16,
 }
 
-impl Deref for HttpRequest {
-    type Target = HttpCommon;
+impl<'a> HttpRequest<'a> {
+    pub fn to_writer(&self, buf: &impl std::io::Write) -> anyhow::Result<()> {
+        write!(buf, "{} {} HTTP/1.1\r\n", self.method, self.path)?;
+        for (k, v) in &self.headers {
+            write!(buf, "{k}: {v}\r\n")?;
+        }
+
+        write!(buf, "\r\n")?;
+        Ok(())
+    }
+
+    pub fn address(&self) -> Address {}
+}
+
+impl<'a> Deref for HttpRequest<'a> {
+    type Target = HttpCommon<'a>;
 
     fn deref(&self) -> &Self::Target {
         &self.common
     }
 }
 
-impl Deref for HttpResponse {
-    type Target = HttpCommon;
+impl<'a> Deref for HttpResponse<'a> {
+    type Target = HttpCommon<'a>;
 
     fn deref(&self) -> &Self::Target {
         &self.common
     }
 }
 
-impl HttpCommon {
+impl<'a> HttpCommon<'a> {
     pub fn get_header(&self, n: &str) -> Option<&str> {
         self.headers
             .iter()
             .find(|(k, _)| k.eq_ignore_ascii_case(n))
-            .map(|(_, v)| v.as_str())
+            .map(|(_, v)| v.as_ref())
     }
 
     pub fn get_content_length(&self) -> Option<usize> {
@@ -78,7 +97,9 @@ impl<I: Debug, T> Debug for AsyncHttpStream<I, T> {
     }
 }
 
-impl<I: Deref<Target = HttpCommon>, T: AsyncRead + Unpin + Send + Sync> AsyncHttpStream<I, T> {
+impl<'a, I: Deref<Target = HttpCommon<'a>>, T: AsyncRead + Unpin + Send + Sync>
+    AsyncHttpStream<I, T>
+{
     pub async fn body(&mut self) -> anyhow::Result<Vec<u8>> {
         match (
             self.deref().get_content_length(),
@@ -197,7 +218,7 @@ impl<I, T: AsyncWrite> AsyncWrite for AsyncHttpStream<I, T> {
 pub async fn parse_response<T: AsyncRead + Unpin + Send + Sync>(
     mut stream: T,
     mut buf: RWBuffer,
-) -> anyhow::Result<AsyncHttpStream<HttpResponse, T>> {
+) -> anyhow::Result<AsyncHttpStream<HttpResponse<'static>, T>> {
     loop {
         match stream.read(buf.write_buf()).await? {
             0 => bail!("Unexpected EOF"),
@@ -215,8 +236,8 @@ pub async fn parse_response<T: AsyncRead + Unpin + Send + Sync>(
                     .iter()
                     .map(|hdr| {
                         (
-                            hdr.name.to_string(),
-                            String::from_utf8_lossy(hdr.value).to_string(),
+                            Cow::Owned(hdr.name.to_string()),
+                            Cow::Owned(String::from_utf8_lossy(hdr.value).to_string()),
                         )
                     })
                     .collect();
@@ -246,7 +267,7 @@ pub async fn parse_response<T: AsyncRead + Unpin + Send + Sync>(
 pub async fn parse_request<T: AsyncRead + Unpin + Send + Sync>(
     mut stream: T,
     mut buf: RWBuffer,
-) -> Result<AsyncHttpStream<HttpRequest, T>, (anyhow::Error, T)> {
+) -> Result<AsyncHttpStream<HttpRequest<'static>, T>, (anyhow::Error, T)> {
     loop {
         match stream.read(buf.write_buf()).await {
             Ok(0) => return Err((anyhow!("Unexpected EOF"), stream)),
@@ -265,8 +286,8 @@ pub async fn parse_request<T: AsyncRead + Unpin + Send + Sync>(
                     .iter()
                     .map(|hdr| {
                         (
-                            hdr.name.to_string(),
-                            String::from_utf8_lossy(hdr.value).to_string(),
+                            Cow::Owned(hdr.name.to_string()),
+                            Cow::Owned(String::from_utf8_lossy(hdr.value).to_string()),
                         )
                     })
                     .collect();
@@ -282,8 +303,8 @@ pub async fn parse_request<T: AsyncRead + Unpin + Send + Sync>(
                 return Ok(AsyncHttpStream {
                     init: HttpRequest {
                         common: HttpCommon { headers },
-                        method,
-                        path,
+                        method: Cow::Owned(method),
+                        path: Cow::Owned(path),
                     },
                     body_buf,
                     body: stream,

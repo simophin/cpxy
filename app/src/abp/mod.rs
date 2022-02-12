@@ -1,7 +1,7 @@
 use std::{
     borrow::Cow,
     io::Read,
-    path::PathBuf,
+    path::{Path, PathBuf},
     sync::RwLock,
     time::{Duration, SystemTime},
 };
@@ -37,6 +37,17 @@ struct EngineState {
 struct Asset;
 
 impl EngineState {
+    fn engine_from_file(p: &Path) -> anyhow::Result<(Engine, SystemTime)> {
+        let meta = std::fs::metadata(p)?;
+        let mut file = std::fs::File::open(p)?;
+        let mut buf = Vec::with_capacity(meta.len() as usize);
+        let _ = file.read_to_end(&mut buf)?;
+        Ok((
+            create_engine(buf.as_ref())?,
+            meta.modified().unwrap_or(SystemTime::UNIX_EPOCH),
+        ))
+    }
+
     fn new(file_name: &str) -> Self {
         let cache_file_path = dirs::data_dir().map(|mut r| {
             r.push("cjk_proxy");
@@ -45,16 +56,16 @@ impl EngineState {
             r
         });
 
-        let engine = cache_file_path.as_ref().and_then(|p| {
-            let meta = std::fs::metadata(p).ok()?;
-            let mut file = std::fs::File::open(p).ok()?;
-            let mut buf = Vec::with_capacity(meta.len() as usize);
-            let _ = file.read_to_end(&mut buf).ok()?;
-            Some((
-                create_engine(buf.as_ref()).ok()?,
-                meta.modified().unwrap_or(SystemTime::UNIX_EPOCH),
-            ))
-        });
+        let engine = match &cache_file_path {
+            Some(p) => match Self::engine_from_file(p.as_path()) {
+                Ok(v) => Some(v),
+                Err(e) => {
+                    log::error!("Error reading file: {p:?}: {e:#}");
+                    None
+                }
+            },
+            _ => None,
+        };
 
         Self {
             engine,
@@ -132,7 +143,7 @@ async fn update_engine(
         .into_iter()
         .map(|v| ("If-Modified-Since", v));
 
-    let mut body = match fetch_http(rule_list_url, "GET", last_modified, proxy, None).await? {
+    let mut body = match fetch_http(rule_list_url, "GET", last_modified, Some(proxy), None).await? {
         mut r if r.status_code == 200 => r.body().await?,
         r if r.status_code == 304 => return Ok(0),
         r => bail!("Invalid http response: {}", r.status_code),

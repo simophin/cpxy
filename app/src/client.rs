@@ -1,6 +1,7 @@
-use anyhow::{bail, Context};
+use anyhow::{anyhow, bail, Context};
 use bytes::Bytes;
 use futures_util::{select, FutureExt};
+use smol_timeout::TimeoutExt;
 use std::collections::HashMap;
 use std::net::SocketAddr;
 use std::sync::Arc;
@@ -8,10 +9,13 @@ use std::time::{Duration, UNIX_EPOCH};
 
 use crate::config::*;
 use crate::counter::Counter;
+use crate::fetch::send_http;
 use crate::handshake::Handshaker;
 use crate::io::{TcpListener, TcpStream};
 use crate::proxy::protocol::{ProxyRequest, ProxyResult};
 use crate::proxy::request_proxy_upstream;
+use crate::socks5::Address;
+use crate::stream::AsyncReadWrite;
 use crate::udp_relay;
 use crate::utils::{copy_duplex, RWBuffer};
 use futures_lite::future::race;
@@ -128,24 +132,16 @@ pub async fn run_client(
 }
 
 async fn prepare_direct_tcp(
-    req: &ProxyRequest,
+    dst: &Address,
 ) -> anyhow::Result<(
-    SocketAddr,
+    Option<SocketAddr>,
     impl AsyncRead + AsyncWrite + Unpin + Send + Sync,
 )> {
-    let (dst, init_req) = match req {
-        ProxyRequest::TCP { dst } => (dst, Bytes::new()),
-        ProxyRequest::Http { dst, request } => (dst, request.clone()),
-        ProxyRequest::UDP | ProxyRequest::DNS { .. } => {
-            unreachable!("Unexpected request type for direct tcp: {req:?}")
-        }
-    };
-
-    let mut stream = TcpStream::connect(&dst).await?;
-    if !init_req.is_empty() {
-        stream.write_all(init_req.as_ref()).await?;
-    }
-    Ok((stream.local_addr()?, stream))
+    let stream = TcpStream::connect(&dst)
+        .timeout(Duration::from_secs(2))
+        .await
+        .ok_or_else(|| anyhow!("Timeout connecting to {dst}"))??;
+    Ok((stream.local_addr().ok(), AsyncReadWrite::new(stream)))
 }
 
 async fn drain_socks(
@@ -211,7 +207,7 @@ async fn serve_proxy_client(
                 Err(last_error.unwrap())
             } else if config.allow_direct(dst) {
                 log::info!("Connecting directly to {dst}");
-                match prepare_direct_tcp(&req).await {
+                match prepare_direct_tcp(req).await {
                     Ok((bound_address, upstream)) => {
                         handshaker.respond_ok(&mut socks, bound_address).await?;
                         copy_duplex(upstream, socks, None, None).await

@@ -1,25 +1,40 @@
+use crate::fetch::send_http;
+use crate::http::HttpRequest;
 use crate::io::TcpStream;
 use crate::proxy::protocol::ProxyResult;
 use crate::socks5::Address;
 use crate::utils::{copy_duplex, write_bincode_lengthed_async};
 use anyhow::anyhow;
-use futures_lite::{AsyncRead, AsyncWrite, AsyncWriteExt};
+use futures_lite::{AsyncRead, AsyncWrite};
+use futures_util::FutureExt;
 use smol_timeout::TimeoutExt;
 use std::net::SocketAddr;
 use std::time::Duration;
 
-async fn prepare(target: &Address) -> anyhow::Result<(SocketAddr, TcpStream)> {
+async fn prepare(target: &Address) -> anyhow::Result<(Option<SocketAddr>, TcpStream)> {
     let socket = TcpStream::connect(target).await?;
-    Ok((socket.local_addr()?, socket))
+    Ok((socket.local_addr().ok(), socket))
 }
 
 async fn serve_tcp_proxy_common(
-    upstream: Option<anyhow::Result<(SocketAddr, TcpStream)>>,
+    upstream: Option<
+        anyhow::Result<(
+            Option<SocketAddr>,
+            impl AsyncRead + AsyncWrite + Unpin + Send + Sync + 'static,
+        )>,
+    >,
     mut src: impl AsyncRead + AsyncWrite + Unpin + Send + Sync + 'static,
 ) -> anyhow::Result<()> {
     let upstream = match upstream {
         Some(Ok((bound_address, socket))) => {
-            write_bincode_lengthed_async(&mut src, &ProxyResult::Granted { bound_address }).await?;
+            write_bincode_lengthed_async(
+                &mut src,
+                &ProxyResult::Granted {
+                    bound_address,
+                    solved_addresses: None,
+                },
+            )
+            .await?;
             socket
         }
         None => {
@@ -44,23 +59,13 @@ pub async fn serve_tcp_proxy(
     serve_tcp_proxy_common(prepare(target).timeout(Duration::from_secs(3)).await, src).await
 }
 
-async fn prepare_http(target: &Address, headers: &[u8]) -> anyhow::Result<(SocketAddr, TcpStream)> {
-    let (addr, mut stream) = prepare(target).await?;
-    log::debug!(
-        "Writing to {target:?}: \n{}",
-        String::from_utf8_lossy(headers)
-    );
-    stream.write_all(headers).await?;
-    Ok((addr, stream))
-}
-
 pub async fn serve_http_proxy(
-    target: &Address,
-    headers: &[u8],
+    req: HttpRequest<'_>,
     src: impl AsyncRead + AsyncWrite + Unpin + Send + Sync + 'static,
 ) -> anyhow::Result<()> {
     serve_tcp_proxy_common(
-        prepare_http(target, headers)
+        send_http(req, None)
+            .map(|r| r.map(|(socket, _)| (None, socket)))
             .timeout(Duration::from_secs(3))
             .await,
         src,
