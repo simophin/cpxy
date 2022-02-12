@@ -39,3 +39,32 @@ pub async fn resolve_domains(
         .await
         .context("Writing result to client")
 }
+
+#[cfg(test)]
+mod test {
+    use crate::{test::duplex, utils::read_bincode_lengthed_async};
+
+    use super::*;
+
+    #[test]
+    fn test_resolve_works() {
+        smol::block_on(async move {
+            let (mut near, far) = duplex(1).await;
+            resolve_domains(
+                vec![
+                    String::from("www.google.com"),
+                    String::from("www.facebook.com"),
+                ],
+                far,
+            )
+            .await
+            .unwrap();
+
+            let res: ProxyResult = read_bincode_lengthed_async(&mut near).await.unwrap();
+            assert!(
+                matches!(res, ProxyResult::DNSResolved { addresses } if addresses.get("www.google.com").unwrap().len() > 0 && 
+            addresses.get("www.facebook.com").unwrap().len() > 0)
+            );
+        })
+    }
+}
