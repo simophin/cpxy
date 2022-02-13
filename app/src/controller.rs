@@ -160,7 +160,7 @@ impl Controller {
 
     async fn dispatch(&mut self, r: impl AsyncRead + Unpin + Send + Sync) -> HttpResult<Response> {
         match parse_request(r, Default::default()).await {
-            Ok(mut r) => match (r.method.as_str(), r.path.as_str()) {
+            Ok(mut r) => match (r.method.as_ref(), r.url.path()) {
                 ("options", _) => Ok(Response::Empty),
                 ("get", p) if p.starts_with("/api/config") => {
                     self.get_config().and_then(json_response)
@@ -206,7 +206,7 @@ impl Controller {
                     .delete_upstreams(r.body_json().await?)
                     .await
                     .and_then(json_response),
-                _ => Err(ErrorResponse::NotFound(r.path.clone())),
+                _ => Err(ErrorResponse::NotFound(r.url.path().to_string())),
             },
             Err((e, _)) => Err(ErrorResponse::InvalidRequest(e)),
         }

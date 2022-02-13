@@ -2,10 +2,9 @@ use std::{borrow::Cow, io::Write};
 
 use anyhow::{bail, Context};
 use futures_lite::{AsyncRead, AsyncWrite, AsyncWriteExt};
-use url::Url;
 
 use crate::{
-    http::{AsyncHttpStream, HttpCommon, HttpRequest, HttpResponse},
+    http::{AsyncHttpStream, HttpCommon, HttpRequest, HttpResponse, HttpUrl},
     io::TcpStream,
     socks5::Address,
     stream::AsyncReadWrite,
@@ -66,27 +65,20 @@ async fn prepare_connection(
 }
 
 pub async fn send_http<'a>(
-    mut req: HttpRequest<'a>,
+    req: HttpRequest<'a>,
     http_proxy: Option<&Address>,
 ) -> anyhow::Result<(
     impl AsyncRead + AsyncWrite + Unpin + Send + Sync + 'static,
     Vec<u8>,
 )> {
-    let url = Url::parse(req.path.as_ref())?;
-    let (scheme, host, port, path) = match url.domain() {
-        Some(host) => (url.scheme(), host, url.port(), url.path()),
-        _ => bail!("No domain specified"),
+    let (host, is_ssl, port) = match &req.url {
+        HttpUrl::WithScheme { address, https, .. } => {
+            (address.get_host(), *https, address.get_port())
+        }
+        _ => bail!("Invalid http request: {req:?}"),
     };
+    let (mut client, mut buf) = prepare_connection(http_proxy, is_ssl, host.as_ref(), port).await?;
 
-    let (is_ssl, port) = match scheme {
-        s if s.eq_ignore_ascii_case("http") => (false, port.unwrap_or(80)),
-        s if s.eq_ignore_ascii_case("https") => (true, port.unwrap_or(443)),
-        s => bail!("Unknown scheme for fetching http: {s}"),
-    };
-
-    let (mut client, mut buf) = prepare_connection(http_proxy, is_ssl, host, port).await?;
-
-    req.path = Cow::Borrowed(path);
     req.to_writer(&mut buf)?;
 
     client.write_all(&buf).await?;
@@ -118,15 +110,19 @@ pub async fn fetch_http<'a, 'b>(
         None
     };
 
-    let (client, buf) = send_http(
+    let (mut client, buf) = send_http(
         HttpRequest {
-            path: Cow::Borrowed(url),
+            url: url.parse()?,
             method: Cow::Borrowed(method),
             common: HttpCommon { headers },
         },
         http_proxy,
     )
     .await?;
+
+    if let Some(body) = body {
+        client.write_all(body).await?;
+    }
 
     super::http::parse_response(client, RWBuffer::new(buf)).await
 }
