@@ -1,4 +1,5 @@
 use anyhow::anyhow;
+use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::fmt::{Display, Formatter};
 use std::net::IpAddr;
@@ -6,8 +7,7 @@ use std::str::FromStr;
 use std::time::UNIX_EPOCH;
 
 use ipnetwork::IpNetwork;
-use serde::de::{Error, Visitor};
-use serde::{Deserialize, Deserializer, Serialize, Serializer};
+use serde_with::{DeserializeFromStr, SerializeDisplay};
 
 use crate::abp::{matches_adblock_list, matches_gfw_list};
 use crate::client::ClientStatistics;
@@ -15,49 +15,13 @@ use crate::geoip::{find_geoip, CountryCode};
 use crate::pattern::Pattern;
 use crate::socks5::Address;
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, DeserializeFromStr, SerializeDisplay)]
 pub enum TrafficMatchRule {
     GeoIP(CountryCode),
     Network(IpNetwork),
     Domain(Pattern),
     GfwList,
     AdBlockList,
-}
-
-struct TrafficMatchRuleVisitor;
-
-impl<'de> Visitor<'de> for TrafficMatchRuleVisitor {
-    type Value = TrafficMatchRule;
-
-    fn expecting(&self, formatter: &mut std::fmt::Formatter) -> std::fmt::Result {
-        formatter.write_str("Upstream rule")
-    }
-
-    fn visit_str<E>(self, v: &str) -> Result<Self::Value, E>
-    where
-        E: Error,
-    {
-        v.parse::<Self::Value>()
-            .map_err(|e| serde::de::Error::custom(e.to_string()))
-    }
-}
-
-impl<'de> Deserialize<'de> for TrafficMatchRule {
-    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
-    where
-        D: Deserializer<'de>,
-    {
-        deserializer.deserialize_str(TrafficMatchRuleVisitor)
-    }
-}
-
-impl Serialize for TrafficMatchRule {
-    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-    where
-        S: Serializer,
-    {
-        serializer.serialize_str(self.to_string().as_str())
-    }
 }
 
 impl FromStr for TrafficMatchRule {

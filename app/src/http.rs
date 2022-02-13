@@ -9,14 +9,12 @@ use std::{
 use anyhow::{anyhow, bail, Context};
 use futures_lite::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
 use pin_project_lite::pin_project;
-use serde::{
-    de::{DeserializeOwned, Visitor},
-    Deserialize, Serialize,
-};
+use serde::{de::DeserializeOwned, Deserialize, Serialize};
+use serde_with::{DeserializeFromStr, SerializeDisplay};
 
 use crate::{socks5::Address, utils::RWBuffer};
 
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug, PartialEq, Eq, SerializeDisplay, DeserializeFromStr)]
 pub enum HttpUrl {
     PathOnly {
         path: String,
@@ -224,42 +222,6 @@ impl FromStr for HttpUrl {
         } else {
             Ok(HttpUrl::WithAddress { address, path })
         }
-    }
-}
-
-struct HttpUrlVisitor;
-
-impl<'de> Visitor<'de> for HttpUrlVisitor {
-    type Value = HttpUrl;
-
-    fn expecting(&self, formatter: &mut std::fmt::Formatter) -> std::fmt::Result {
-        formatter.write_str("expecting HttpURL")
-    }
-
-    fn visit_str<E>(self, v: &str) -> Result<Self::Value, E>
-    where
-        E: serde::de::Error,
-    {
-        v.parse()
-            .map_err(|e| serde::de::Error::custom(format!("Error parsing url: {e:?}")))
-    }
-}
-
-impl<'de> Deserialize<'de> for HttpUrl {
-    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
-    where
-        D: serde::Deserializer<'de>,
-    {
-        deserializer.deserialize_str(HttpUrlVisitor)
-    }
-}
-
-impl Serialize for HttpUrl {
-    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-    where
-        S: serde::Serializer,
-    {
-        serializer.collect_str(self)
     }
 }
 

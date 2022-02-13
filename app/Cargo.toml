@@ -35,7 +35,8 @@ smol = "1"
 smol-timeout = "0"
 url = "2"
 chrono = "0"
-dirs = "4"
+dirs = "4" 
+serde_with = "1"
 
 [dev-dependencies]
 maplit = "1"

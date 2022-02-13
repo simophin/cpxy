@@ -1,6 +1,5 @@
 use anyhow::anyhow;
-use serde::de::{Deserialize, Error, Visitor};
-use serde::ser::Serialize;
+use serde_with::{DeserializeFromStr, SerializeDisplay};
 use std::borrow::Cow;
 use std::fmt::Formatter;
 use std::io::Cursor;
@@ -9,11 +8,10 @@ use std::str::FromStr;
 
 use bytes::{Buf, BufMut};
 use futures_lite::{AsyncWrite, AsyncWriteExt};
-use serde::{Deserializer, Serializer};
 
 use crate::parse::ParseError;
 
-#[derive(Eq, PartialEq, Clone)]
+#[derive(Eq, PartialEq, Clone, SerializeDisplay, DeserializeFromStr)]
 pub enum Address {
     IP(SocketAddr),
     Name { host: String, port: u16 },
@@ -32,41 +30,6 @@ impl Address {
             Self::IP(addr) => Cow::Owned(addr.ip().to_string()),
             Self::Name { host, .. } => Cow::Borrowed(host.as_str()),
         }
-    }
-}
-
-impl Serialize for Address {
-    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-    where
-        S: Serializer,
-    {
-        serializer.serialize_str(self.to_string().as_str())
-    }
-}
-
-struct AddressVisitor;
-
-impl Visitor<'_> for AddressVisitor {
-    type Value = Address;
-
-    fn expecting(&self, formatter: &mut Formatter) -> std::fmt::Result {
-        formatter.write_str("Expecting string for address")
-    }
-
-    fn visit_str<E>(self, v: &str) -> Result<Self::Value, E>
-    where
-        E: Error,
-    {
-        Address::from_str(v).map_err(|e| serde::de::Error::custom(e.to_string()))
-    }
-}
-
-impl<'de> Deserialize<'de> for Address {
-    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
-    where
-        D: Deserializer<'de>,
-    {
-        deserializer.deserialize_str(AddressVisitor)
     }
 }
 
