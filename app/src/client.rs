@@ -216,7 +216,7 @@ async fn serve_proxy_client(
             } else if config.allow_direct(dst) {
                 log::info!("Connecting directly to {dst}");
                 match req {
-                    ProxyRequest::HTTP(req) => match send_http(req, None).await {
+                    ProxyRequest::HTTP(req) => match send_http(req).await {
                         Ok((upstream, _)) => {
                             handshaker.respond_ok(&mut socks, None).await?;
                             copy_duplex(upstream, socks, None, None).await

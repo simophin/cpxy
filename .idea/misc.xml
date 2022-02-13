@@ -10,16 +10,7 @@
     <option name="openedFilesInfos">
       <list>
         <OpenedFileInfo>
-          <option name="caretOffset" value="1205" />
-          <option name="fileUrl" value="file://$PROJECT_DIR$/app/src/controller.rs" />
-        </OpenedFileInfo>
-        <OpenedFileInfo>
-          <option name="caretOffset" value="895" />
-          <option name="fileUrl" value="file://$PROJECT_DIR$/app/src/tls.rs" />
-        </OpenedFileInfo>
-        <OpenedFileInfo>
-          <option name="caretOffset" value="4086" />
-          <option name="fileUrl" value="file://$PROJECT_DIR$/app/src/socks5/udp.rs" />
+          <option name="fileUrl" value="mock:///DiffPreview" />
         </OpenedFileInfo>
       </list>
     </option>

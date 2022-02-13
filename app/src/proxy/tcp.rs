@@ -64,7 +64,7 @@ pub async fn serve_http_proxy(
     src: impl AsyncRead + AsyncWrite + Unpin + Send + Sync + 'static,
 ) -> anyhow::Result<()> {
     serve_tcp_proxy_common(
-        send_http(req, None)
+        send_http(req)
             .map(|r| r.map(|(socket, _)| (None, socket)))
             .timeout(Duration::from_secs(3))
             .await,

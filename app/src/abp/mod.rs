@@ -6,7 +6,7 @@ use std::{
     time::{Duration, SystemTime},
 };
 
-use crate::{fetch::fetch_http, socks5::Address};
+use crate::{fetch::fetch_http_with_proxy, socks5::Address};
 use adblock::{
     engine::Engine,
     lists::{FilterSet, ParseOptions},
@@ -143,11 +143,12 @@ async fn update_engine(
         .into_iter()
         .map(|v| ("If-Modified-Since", v));
 
-    let mut body = match fetch_http(rule_list_url, "GET", last_modified, Some(proxy), None).await? {
-        mut r if r.status_code == 200 => r.body().await?,
-        r if r.status_code == 304 => return Ok(0),
-        r => bail!("Invalid http response: {}", r.status_code),
-    };
+    let mut body =
+        match fetch_http_with_proxy(rule_list_url, "GET", last_modified, proxy, None).await? {
+            mut r if r.status_code == 200 => r.body().await?,
+            r if r.status_code == 304 => return Ok(0),
+            r => bail!("Invalid http response: {}", r.status_code),
+        };
 
     if is_base64 {
         // Remove new lines first
