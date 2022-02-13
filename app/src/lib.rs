@@ -17,7 +17,7 @@ mod utils;
 
 mod counter;
 
-// #[cfg(target_os = "android")]
+#[cfg(target_os = "android")]
 mod jni_export;
 
 pub mod io;

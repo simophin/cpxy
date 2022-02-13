@@ -16,6 +16,7 @@ use chrono::DateTime;
 use futures_lite::AsyncWriteExt;
 use lazy_static::lazy_static;
 use rust_embed::RustEmbed;
+use serde::Serialize;
 use smol::fs::File;
 use url::Url;
 
@@ -91,21 +92,6 @@ impl EngineState {
 
         r
     }
-}
-
-fn gfw_engine() -> &'static RwLock<EngineState> {
-    lazy_static! {
-        static ref ENGINE: RwLock<EngineState> =
-            RwLock::new(EngineState::from_embedded("gfw_list.dat", "gfwlist.abp"));
-    }
-    &ENGINE
-}
-
-fn abp_engine() -> &'static RwLock<EngineState> {
-    lazy_static! {
-        static ref ENGINE: RwLock<EngineState> = RwLock::new(EngineState::new("abplist.abp"));
-    }
-    &ENGINE
 }
 
 async fn update_engine(
@@ -223,52 +209,58 @@ fn matches_abp(state: &RwLock<EngineState>, addr: &Address) -> bool {
         .matched
 }
 
-pub async fn update_gfw_list(proxy: &Address) -> anyhow::Result<usize> {
-    match update_engine(
-        gfw_engine(),
-        proxy,
-        "https://raw.githubusercontent.com/gfwlist/gfwlist/master/gfwlist.txt",
-        true,
-    )
-    .await
-    {
-        Ok(v) => {
-            log::debug!("Updated {v} gfw items");
-            Ok(v)
-        }
-        Err(e) => {
-            log::error!("Error updating gfwlist: {e:?}");
-            return Err(e);
-        }
+pub struct ABPEngine {
+    state: RwLock<EngineState>,
+    rule_url: &'static str,
+    is_base64: bool,
+}
+
+#[derive(Serialize)]
+struct ABPEngineStatistics {
+    last_updated: Option<SystemTime>,
+}
+
+impl ABPEngine {
+    pub async fn update(&self, proxy: &Address) -> anyhow::Result<usize> {
+        update_engine(&self.state, proxy, self.rule_url, self.is_base64).await
+    }
+
+    pub fn matches(&self, target: &Address) -> bool {
+        matches_abp(&self.state, target)
+    }
+
+    pub fn get_stats(&self) -> anyhow::Result<impl Serialize> {
+        let g = match self.state.read() {
+            Ok(g) => g,
+            Err(_) => bail!("Error locking state"),
+        };
+
+        Ok(ABPEngineStatistics {
+            last_updated: g.engine.as_ref().map(|(_, t)| t.clone()),
+        })
     }
 }
 
-pub async fn update_abp_list(proxy: &Address) -> anyhow::Result<usize> {
-    match update_engine(
-        abp_engine(),
-        proxy,
-        "https://easylist.to/easylist/easylist.txt",
-        false,
-    )
-    .await
-    {
-        Ok(v) => {
-            log::debug!("Updated {v} adblock items");
-            Ok(v)
-        }
-        Err(e) => {
-            log::error!("Error updating abp: {e:?}");
-            return Err(e);
-        }
+pub fn adblock_list_engine() -> &'static ABPEngine {
+    lazy_static! {
+        static ref ENGINE: ABPEngine = ABPEngine {
+            state: RwLock::new(EngineState::new("abplist.abp")),
+            rule_url: "https://easylist.to/easylist/easylist.txt",
+            is_base64: false
+        };
     }
+    &ENGINE
 }
 
-pub fn matches_gfw_list(addr: &Address) -> bool {
-    matches_abp(gfw_engine(), addr)
-}
-
-pub fn matches_adblock_list(addr: &Address) -> bool {
-    matches_abp(abp_engine(), addr)
+pub fn gfw_list_engine() -> &'static ABPEngine {
+    lazy_static! {
+        static ref ENGINE: ABPEngine = ABPEngine {
+            state: RwLock::new(EngineState::from_embedded("gfw_list.dat", "gfwlist.abp")),
+            rule_url: "https://raw.githubusercontent.com/gfwlist/gfwlist/master/gfwlist.txt",
+            is_base64: true
+        };
+    }
+    &ENGINE
 }
 
 #[cfg(test)]
@@ -277,9 +269,9 @@ mod test {
 
     #[test]
     fn test_match_gfw_list() {
-        assert!(matches_gfw_list(&"www.google.com:443".parse().unwrap()));
-        assert!(matches_gfw_list(&"www.facebook.com:80".parse().unwrap()));
-        assert!(matches_gfw_list(&"twitter.com:22".parse().unwrap()));
-        assert!(!matches_gfw_list(&"www.qq.com:443".parse().unwrap()));
+        assert!(gfw_list_engine().matches(&"www.google.com:443".parse().unwrap()));
+        assert!(gfw_list_engine().matches(&"www.facebook.com:80".parse().unwrap()));
+        assert!(gfw_list_engine().matches(&"twitter.com:22".parse().unwrap()));
+        assert!(!gfw_list_engine().matches(&"www.qq.com:443".parse().unwrap()));
     }
 }

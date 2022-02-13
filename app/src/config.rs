@@ -9,7 +9,7 @@ use std::time::UNIX_EPOCH;
 use ipnetwork::IpNetwork;
 use serde_with::{DeserializeFromStr, SerializeDisplay};
 
-use crate::abp::{matches_adblock_list, matches_gfw_list};
+use crate::abp::{adblock_list_engine, gfw_list_engine};
 use crate::client::ClientStatistics;
 use crate::geoip::{find_geoip, CountryCode};
 use crate::pattern::Pattern;
@@ -80,8 +80,8 @@ impl TrafficMatchRule {
         match (self, country_code, ip, addr) {
             (Self::GeoIP(cc), Some(c), _, _) if cc == &c => 10,
             (Self::Network(network), _, Some(ip), _) if network.contains(ip) => 20,
-            (Self::GfwList, _, _, Address::Name { .. }) if matches_gfw_list(addr) => 15,
-            (Self::AdBlockList, _, _, _) if matches_adblock_list(addr) => 20,
+            (Self::GfwList, _, _, Address::Name { .. }) if gfw_list_engine().matches(addr) => 15,
+            (Self::AdBlockList, _, _, _) if adblock_list_engine().matches(addr) => 20,
             (Self::Domain(p), _, _, Address::Name { host, .. }) if p.matches(host.as_str()) => 20,
             _ => 0,
         }

@@ -1,10 +1,10 @@
-use crate::abp::{update_abp_list, update_gfw_list};
+use crate::abp::{adblock_list_engine, gfw_list_engine};
 use crate::broadcast::bounded;
 use crate::client::{run_client, ClientStatistics};
 use crate::config::{ClientConfig, UpstreamConfig};
 use crate::http::{parse_request, write_http_response};
 use crate::io::TcpListener;
-use anyhow::Context;
+use anyhow::{anyhow, Context};
 use async_broadcast::Sender;
 use futures_lite::io::split;
 use futures_lite::{AsyncRead, AsyncWrite, AsyncWriteExt};
@@ -186,18 +186,27 @@ impl Controller {
                         _ => Err(ErrorResponse::NotFound(original_p.to_string())),
                     }
                 }
-                ("post", p) if p.starts_with("/api/gfwlist") => {
-                    update_gfw_list(&self.current.0.socks5_address)
-                        .await
-                        .map_err(|e| ErrorResponse::Generic(e))
-                        .and_then(|num| json_response(RuleUpdateResult { num_updated: num }))
+                (m, p) if p.starts_with("/api/gfwlist") || p.starts_with("/api/adblocklist") => {
+                    let engine = if p.contains("gfwlist") {
+                        gfw_list_engine()
+                    } else {
+                        adblock_list_engine()
+                    };
+
+                    match m {
+                        "get" => engine
+                            .get_stats()
+                            .map_err(|e| ErrorResponse::Generic(e))
+                            .and_then(json_response),
+                        "post" => engine
+                            .update(&self.current.0.socks5_address)
+                            .await
+                            .map_err(|e| ErrorResponse::Generic(e))
+                            .and_then(|num| json_response(RuleUpdateResult { num_updated: num })),
+                        _ => Err(ErrorResponse::InvalidRequest(anyhow!("Unknown method {m}"))),
+                    }
                 }
-                ("post", p) if p.starts_with("/api/abplist") => {
-                    update_abp_list(&self.current.0.socks5_address)
-                        .await
-                        .map_err(|e| ErrorResponse::Generic(e))
-                        .and_then(|num| json_response(RuleUpdateResult { num_updated: num }))
-                }
+
                 ("post", p) if p.starts_with("/api/upstream") => self
                     .update_upstreams(r.body_json().await?)
                     .await
