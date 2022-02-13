@@ -35,9 +35,15 @@ pub async fn resolve_domains(
         result.insert(name, addresses);
     }
 
-    write_bincode_lengthed_async(&mut stream, &ProxyResult::DNSResolved { addresses: result })
-        .await
-        .context("Writing result to client")
+    write_bincode_lengthed_async(
+        &mut stream,
+        &ProxyResult::Granted {
+            solved_addresses: Some(result),
+            bound_address: None,
+        },
+    )
+    .await
+    .context("Writing result to client")
 }
 
 #[cfg(test)]
@@ -64,7 +70,7 @@ mod test {
             let res: ProxyResult = read_bincode_lengthed_async(&mut near).await.unwrap();
             println!("Got result: {res:?}");
             assert!(
-                matches!(res, ProxyResult::DNSResolved { addresses } if addresses.get("www.google.com").unwrap().len() > 0 && 
+                matches!(res, ProxyResult::Granted { solved_addresses: Some(addresses), .. } if addresses.get("www.google.com").unwrap().len() > 0 && 
             addresses.get("www.facebook.com").unwrap().len() > 0)
             );
         })

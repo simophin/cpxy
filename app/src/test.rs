@@ -62,7 +62,8 @@ fn test_client_server_tcp() {
             write_bincode_lengthed_async(
                 &mut server,
                 &ProxyResult::Granted {
-                    bound_address: "1.2.3.4:8080".parse().unwrap(),
+                    bound_address: "1.2.3.4:8080".parse().ok(),
+                    solved_addresses: None,
                 },
             )
             .await
@@ -110,7 +111,7 @@ fn test_client_server_tcp() {
         let result: ProxyResult = read_bincode_lengthed_async(&mut client).await.unwrap();
 
         assert!(
-            matches!(result, ProxyResult::Granted {bound_address} if bound_address.to_string() == "1.2.3.4:8080")
+            matches!(result, ProxyResult::Granted {bound_address: Some(addr), ..} if addr.to_string() == "1.2.3.4:8080")
         );
 
         let (mut r, mut w) = split(client);

@@ -73,10 +73,8 @@ pub async fn serve_udp_proxy(
             write_bincode_lengthed_async(
                 &mut src,
                 &ProxyResult::Granted {
-                    bound_address: v
-                        .local_addr()
-                        .ok()
-                        .unwrap_or_else(|| "0.0.0.0:0".parse().unwrap()),
+                    bound_address: v.local_addr().ok(),
+                    solved_addresses: None,
                 },
             )
             .await?;
