@@ -17,7 +17,7 @@ pub async fn serve_client(
 
     match req {
         ProxyRequest::TCP { dst } => serve_tcp_proxy(&dst, stream).await,
-        ProxyRequest::HTTP(req) => serve_http_proxy(req, stream).await,
+        ProxyRequest::HTTP { dst, https, req } => serve_http_proxy(https, &dst, req, stream).await,
         ProxyRequest::UDP => serve_udp_proxy(stream, true).await,
         ProxyRequest::DNS { domains } => resolve_domains(domains, stream).await,
     }

@@ -152,6 +152,9 @@ fn test_client_server_tcp() {
     });
 }
 
+#[test]
+fn test_client_server_http() {}
+
 async fn read_exact_n<T: AsyncRead + Unpin + Send + Sync, const N: usize>(
     r: &mut T,
 ) -> anyhow::Result<[u8; N]> {
@@ -208,7 +211,7 @@ fn test_client_server_udp() {
                     direct_accept: Default::default(),
                     direct_reject: Default::default(),
                     socks5_address: "127.0.0.1:5001".parse().unwrap(),
-                    socks5_udp_host: "127.0.0.1".to_string(),
+                    socks5_udp_host: "0.0.0.0".parse().unwrap(),
                 }),
                 Arc::new(ClientStatistics {
                     upstreams: hashmap! {
@@ -257,6 +260,7 @@ fn test_client_server_udp() {
             match Address::parse(buf.read_buf()).unwrap() {
                 None => continue,
                 Some((offset, v)) => {
+                    let v = v.to_owned();
                     buf.advance_read(offset);
                     break v;
                 }

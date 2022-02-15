@@ -47,10 +47,10 @@ impl UdpSocket {
         ))
     }
 
-    pub async fn send_to_addr(&self, buf: &[u8], addr: &Address) -> smol::io::Result<usize> {
+    pub async fn send_to_addr(&self, buf: &[u8], addr: &Address<'_>) -> smol::io::Result<usize> {
         match addr {
             Address::IP(addr) => self.send_to(buf, addr).await,
-            Address::Name { host, port } => self.send_to(buf, (host.as_str(), *port)).await,
+            Address::Name { host, port } => self.send_to(buf, (host.as_ref(), *port)).await,
         }
     }
 }
@@ -83,11 +83,11 @@ impl TcpStream {
         Ok(Self::from(AsyncTcpStream::connect(a).await?))
     }
 
-    pub async fn connect(a: &Address) -> smol::io::Result<Self> {
+    pub async fn connect(a: &Address<'_>) -> smol::io::Result<Self> {
         match a {
             Address::IP(addr) => Ok(TcpStream::from(AsyncTcpStream::connect(addr).await?)),
             Address::Name { host, port } => Ok(TcpStream::from(
-                AsyncTcpStream::connect((host.as_str(), *port)).await?,
+                AsyncTcpStream::connect((host.as_ref(), *port)).await?,
             )),
         }
     }
@@ -183,10 +183,10 @@ impl TcpListener {
         self.0.local_addr()
     }
 
-    pub async fn bind(addr: &Address) -> smol::io::Result<Self> {
+    pub async fn bind(addr: &Address<'_>) -> smol::io::Result<Self> {
         let inner = match addr {
             Address::IP(addr) => AsyncTcpListener::bind(addr).await?,
-            Address::Name { host, port } => AsyncTcpListener::bind((host.as_str(), *port)).await?,
+            Address::Name { host, port } => AsyncTcpListener::bind((host.as_ref(), *port)).await?,
         };
         Ok(Self(inner))
     }
@@ -284,7 +284,7 @@ pub async fn copy_udp_and_stream<'a>(
         + Send
         + Sync
         + 'a,
-    transform_stream_buf: impl Fn(&[u8], &mut Vec<u8>) -> anyhow::Result<Option<(usize, Address)>>
+    transform_stream_buf: impl Fn(&[u8], &mut Vec<u8>) -> anyhow::Result<Option<(usize, Address<'static>)>>
         + Send
         + Sync
         + 'a,

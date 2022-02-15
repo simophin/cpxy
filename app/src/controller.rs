@@ -163,8 +163,8 @@ impl Controller {
     async fn dispatch(&mut self, r: impl AsyncRead + Unpin + Send + Sync) -> HttpResult<Response> {
         match parse_request(r, Default::default()).await {
             Ok(mut r) => {
-                log::debug!("Dispatching {} {}", r.method, r.url.path());
-                match (r.method.as_ref(), r.url.path()) {
+                log::debug!("Dispatching {} {}", r.method, r.path);
+                match (r.method.as_ref(), r.path.as_ref()) {
                     ("options", _) => Ok(Response::Empty),
                     ("get", p) if p.starts_with("/api/config") => {
                         self.get_config().and_then(json_response)

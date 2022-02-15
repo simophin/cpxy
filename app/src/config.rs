@@ -2,7 +2,7 @@ use anyhow::anyhow;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::fmt::{Display, Formatter};
-use std::net::IpAddr;
+use std::net::{IpAddr, Ipv4Addr};
 use std::str::FromStr;
 use std::time::UNIX_EPOCH;
 
@@ -82,7 +82,7 @@ impl TrafficMatchRule {
             (Self::Network(network), _, Some(ip), _) if network.contains(ip) => 20,
             (Self::GfwList, _, _, Address::Name { .. }) if gfw_list_engine().matches(addr) => 15,
             (Self::AdBlockList, _, _, _) if adblock_list_engine().matches(addr) => 20,
-            (Self::Domain(p), _, _, Address::Name { host, .. }) if p.matches(host.as_str()) => 20,
+            (Self::Domain(p), _, _, Address::Name { host, .. }) if p.matches(host.as_ref()) => 20,
             _ => 0,
         }
     }
@@ -94,7 +94,7 @@ const fn default_upstream_enabled() -> bool {
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct UpstreamConfig {
-    pub address: Address,
+    pub address: Address<'static>,
     #[serde(default)]
     pub tls: bool,
     #[serde(default)]
@@ -146,11 +146,11 @@ impl UpstreamConfig {
     }
 }
 
-fn default_socks5_udp_host() -> String {
-    "0.0.0.0".to_string()
+const fn default_socks5_udp_host() -> IpAddr {
+    IpAddr::V4(Ipv4Addr::UNSPECIFIED)
 }
 
-fn default_socks5_address() -> Address {
+fn default_socks5_address() -> Address<'static> {
     "127.0.0.1:5000".parse().unwrap()
 }
 
@@ -166,10 +166,10 @@ pub struct ClientConfig {
     pub direct_reject: Vec<TrafficMatchRule>,
 
     #[serde(default = "default_socks5_address")]
-    pub socks5_address: Address,
+    pub socks5_address: Address<'static>,
 
     #[serde(default = "default_socks5_udp_host")]
-    pub socks5_udp_host: String,
+    pub socks5_udp_host: IpAddr,
 }
 
 impl Default for ClientConfig {

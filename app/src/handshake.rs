@@ -1,4 +1,4 @@
-use crate::http::{HttpRequest, HttpUrl};
+use crate::http::HttpRequest;
 use crate::parse::ParseError;
 use crate::proxy::protocol::ProxyRequest;
 use crate::socks5::{
@@ -6,8 +6,9 @@ use crate::socks5::{
     AUTH_NO_PASSWORD,
 };
 use crate::utils::RWBuffer;
-use anyhow::{anyhow, bail};
+use anyhow::{anyhow, bail, Context};
 use futures_lite::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
+use std::borrow::Cow;
 use std::net::SocketAddr;
 
 struct SocksState {
@@ -167,13 +168,19 @@ impl Handshaker {
 
 async fn handshake_http(r: HttpRequest<'static>) -> anyhow::Result<ProxyRequest> {
     match r {
-        HttpRequest {
-            url: HttpUrl::WithAddress { address, .. },
-            method,
-            ..
-        } if method.eq_ignore_ascii_case("connect") => Ok(ProxyRequest::TCP { dst: address }),
-        v if matches!(v.url, HttpUrl::WithScheme { .. }) => Ok(ProxyRequest::HTTP(v)),
-        _ => bail!("Invalid http proxy request: {r:?}"),
+        HttpRequest { path, method, .. } if method.eq_ignore_ascii_case("connect") => {
+            Ok(ProxyRequest::TCP { dst: path.parse()? })
+        }
+        mut v => {
+            let (https, address, path) = HttpRequest::parse_absolute_url(v.path.as_ref())
+                .context("Parsing HTTP request path")?;
+            v.path = Cow::Owned(path);
+            Ok(ProxyRequest::HTTP {
+                dst: address,
+                https,
+                req: v,
+            })
+        }
     }
 }
 
@@ -194,8 +201,9 @@ async fn handshake_socks5(
             None => {}
             Some((offset, ClientConnRequest { cmd, address })) => match cmd {
                 Command::CONNECT_TCP => {
+                    let dst = address.to_owned();
                     buf.advance_read(offset);
-                    return Ok(ProxyRequest::TCP { dst: address });
+                    return Ok(ProxyRequest::TCP { dst });
                 }
                 Command::BIND_UDP => {
                     buf.advance_read(offset);

@@ -30,13 +30,13 @@ impl Command {
 }
 
 #[derive(Debug, Clone)]
-pub struct ClientConnRequest {
+pub struct ClientConnRequest<'a> {
     pub cmd: Command,
-    pub address: Address,
+    pub address: Address<'a>,
 }
 
-impl ClientConnRequest {
-    pub fn parse(mut buf: &[u8]) -> Result<Option<(usize, Self)>, ParseError> {
+impl<'a> ClientConnRequest<'a> {
+    pub fn parse(mut buf: &'a [u8]) -> Result<Option<(usize, Self)>, ParseError> {
         if buf.remaining() < 3 {
             return Ok(None);
         }
@@ -69,7 +69,7 @@ impl ClientConnRequest {
     pub async fn respond(
         w: &mut (impl AsyncWrite + Unpin + Send + Sync),
         code: ConnStatusCode,
-        bound_addr: &Address,
+        bound_addr: &Address<'static>,
     ) -> anyhow::Result<()> {
         w.write_all(&[0x5, code.0, 0x00]).await?;
         bound_addr.write(w).await?;

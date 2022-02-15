@@ -11,7 +11,7 @@ use smol_timeout::TimeoutExt;
 use std::net::SocketAddr;
 use std::time::Duration;
 
-async fn prepare(target: &Address) -> anyhow::Result<(Option<SocketAddr>, TcpStream)> {
+async fn prepare(target: &Address<'_>) -> anyhow::Result<(Option<SocketAddr>, TcpStream)> {
     let socket = TcpStream::connect(target).await?;
     Ok((socket.local_addr().ok(), socket))
 }
@@ -42,6 +42,7 @@ async fn serve_tcp_proxy_common(
             return Err(anyhow!("Timeout waiting for upstream"));
         }
         Some(Err(e)) => {
+            log::error!("Error connecting to upstream: {e:?}");
             write_bincode_lengthed_async(&mut src, &ProxyResult::ErrGeneric { msg: e.to_string() })
                 .await?;
             return Err(e);
@@ -52,7 +53,7 @@ async fn serve_tcp_proxy_common(
 }
 
 pub async fn serve_tcp_proxy(
-    target: &Address,
+    target: &Address<'_>,
     src: impl AsyncRead + AsyncWrite + Unpin + Send + Sync + 'static,
 ) -> anyhow::Result<()> {
     log::info!("Proxying upstream: tcp://{target:?}");
@@ -60,11 +61,14 @@ pub async fn serve_tcp_proxy(
 }
 
 pub async fn serve_http_proxy(
+    https: bool,
+    dst: &Address<'_>,
     req: HttpRequest<'_>,
     src: impl AsyncRead + AsyncWrite + Unpin + Send + Sync + 'static,
 ) -> anyhow::Result<()> {
+    log::info!("Proxying upstream: http(s)://{dst}");
     serve_tcp_proxy_common(
-        send_http(req)
+        send_http(https, dst, req)
             .map(|r| r.map(|(socket, _)| (None, socket)))
             .timeout(Duration::from_secs(3))
             .await,

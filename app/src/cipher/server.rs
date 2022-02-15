@@ -25,7 +25,7 @@ fn check_request(
         send_strategy: client_send_strategy,
         recv_strategy: client_receive_strategy,
         cipher_type,
-    } = match req.url.path().parse() {
+    } = match req.path.parse() {
         Ok(v) => v,
         Err(e) => {
             log::error!("Error parsing params: {e}");

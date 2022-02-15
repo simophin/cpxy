@@ -10,7 +10,6 @@ use crate::config::*;
 use crate::counter::Counter;
 use crate::fetch::send_http;
 use crate::handshake::Handshaker;
-use crate::http::{HttpRequest, HttpUrl};
 use crate::io::{TcpListener, TcpStream};
 use crate::proxy::protocol::{ProxyRequest, ProxyResult};
 use crate::proxy::request_proxy_upstream;
@@ -132,7 +131,7 @@ pub async fn run_client(
 }
 
 async fn prepare_direct_tcp(
-    dst: Address,
+    dst: Address<'_>,
 ) -> anyhow::Result<(
     Option<SocketAddr>,
     impl AsyncRead + AsyncWrite + Unpin + Send + Sync,
@@ -165,15 +164,7 @@ async fn serve_proxy_client(
     log::info!("Requesting to proxy {req:?}");
 
     match &req {
-        ProxyRequest::TCP { dst }
-        | ProxyRequest::HTTP(HttpRequest {
-            url: HttpUrl::WithAddress { address: dst, .. },
-            ..
-        })
-        | ProxyRequest::HTTP(HttpRequest {
-            url: HttpUrl::WithScheme { address: dst, .. },
-            ..
-        }) => {
+        ProxyRequest::TCP { dst } | ProxyRequest::HTTP { dst, .. } => {
             let mut upstreams = config.find_best_upstream(stats.as_ref(), &dst);
 
             if !upstreams.is_empty() {
@@ -216,16 +207,18 @@ async fn serve_proxy_client(
             } else if config.allow_direct(dst) {
                 log::info!("Connecting directly to {dst}");
                 match req {
-                    ProxyRequest::HTTP(req) => match send_http(req).await {
-                        Ok((upstream, _)) => {
-                            handshaker.respond_ok(&mut socks, None).await?;
-                            copy_duplex(upstream, socks, None, None).await
+                    ProxyRequest::HTTP { dst, https, req } => {
+                        match send_http(https, &dst, req).await {
+                            Ok((upstream, _)) => {
+                                handshaker.respond_ok(&mut socks, None).await?;
+                                copy_duplex(upstream, socks, None, None).await
+                            }
+                            Err(e) => {
+                                handshaker.respond_err(&mut socks).await?;
+                                Err(e.into())
+                            }
                         }
-                        Err(e) => {
-                            handshaker.respond_err(&mut socks).await?;
-                            Err(e.into())
-                        }
-                    },
+                    }
                     ProxyRequest::TCP { dst } => match prepare_direct_tcp(dst).await {
                         Ok((bound_address, upstream)) => {
                             handshaker.respond_ok(&mut socks, bound_address).await?;
@@ -258,10 +251,6 @@ async fn serve_proxy_client(
         ProxyRequest::DNS { .. } => {
             handshaker.respond_err(&mut socks).await?;
             bail!("Unsupported DNS request")
-        }
-        _ => {
-            handshaker.respond_err(&mut socks).await?;
-            bail!("Unsupported HTTP request")
         }
     }
 }

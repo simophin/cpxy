@@ -7,7 +7,7 @@ use std::borrow::Cow;
 #[derive(Debug, Clone, Eq, PartialEq)]
 pub struct UdpPacket<'a> {
     pub frag_no: u8,
-    pub addr: Address,
+    pub addr: Address<'a>,
     pub data: Cow<'a, [u8]>,
 }
 
@@ -51,7 +51,7 @@ impl<'a> UdpPacket<'a> {
 
     pub fn write_tcp_headers(
         w: &mut impl BufMut,
-        addr: &Address,
+        addr: &Address<'_>,
         data_len: usize,
     ) -> anyhow::Result<()> {
         let data_len: u16 = data_len.try_into()?;
@@ -63,7 +63,7 @@ impl<'a> UdpPacket<'a> {
 
     pub async fn write_tcp(
         w: &mut (impl AsyncWrite + Unpin + Send + Sync + ?Sized),
-        addr: &Address,
+        addr: &Address<'_>,
         data: &[u8],
     ) -> anyhow::Result<()> {
         let data_len: u16 = data.len().try_into()?;
@@ -115,12 +115,12 @@ impl<'a> UdpPacket<'a> {
         Ok(())
     }
 
-    pub fn write_udp_headers(addr: &Address, b: &mut impl BufMut) -> anyhow::Result<()> {
+    pub fn write_udp_headers(addr: &Address<'_>, b: &mut impl BufMut) -> anyhow::Result<()> {
         b.put_slice(&[0, 0, 0]);
         addr.write_to(b)
     }
 
-    pub fn udp_header_len(addr: &Address) -> usize {
+    pub fn udp_header_len<'b>(addr: &Address<'_>) -> usize {
         3 + addr.write_len()
     }
 }

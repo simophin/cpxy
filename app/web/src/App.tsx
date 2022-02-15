@@ -1,8 +1,8 @@
+import { Settings } from '@mui/icons-material';
 import { AppBar, Button, Toolbar, Typography } from '@mui/material';
 import { Box } from '@mui/system';
 import { useState } from 'react';
 import './App.css';
-import BasicSettingsEdit from './BasicSettingsEdit';
 import UpstreamList from './UpstreamList';
 
 function App() {
@@ -13,7 +13,8 @@ function App() {
       <AppBar position='static'>
         <Toolbar>
           <Typography variant='h6' sx={{ flexGrow: 1 }}>Proxy admin</Typography>
-          <Button color="inherit" onClick={() => setShowSettings(true)}>Settings</Button>
+
+          <Button color="inherit" onClick={() => setShowSettings(true)}><Settings /></Button>
         </Toolbar>
       </AppBar>
 

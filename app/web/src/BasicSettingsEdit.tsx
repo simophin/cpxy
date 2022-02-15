@@ -114,13 +114,13 @@ export default function BasicSettingsEdit({ onSaved, onCancelled, current_config
                 <div style={{ marginTop: 8 }}>
                     <b>GFW List: </b>{gfwListRequest.data ? formatDate(gfwListRequest.data.last_updated)
                         : (gfwListRequest.error ? 'Error' : 'Loading')} &nbsp;
-                    <Button variant='outlined' onClick={handleUpdateGfw}>Update</Button>
+                    <a href="#" onClick={handleUpdateGfw}>Update</a>
                 </div>
 
                 <div style={{ marginTop: 8 }}>
                     <b>Adblock List: </b>{adBlockListRequest.data ? formatDate(adBlockListRequest.data.last_updated)
                         : (adBlockListRequest.error ? 'Error' : 'Loading')} &nbsp;
-                    <Button variant='outlined' onClick={handleUpdateAbp}>Update</Button>
+                    <a onClick={handleUpdateAbp} href="#">Update</a>
                 </div>
 
                 {request.error && `Error: ${request.error}`}

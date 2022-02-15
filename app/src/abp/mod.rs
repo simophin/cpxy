@@ -95,7 +95,7 @@ impl EngineState {
 
 async fn update_engine(
     state: &RwLock<EngineState>,
-    proxy: &Address,
+    proxy: &Address<'_>,
     rule_list_url: &str,
     is_base64: bool,
 ) -> anyhow::Result<usize> {
@@ -215,11 +215,11 @@ pub struct ABPEngine {
 }
 
 impl ABPEngine {
-    pub async fn update(&self, proxy: &Address) -> anyhow::Result<usize> {
+    pub async fn update(&self, proxy: &Address<'_>) -> anyhow::Result<usize> {
         update_engine(&self.state, proxy, self.rule_url, self.is_base64).await
     }
 
-    pub fn matches(&self, target: &Address) -> bool {
+    pub fn matches(&self, target: &Address<'_>) -> bool {
         matches_abp(&self.state, target)
     }
 

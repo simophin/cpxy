@@ -1,10 +1,10 @@
 use std::borrow::Cow;
 
-use anyhow::{bail, Context};
+use anyhow::Context;
 use futures_lite::{AsyncRead, AsyncWrite, AsyncWriteExt};
 
 use crate::{
-    http::{AsyncHttpStream, HttpCommon, HttpRequest, HttpResponse, HttpUrl},
+    http::{AsyncHttpStream, HttpCommon, HttpRequest, HttpResponse},
     io::TcpStream,
     socks5::Address,
     stream::AsyncReadWrite,
@@ -13,8 +13,10 @@ use crate::{
 };
 
 pub async fn send_http_with_proxy(
-    req: HttpRequest<'_>,
-    http_proxy: &Address,
+    https: bool,
+    address: &Address<'_>,
+    mut req: HttpRequest<'_>,
+    http_proxy: &Address<'_>,
 ) -> anyhow::Result<(
     impl AsyncRead + AsyncWrite + Unpin + Send + Sync + 'static,
     Vec<u8>,
@@ -22,6 +24,9 @@ pub async fn send_http_with_proxy(
     let mut client = TcpStream::connect(http_proxy)
         .await
         .with_context(|| format!("Connecting to proxy server: {http_proxy}"))?;
+
+    let scheme = if https { "https://" } else { "http://" };
+    req.path = Cow::Owned(format!("{scheme}{address}{}", req.path));
 
     let mut buf = Vec::new();
     req.to_writer(&mut buf).context("Writing request headers")?;
@@ -35,26 +40,13 @@ pub async fn send_http_with_proxy(
 }
 
 pub async fn send_http(
+    https: bool,
+    address: &Address<'_>,
     req: HttpRequest<'_>,
 ) -> anyhow::Result<(
     impl AsyncRead + AsyncWrite + Unpin + Send + Sync + 'static,
     Vec<u8>,
 )> {
-    let HttpRequest {
-        url,
-        common,
-        method,
-    } = req;
-
-    let (address, https, path) = match url {
-        HttpUrl::WithScheme {
-            address,
-            https,
-            path,
-        } => (address, https, path),
-        _ => bail!("Unsupported URL"),
-    };
-
     let client = TcpStream::connect(&address)
         .await
         .with_context(|| format!("Connecting to {address}"))?;
@@ -70,13 +62,7 @@ pub async fn send_http(
     };
 
     let mut buf = Vec::new();
-    HttpRequest {
-        url: HttpUrl::PathOnly { path },
-        common,
-        method,
-    }
-    .to_writer(&mut buf)
-    .context("Writing request headers")?;
+    req.to_writer(&mut buf).context("Writing request headers")?;
     client.write_all(&buf).await?;
 
     Ok((client, buf))
@@ -86,7 +72,7 @@ pub async fn fetch_http_with_proxy<'a, 'b>(
     url: &'a str,
     method: &'a str,
     headers: impl Iterator<Item = (&'b str, Cow<'b, str>)> + Send + Sync + 'b,
-    http_proxy: &Address,
+    http_proxy: &Address<'_>,
     body: Option<(&str, &[u8])>,
 ) -> anyhow::Result<
     AsyncHttpStream<HttpResponse<'static>, impl AsyncRead + AsyncWrite + Unpin + Send + Sync + 'a>,
@@ -106,9 +92,13 @@ pub async fn fetch_http_with_proxy<'a, 'b>(
         None
     };
 
+    let (https, address, path) = HttpRequest::parse_absolute_url(url)?;
+
     let (mut client, buf) = send_http_with_proxy(
+        https,
+        &address,
         HttpRequest {
-            url: url.parse()?,
+            path: Cow::Owned(path),
             method: Cow::Borrowed(method),
             common: HttpCommon { headers },
         },

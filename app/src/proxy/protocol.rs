@@ -10,10 +10,18 @@ use crate::{http::HttpRequest, socks5::Address};
 #[derive(Serialize, Deserialize, Debug)]
 #[serde(tag = "type")]
 pub enum ProxyRequest {
-    TCP { dst: Address },
+    TCP {
+        dst: Address<'static>,
+    },
     UDP,
-    DNS { domains: Vec<String> },
-    HTTP(HttpRequest<'static>),
+    DNS {
+        domains: Vec<String>,
+    },
+    HTTP {
+        dst: Address<'static>,
+        https: bool,
+        req: HttpRequest<'static>,
+    },
 }
 
 #[derive(Serialize, Deserialize, Debug)]
