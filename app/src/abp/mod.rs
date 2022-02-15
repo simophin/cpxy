@@ -12,11 +12,10 @@ use adblock::{
     lists::{FilterSet, ParseOptions},
 };
 use anyhow::{anyhow, bail};
-use chrono::DateTime;
+use chrono::{DateTime, Utc};
 use futures_lite::AsyncWriteExt;
 use lazy_static::lazy_static;
 use rust_embed::RustEmbed;
-use serde::Serialize;
 use smol::fs::File;
 use url::Url;
 
@@ -215,11 +214,6 @@ pub struct ABPEngine {
     is_base64: bool,
 }
 
-#[derive(Serialize)]
-struct ABPEngineStatistics {
-    last_updated: Option<SystemTime>,
-}
-
 impl ABPEngine {
     pub async fn update(&self, proxy: &Address) -> anyhow::Result<usize> {
         update_engine(&self.state, proxy, self.rule_url, self.is_base64).await
@@ -229,15 +223,13 @@ impl ABPEngine {
         matches_abp(&self.state, target)
     }
 
-    pub fn get_stats(&self) -> anyhow::Result<impl Serialize> {
+    pub fn get_last_updated(&self) -> anyhow::Result<Option<DateTime<Utc>>> {
         let g = match self.state.read() {
             Ok(g) => g,
             Err(_) => bail!("Error locking state"),
         };
 
-        Ok(ABPEngineStatistics {
-            last_updated: g.engine.as_ref().map(|(_, t)| t.clone()),
-        })
+        Ok(g.engine.as_ref().map(|(_, t)| t.clone().into()))
     }
 }
 

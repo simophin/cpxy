@@ -6,7 +6,7 @@ use std::{
     str::FromStr,
 };
 
-use anyhow::{anyhow, bail, Context};
+use anyhow::{anyhow, bail};
 use futures_lite::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
 use pin_project_lite::pin_project;
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
@@ -89,7 +89,7 @@ impl<'a> HttpRequest<'a> {
     }
 
     pub fn to_writer(&self, buf: &mut impl std::io::Write) -> anyhow::Result<()> {
-        write!(buf, "{} {} HTTP/1.1\r\n", self.method, self.url.path())?;
+        write!(buf, "{} {} HTTP/1.1\r\n", self.method, self.url)?;
         for (k, v) in &self.headers {
             write!(buf, "{k}: {v}\r\n")?;
         }
@@ -193,14 +193,14 @@ impl FromStr for HttpUrl {
 
         let (host, port) = match host_and_port.rfind(':') {
             Some(u) if u < host_and_port.len() - 1 => (
-                &url[..u],
-                (&url[(u + 1)..])
+                &host_and_port[..u],
+                (&host_and_port[(u + 1)..])
                     .parse()
-                    .with_context(|| format!("Parsing port number: {host_and_port}"))?,
+                    .map_err(|e| anyhow!("Parsing port number: {host_and_port}: {e:?}"))?,
             ),
             Some(_) => bail!("No port specified"),
-            None if matches!(is_https, Some(true)) => (url, 443),
-            None if matches!(is_https, Some(false)) => (url, 80),
+            None if matches!(is_https, Some(true)) => (host_and_port, 443),
+            None if matches!(is_https, Some(false)) => (host_and_port, 80),
             None => bail!("A URL without scheme must have port specified: {host_and_port}"),
         };
 
@@ -523,8 +523,8 @@ mod test {
                 expect_error: false,
             },
             TestCase {
-                input: "https://google.com",
-                expect: Some("https://google.com:443"),
+                input: "https://google.com/testpath",
+                expect: Some("https://google.com:443/testpath"),
                 expect_error: false,
             },
             TestCase {

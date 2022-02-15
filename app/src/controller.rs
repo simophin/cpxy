@@ -6,6 +6,7 @@ use crate::http::{parse_request, write_http_response};
 use crate::io::TcpListener;
 use anyhow::{anyhow, Context};
 use async_broadcast::Sender;
+use chrono::{DateTime, Utc};
 use futures_lite::io::split;
 use futures_lite::{AsyncRead, AsyncWrite, AsyncWriteExt};
 use rust_embed::RustEmbed;
@@ -49,8 +50,9 @@ impl From<anyhow::Error> for ErrorResponse {
 type HttpResult<T> = Result<T, ErrorResponse>;
 
 #[derive(Serialize)]
-struct RuleUpdateResult {
-    num_updated: usize,
+struct RuleResult {
+    num_rules: Option<usize>,
+    last_updated: Option<DateTime<Utc>>,
 }
 
 struct Controller {
@@ -160,63 +162,82 @@ impl Controller {
 
     async fn dispatch(&mut self, r: impl AsyncRead + Unpin + Send + Sync) -> HttpResult<Response> {
         match parse_request(r, Default::default()).await {
-            Ok(mut r) => match (r.method.as_ref(), r.url.path()) {
-                ("options", _) => Ok(Response::Empty),
-                ("get", p) if p.starts_with("/api/config") => {
-                    self.get_config().and_then(json_response)
-                }
-                ("post", p) if p.starts_with("/api/config") => self
-                    .set_basic_config(r.body_json().await?)
-                    .await
-                    .and_then(json_response),
-                ("get", p) if p.starts_with("/api/stats") => {
-                    self.get_stats().and_then(json_response)
-                }
-                ("get", original_p) => {
-                    let p = if original_p == "/" || original_p.is_empty() {
-                        "index.html"
-                    } else {
-                        &original_p[1..]
-                    };
-                    match Asset::get(p) {
-                        Some(file) => Ok(Response::EmbedFile {
-                            path: p.to_string(),
-                            file,
-                        }),
-                        _ => Err(ErrorResponse::NotFound(original_p.to_string())),
+            Ok(mut r) => {
+                log::debug!("Dispatching {} {}", r.method, r.url.path());
+                match (r.method.as_ref(), r.url.path()) {
+                    ("options", _) => Ok(Response::Empty),
+                    ("get", p) if p.starts_with("/api/config") => {
+                        self.get_config().and_then(json_response)
+                    }
+                    ("post", p) if p.starts_with("/api/config") => self
+                        .set_basic_config(r.body_json().await?)
+                        .await
+                        .and_then(json_response),
+                    ("get", p) if p.starts_with("/api/stats") => {
+                        self.get_stats().and_then(json_response)
+                    }
+                    (m, p)
+                        if p.starts_with("/api/gfwlist") || p.starts_with("/api/adblocklist") =>
+                    {
+                        let engine = if p.contains("gfwlist") {
+                            gfw_list_engine()
+                        } else {
+                            adblock_list_engine()
+                        };
+
+                        match m {
+                            "get" => engine
+                                .get_last_updated()
+                                .map(|last_updated| RuleResult {
+                                    last_updated,
+                                    num_rules: None,
+                                })
+                                .map_err(|e| ErrorResponse::Generic(e))
+                                .and_then(json_response),
+                            "post" => engine
+                                .update(&self.current.0.socks5_address)
+                                .await
+                                .and_then(|num_rules| {
+                                    Ok(RuleResult {
+                                        num_rules: Some(num_rules),
+                                        last_updated: engine.get_last_updated()?,
+                                    })
+                                })
+                                .map_err(|e| ErrorResponse::Generic(e))
+                                .and_then(json_response),
+                            _ => Err(ErrorResponse::InvalidRequest(anyhow!("Unknown method {m}"))),
+                        }
+                    }
+
+                    // This MUST BE the last GET resource
+                    ("get", original_p) => {
+                        let p = if original_p == "/" || original_p.is_empty() {
+                            "index.html"
+                        } else {
+                            &original_p[1..]
+                        };
+                        match Asset::get(p) {
+                            Some(file) => Ok(Response::EmbedFile {
+                                path: p.to_string(),
+                                file,
+                            }),
+                            _ => Err(ErrorResponse::NotFound(original_p.to_string())),
+                        }
+                    }
+                    ("post", p) if p.starts_with("/api/upstream") => self
+                        .update_upstreams(r.body_json().await?)
+                        .await
+                        .and_then(json_response),
+                    ("delete", p) if p.starts_with("/api/upstream") => self
+                        .delete_upstreams(r.body_json().await?)
+                        .await
+                        .and_then(json_response),
+                    (m, p) => {
+                        log::warn!("Request {m} {p} not found");
+                        Err(ErrorResponse::NotFound(p.to_string()))
                     }
                 }
-                (m, p) if p.starts_with("/api/gfwlist") || p.starts_with("/api/adblocklist") => {
-                    let engine = if p.contains("gfwlist") {
-                        gfw_list_engine()
-                    } else {
-                        adblock_list_engine()
-                    };
-
-                    match m {
-                        "get" => engine
-                            .get_stats()
-                            .map_err(|e| ErrorResponse::Generic(e))
-                            .and_then(json_response),
-                        "post" => engine
-                            .update(&self.current.0.socks5_address)
-                            .await
-                            .map_err(|e| ErrorResponse::Generic(e))
-                            .and_then(|num| json_response(RuleUpdateResult { num_updated: num })),
-                        _ => Err(ErrorResponse::InvalidRequest(anyhow!("Unknown method {m}"))),
-                    }
-                }
-
-                ("post", p) if p.starts_with("/api/upstream") => self
-                    .update_upstreams(r.body_json().await?)
-                    .await
-                    .and_then(json_response),
-                ("delete", p) if p.starts_with("/api/upstream") => self
-                    .delete_upstreams(r.body_json().await?)
-                    .await
-                    .and_then(json_response),
-                _ => Err(ErrorResponse::NotFound(r.url.path().to_string())),
-            },
+            }
             Err((e, _)) => Err(ErrorResponse::InvalidRequest(e)),
         }
     }

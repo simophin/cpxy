@@ -25,6 +25,10 @@ pub async fn send_http_with_proxy(
 
     let mut buf = Vec::new();
     req.to_writer(&mut buf).context("Writing request headers")?;
+    log::debug!(
+        "Sending http (proxy = {http_proxy}): {}",
+        String::from_utf8_lossy(&buf)
+    );
     client.write_all(&buf).await?;
 
     Ok((client, buf))
@@ -43,7 +47,11 @@ pub async fn send_http(
     } = req;
 
     let (address, https, path) = match url {
-        HttpUrl::WithScheme { address, https,path } => (address, https, path),
+        HttpUrl::WithScheme {
+            address,
+            https,
+            path,
+        } => (address, https, path),
         _ => bail!("Unsupported URL"),
     };
 

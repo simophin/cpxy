@@ -1,4 +1,5 @@
-import { Button, Dialog, DialogActions, DialogContent, DialogTitle, MenuItem, Select, Stack, TextField } from "@mui/material";
+import { Button, Dialog, DialogActions, DialogContent, DialogTitle, Stack, TextField } from "@mui/material";
+import { useEffect } from "react";
 import { BASE_URL } from "./config";
 import { ClientConfig } from "./models";
 import { transformRule } from "./trafficRules";
@@ -12,8 +13,13 @@ type Props = {
     onCancelled: () => unknown
 };
 
-type RuleUpdateResult = {
-    num_updated: number,
+type RuleResult = {
+    num_rules?: number,
+    last_updated: string,
+}
+
+function formatDate(str: string | undefined) {
+    return str ? new Date(str).toLocaleString() : "None"
 }
 
 export default function BasicSettingsEdit({ onSaved, onCancelled, current_config }: Props) {
@@ -23,13 +29,18 @@ export default function BasicSettingsEdit({ onSaved, onCancelled, current_config
     const reject = useEditState(current_config.direct_reject?.join('\n') ?? '', undefined, transformRule);
     const request = useHttp(`${BASE_URL}/api/config`, { headers: { "Content-Type": "application/json" } });
     const [snackbar, showSnackbar] = useSnackbar();
-    const updateGfw = useHttp<RuleUpdateResult>(`${BASE_URL}/api/gfwlist`, { timeoutMills: 40000 });
-    const updateAbp = useHttp<RuleUpdateResult>(`${BASE_URL}/api/abplist`, { timeoutMills: 40000 });
+    const gfwListRequest = useHttp<RuleResult>(`${BASE_URL}/api/gfwlist`, { timeoutMills: 40000 });
+    const adBlockListRequest = useHttp<RuleResult>(`${BASE_URL}/api/adblocklist`, { timeoutMills: 40000 });
+
+    useEffect(() => {
+        gfwListRequest.execute('get');
+        adBlockListRequest.execute('get');
+    }, []);
 
     const handleUpdateGfw = async () => {
         try {
-            const { num_updated } = await updateGfw.execute('post');
-            showSnackbar(`Updated ${num_updated} items`)
+            const { num_rules } = await gfwListRequest.execute('post');
+            showSnackbar(`Updated ${num_rules} items`)
         } catch (e: any) {
             showSnackbar(`Error updating GFW List: ${e.message}`)
         }
@@ -37,8 +48,8 @@ export default function BasicSettingsEdit({ onSaved, onCancelled, current_config
 
     const handleUpdateAbp = async () => {
         try {
-            const { num_updated } = await updateAbp.execute('post');
-            showSnackbar(`Updated ${num_updated} items`)
+            const { num_rules } = await adBlockListRequest.execute('post');
+            showSnackbar(`Updated ${num_rules} items`)
         } catch (e: any) {
             showSnackbar(`Error updating GFW List: ${e.message}`)
         }
@@ -100,18 +111,16 @@ export default function BasicSettingsEdit({ onSaved, onCancelled, current_config
                     fullWidth
                     onChange={(e) => udpHost.setValue(e.target.value)}
                     variant='outlined' />
-                <div>
-                    <Button onClick={handleUpdateGfw}
-                        variant='contained'
-                        disabled={updateGfw.loading}>
-                        {updateGfw.loading ? 'Updating' : 'Update GFW List'}
-                    </Button>
-                    &nbsp;
-                    <Button onClick={handleUpdateAbp}
-                        variant='contained'
-                        disabled={updateAbp.loading}>
-                        {updateAbp.loading ? 'Updating' : 'Update ABP List'}
-                    </Button>
+                <div style={{ marginTop: 8 }}>
+                    <b>GFW List: </b>{gfwListRequest.data ? formatDate(gfwListRequest.data.last_updated)
+                        : (gfwListRequest.error ? 'Error' : 'Loading')} &nbsp;
+                    <Button variant='outlined' onClick={handleUpdateGfw}>Update</Button>
+                </div>
+
+                <div style={{ marginTop: 8 }}>
+                    <b>Adblock List: </b>{adBlockListRequest.data ? formatDate(adBlockListRequest.data.last_updated)
+                        : (adBlockListRequest.error ? 'Error' : 'Loading')} &nbsp;
+                    <Button variant='outlined' onClick={handleUpdateAbp}>Update</Button>
                 </div>
 
                 {request.error && `Error: ${request.error}`}
