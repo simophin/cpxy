@@ -55,8 +55,7 @@ pub async fn copy_duplex(
         anyhow::Result::<()>::Ok(())
     });
 
-    let _ = race(task1, task2).await;
-    Ok(())
+    race(task1, task2).await
 }
 
 pub struct RWBuffer<T = Vec<u8>> {

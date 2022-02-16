@@ -35,10 +35,7 @@ impl<'a> HttpRequest<'a> {
         let mut req = httparse::Request::new(&mut headers);
         match req.parse(buf) {
             Ok(httparse::Status::Complete(offset)) => {
-                let method = req
-                    .method
-                    .ok_or_else(|| anyhow!("No method"))?
-                    .to_ascii_lowercase();
+                let method = req.method.ok_or_else(|| anyhow!("No method"))?;
                 let path = req.path.ok_or_else(|| anyhow!("No path"))?.to_string();
                 let headers = req
                     .headers
@@ -55,7 +52,7 @@ impl<'a> HttpRequest<'a> {
                     offset,
                     HttpRequest {
                         path: Cow::Owned(path),
-                        method: Cow::Owned(method),
+                        method: Cow::Owned(method.to_string()),
                         common: HttpCommon { headers },
                     },
                 )))
@@ -253,7 +250,10 @@ pub async fn parse_response<T: AsyncRead + Unpin + Send + Sync>(
 ) -> anyhow::Result<AsyncHttpStream<HttpResponse<'static>, T>> {
     loop {
         match stream.read(buf.write_buf()).await? {
-            0 => bail!("Unexpected EOF"),
+            0 => bail!(
+                "Unexpected EOF while parsing HTTP response: write_buf_len = {}",
+                buf.remaining_write()
+            ),
             v => buf.advance_write(v),
         }
 

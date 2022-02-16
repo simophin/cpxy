@@ -25,7 +25,7 @@ impl<'a> TryFrom<&'a str> for HttpUrl<'a> {
             scheme,
             host,
             port,
-            path,
+            mut path,
         } = url.try_into()?;
 
         let (is_https, default_port) = match scheme {
@@ -33,6 +33,10 @@ impl<'a> TryFrom<&'a str> for HttpUrl<'a> {
             s if s.eq_ignore_ascii_case("https") => (true, 443),
             s => bail!("Unknown http scheme {s}"),
         };
+
+        if path.is_empty() {
+            path = Cow::Borrowed("/");
+        }
 
         Ok(HttpUrl {
             is_https,

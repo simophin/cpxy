@@ -12,7 +12,7 @@ fn check_request(
     req: &HttpRequest,
 ) -> Result<(BoxedStreamCipher, BoxedStreamCipher), (&'static str, &'static str)> {
     // log::debug!("Received request: {:?}", req);
-    if req.method != "get" {
+    if !req.method.eq_ignore_ascii_case("get") {
         return Err((
             "HTTP/1.1 401 Unsupported method\r\n\r\n",
             "Unsupported HTTP method",

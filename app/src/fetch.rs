@@ -99,13 +99,20 @@ pub async fn fetch_http_with_proxy<'a, 'b>(
         path,
     } = url.try_into()?;
 
-    let (mut client, buf) = send_http_with_proxy(
+    let mut common = HttpCommon { headers };
+    if common.get_header("host").is_none() {
+        common
+            .headers
+            .push((Cow::Borrowed("Host"), Cow::Owned(address.to_string())));
+    }
+
+    let (mut client, mut buf) = send_http_with_proxy(
         is_https,
         &address,
         HttpRequest {
             path,
             method: Cow::Borrowed(method),
-            common: HttpCommon { headers },
+            common,
         },
         http_proxy,
     )
@@ -115,5 +122,6 @@ pub async fn fetch_http_with_proxy<'a, 'b>(
         client.write_all(body).await?;
     }
 
+    buf.resize(8192, 0);
     super::http::parse_response(client, RWBuffer::new(buf)).await
 }

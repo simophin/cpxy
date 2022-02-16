@@ -4,12 +4,12 @@ use anyhow::bail;
 use futures_lite::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
 use futures_util::join;
 use maplit::hashmap;
-use smol::{block_on, spawn, Task};
+use smol::{block_on, channel::bounded, spawn, Task};
 
 use crate::{
-    broadcast,
-    client::{run_client, ClientStatistics},
+    client::{run_client_with, ClientStatistics},
     config::{ClientConfig, UpstreamConfig},
+    fetch::fetch_http_with_proxy,
     io::{TcpListener, TcpStream, UdpSocket},
     server::run_server,
     socks5::Address,
@@ -75,7 +75,6 @@ pub async fn echo_udp_server() -> (Task<()>, SocketAddr) {
 pub async fn run_test_client(upstream_address: SocketAddr) -> (Task<()>, SocketAddr) {
     let listener = TcpListener::bind(&Default::default()).await.unwrap();
     let addr = listener.local_addr().unwrap();
-    drop(listener);
 
     (
         {
@@ -98,9 +97,11 @@ pub async fn run_test_client(upstream_address: SocketAddr) -> (Task<()>, SocketA
                     socks5_udp_host: "0.0.0.0".parse().unwrap(),
                 };
                 let stats = ClientStatistics::new(&config);
+                let (_tx, shutdown_rx) = bounded(2);
 
-                let (_, rx) = broadcast::bounded(Some((Arc::new(config), Arc::new(stats))), 2);
-                run_client(rx).await.unwrap()
+                run_client_with(listener, Arc::new(config), Arc::new(stats), shutdown_rx)
+                    .await
+                    .unwrap();
             })
         },
         addr,
@@ -160,8 +161,8 @@ async fn send_socks5_request(
     socks
         .write_all(&[
             0x5,
-            0x00, // RSV
             if is_udp { 0x3 } else { 0x1 },
+            0x00, // RSV
         ])
         .await?;
     target.write(socks).await?;
@@ -202,5 +203,40 @@ fn test_tcp_socks5_proxy() {
                 .as_slice(),
             msg.as_ref()
         );
+    });
+}
+
+#[test]
+fn test_http_proxy() {
+    let _ = env_logger::try_init();
+    block_on(async move {
+        let (_server, server_addr) = run_test_server().await;
+        let (_client, client_addr) = run_test_client(server_addr).await;
+
+        let mut res = fetch_http_with_proxy(
+            "http://www.google.com",
+            "GET",
+            std::iter::empty(),
+            &Address::IP(client_addr),
+            None,
+        )
+        .await
+        .unwrap();
+
+        assert_eq!(res.status_code, 200);
+        assert!(!res.body().await.unwrap().is_empty());
+
+        let mut res = fetch_http_with_proxy(
+            "https://www.google.com",
+            "GET",
+            std::iter::empty(),
+            &Address::IP(client_addr),
+            None,
+        )
+        .await
+        .unwrap();
+
+        assert_eq!(res.status_code, 200);
+        assert!(!res.body().await.unwrap().is_empty());
     });
 }

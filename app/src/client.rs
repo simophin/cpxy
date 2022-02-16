@@ -56,6 +56,44 @@ impl ClientStatistics {
     }
 }
 
+pub async fn run_client_with(
+    listener: TcpListener,
+    config: Arc<ClientConfig>,
+    stats: Arc<ClientStatistics>,
+    mut shutdown_rx: impl Stream<Item = ()> + Clone + Unpin + Send + Sync + 'static,
+) -> anyhow::Result<()> {
+    loop {
+        let (sock, addr) = select! {
+            v1 = listener.accept().fuse() => v1.context("Listening for SOCKS5 connection")?,
+            _ = shutdown_rx.next().fuse() => {
+                log::info!("Socks5 listening cancelled");
+                return Ok(());
+            }
+        };
+
+        let config = config.clone();
+        let stats = stats.clone();
+        let mut shutdown_rx = shutdown_rx.clone();
+        spawn(async move {
+            log::info!("Client {addr} connected");
+
+            select! {
+                result = serve_proxy_client(sock.is_v4(), sock, config, stats).fuse() => {
+                    if let Err(e) = result {
+                        log::error!("Error serving client {addr}: {e:?}");
+                    }
+                },
+                _ = shutdown_rx.next().fuse() => {
+                    log::info!("Cancelling service of SOCKS5 client {addr}");
+                }
+            };
+
+            log::info!("Client {addr} disconnected");
+        })
+        .detach();
+    }
+}
+
 pub async fn run_client(
     mut config_stream: impl Stream<Item = (Arc<ClientConfig>, Arc<ClientStatistics>)>
         + Send
@@ -94,38 +132,9 @@ pub async fn run_client(
 
         let config = config.clone();
         let stats = stats.clone();
-        let mut shutdown_rx = shutdown_rx.clone();
+        let shutdown_rx = shutdown_rx.clone();
         current_task = Some(spawn(async move {
-            loop {
-                let (sock, addr) = select! {
-                    v1 = listener.accept().fuse() => v1.context("Listening for SOCKS5 connection")?,
-                    _ = shutdown_rx.recv().fuse() => {
-                        log::info!("Socks5 listening cancelled");
-                        return Ok(());
-                    }
-                };
-
-                let config = config.clone();
-                let stats = stats.clone();
-                let mut shutdown_rx = shutdown_rx.clone();
-                spawn(async move {
-                    log::info!("Client {addr} connected");
-
-                    select! {
-                        result = serve_proxy_client(sock.is_v4(), sock, config, stats).fuse() => {
-                            if let Err(e) = result {
-                                log::error!("Error serving client {addr}: {e:?}");
-                            }
-                        },
-                        _ = shutdown_rx.recv().fuse() => {
-                            log::info!("Cancelling service of SOCKS5 client {addr}");
-                        }
-                    };
-
-                    log::info!("Client {addr} disconnected");
-                })
-                .detach();
-            }
+            run_client_with(listener, config, stats, shutdown_rx).await
         }));
     }
 }
@@ -187,7 +196,8 @@ async fn serve_proxy_client(
                                 upstream_rx_bytes,
                                 upstream_tx_bytes,
                             )
-                            .await;
+                            .await
+                            .context("Redirecting upstream traffic");
                         }
                         Ok((result, _, _)) => {
                             log::debug!("Upstream deined with result = {result:?}");
