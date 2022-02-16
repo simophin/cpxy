@@ -4,6 +4,7 @@ mod broadcast;
 mod cipher;
 mod client;
 mod counter;
+mod dns;
 mod fetch;
 mod handshake;
 mod http;
@@ -14,6 +15,8 @@ pub mod server;
 pub mod socks5;
 mod stream;
 mod tls;
+#[cfg(target_os = "linux")]
+pub mod transparent;
 mod url;
 mod utils;
 

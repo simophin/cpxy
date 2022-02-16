@@ -3,7 +3,7 @@ import { useEffect } from "react";
 import { BASE_URL } from "./config";
 import { ClientConfig } from "./models";
 import { transformRule } from "./trafficRules";
-import { mandatory, useEditState, validAddress } from "./useEditState";
+import { mandatory, optional, useEditState, validAddress } from "./useEditState";
 import useHttp from "./useHttp";
 import useSnackbar from "./useSnackbar";
 
@@ -24,6 +24,7 @@ function formatDate(str: string | undefined) {
 
 export default function BasicSettingsEdit({ onSaved, onCancelled, current_config }: Props) {
     const address = useEditState(current_config.socks5_address ?? '', mandatory('Address', validAddress))
+    const transparentAddress = useEditState(current_config.transparent_address ?? '', optional(validAddress))
     const udpHost = useEditState(current_config.socks5_udp_host ?? '', mandatory('UDP host'));
     const accept = useEditState(current_config.direct_accept?.join('\n') ?? '', undefined, transformRule);
     const reject = useEditState(current_config.direct_reject?.join('\n') ?? '', undefined, transformRule);
@@ -63,6 +64,7 @@ export default function BasicSettingsEdit({ onSaved, onCancelled, current_config
                 direct_reject: reject.validate(),
                 socks5_address: address.validate(),
                 socks5_udp_host: udpHost.validate(),
+                transparent_address: transparentAddress.validate(),
             };
 
             await request.execute('post', config);
@@ -82,6 +84,16 @@ export default function BasicSettingsEdit({ onSaved, onCancelled, current_config
                     onChange={(e) => address.setValue(e.target.value)}
                     margin='dense'
                     label='SOCKS5 listen address'
+                    fullWidth
+                    variant='outlined'
+                />
+                <TextField
+                    value={transparentAddress.value}
+                    helperText={transparentAddress.error}
+                    error={!!transparentAddress.error}
+                    onChange={(e) => transparentAddress.setValue(e.target.value)}
+                    margin='dense'
+                    label='Transparent listen address'
                     fullWidth
                     variant='outlined'
                 />

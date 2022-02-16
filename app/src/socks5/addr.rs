@@ -52,7 +52,7 @@ impl<'a, 'de> Deserialize<'de> for Address<'a> {
     where
         D: serde::Deserializer<'de>,
     {
-        match <&str as Deserialize>::deserialize(deserializer)?.parse() {
+        match <String as Deserialize>::deserialize(deserializer)?.parse() {
             Ok(v) => Ok(v),
             Err(e) => Err(serde::de::Error::custom(format!("{e:?}"))),
         }

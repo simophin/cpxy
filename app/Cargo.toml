@@ -41,6 +41,10 @@ serde_with = "1"
 [dev-dependencies]
 maplit = "1"
 
+
+[target.'cfg(target_os = "linux")'.dependencies]
+nix = "0"
+
 [target.'cfg(target_os = "android")'.dependencies]
 android_logger = "0"
 

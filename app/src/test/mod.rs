@@ -88,6 +88,7 @@ pub async fn run_test_client(upstream_address: SocketAddr) -> (Task<()>, SocketA
                     socks5_address: Address::IP(socks5_address),
                     direct_accept: Default::default(),
                     direct_reject: Default::default(),
+                    transparent_address: None,
                     upstreams: hashmap! {
                         String::from("echo") => UpstreamConfig {
                             address: Address::IP(upstream_address),
@@ -103,9 +104,15 @@ pub async fn run_test_client(upstream_address: SocketAddr) -> (Task<()>, SocketA
                 let stats = ClientStatistics::new(&config);
                 let (_tx, shutdown_rx) = bounded(2);
 
-                run_client_with(listener, Arc::new(config), Arc::new(stats), shutdown_rx)
-                    .await
-                    .unwrap();
+                run_client_with(
+                    listener,
+                    None,
+                    Arc::new(config),
+                    Arc::new(stats),
+                    shutdown_rx,
+                )
+                .await
+                .unwrap();
             })
         },
         addr,

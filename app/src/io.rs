@@ -11,6 +11,7 @@ use std::borrow::Cow;
 use std::io::{IoSlice, IoSliceMut};
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr};
 use std::ops::{Deref, DerefMut};
+use std::os::unix::prelude::{AsRawFd, RawFd};
 use std::pin::Pin;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
@@ -198,6 +199,10 @@ impl TcpListener {
     pub async fn accept(&self) -> smol::io::Result<(TcpStream, SocketAddr)> {
         let (stream, addr) = self.0.accept().await?;
         Ok((TcpStream::from(stream), addr))
+    }
+
+    pub fn as_raw_fd(&self) -> RawFd {
+        self.0.as_raw_fd()
     }
 }
 

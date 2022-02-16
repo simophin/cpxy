@@ -15,6 +15,19 @@ export function mandatory(fieldName: string, next?: FindError): FindError {
     }
 }
 
+export function optional(next?: FindError): FindError {
+    return (value: string) => {
+        const new_value = value.trim();
+        if (new_value.length === 0) {
+            return undefined;
+        }
+
+        if (next) {
+            return next(new_value);
+        }
+    }
+}
+
 export const validAddress: FindError = (value) => {
     const [host, port] = value.trim().split(':');
     const portNum = parseInt(port);
