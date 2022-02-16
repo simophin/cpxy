@@ -17,7 +17,6 @@ use futures_lite::AsyncWriteExt;
 use lazy_static::lazy_static;
 use rust_embed::RustEmbed;
 use smol::fs::File;
-use url::Url;
 
 fn create_engine(data: &[u8]) -> anyhow::Result<Engine> {
     let mut engine = Engine::new(true);
@@ -99,8 +98,7 @@ async fn update_engine(
     rule_list_url: &str,
     is_base64: bool,
 ) -> anyhow::Result<usize> {
-    let url = Url::parse(rule_list_url)?;
-    log::info!("Downloading rule list: {url}");
+    log::info!("Downloading rule list: {rule_list_url}");
 
     let last_modified = match state.read() {
         Ok(g) => {
