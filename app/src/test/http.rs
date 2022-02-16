@@ -1,7 +1,6 @@
-use crate::{
-    fetch::send_http,
-    http::{parse_response, HttpRequest},
-};
+use smol_timeout::TimeoutExt;
+
+use crate::http::parse_response;
 
 use super::*;
 
@@ -19,7 +18,9 @@ fn test_http_proxy() {
             &Address::IP(client_addr),
             None,
         )
+        .timeout(TIMEOUT)
         .await
+        .unwrap()
         .unwrap();
 
         assert_eq!(res.status_code, 200);
@@ -32,7 +33,9 @@ fn test_http_proxy() {
             &Address::IP(client_addr),
             None,
         )
+        .timeout(TIMEOUT)
         .await
+        .unwrap()
         .unwrap();
 
         assert_eq!(res.status_code, 200);
@@ -42,18 +45,21 @@ fn test_http_proxy() {
 
 #[test]
 fn test_http_tunnel() {
+    let _ = env_logger::try_init();
     block_on(async move {
         let (_server, server_addr) = run_test_server().await;
         let (_client, client_addr) = run_test_client(server_addr).await;
         let (_echo_server, echo_server_addr) = echo_tcp_server().await;
 
-        let mut socks5_client = TcpStream::connect_raw(client_addr).await.unwrap();
-        socks5_client
-            .write_all(format!("CONNECT {echo_server_addr}\r\n\r\n").as_bytes())
+        let mut proxy_client = TcpStream::connect_raw(client_addr).await.unwrap();
+        proxy_client
+            .write_all(format!("CONNECT {echo_server_addr} HTTP/1.1\r\n\r\n").as_bytes())
             .await
             .unwrap();
-        let mut http_stream = parse_response(socks5_client, Default::default())
+        let mut http_stream = parse_response(proxy_client, Default::default())
+            .timeout(TIMEOUT)
             .await
+            .unwrap()
             .unwrap();
 
         assert_eq!(http_stream.status_code, 200);
@@ -63,7 +69,9 @@ fn test_http_tunnel() {
 
         assert_eq!(
             read_exact(&mut http_stream, msg.len())
+                .timeout(TIMEOUT)
                 .await
+                .unwrap()
                 .unwrap()
                 .as_slice(),
             msg.as_ref()

@@ -12,8 +12,8 @@ use std::fmt::Write;
 use std::sync::Arc;
 use std::time::Duration;
 
-async fn copy_stream_to_udp<'a>(
-    mut src: impl AsyncRead + Unpin + Send + Sync + 'a,
+async fn copy_stream_to_udp(
+    mut src: impl AsyncRead + Unpin + Send + Sync,
     socket: &UdpSocket,
 ) -> anyhow::Result<()> {
     let mut buf = RWBuffer::with_capacity(66000);
@@ -41,9 +41,9 @@ async fn copy_stream_to_udp<'a>(
     }
 }
 
-async fn copy_udp_to_stream<'a>(
+async fn copy_udp_to_stream(
     socket: &UdpSocket,
-    mut dst: impl AsyncWrite + Unpin + Send + Sync + 'a,
+    mut dst: impl AsyncWrite + Unpin + Send + Sync,
 ) -> anyhow::Result<()> {
     let mut buf = vec![0u8; 65536];
 
@@ -73,7 +73,7 @@ pub async fn serve_udp_proxy(
             write_bincode_lengthed_async(
                 &mut src,
                 &ProxyResult::Granted {
-                    bound_address: v.local_addr().ok(),
+                    bound_address: Some(v.local_addr()?),
                     solved_addresses: None,
                 },
             )

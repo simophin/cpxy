@@ -1,4 +1,4 @@
-use std::{net::SocketAddr, sync::Arc, vec};
+use std::{net::SocketAddr, sync::Arc, time::Duration, vec};
 
 use anyhow::bail;
 use futures_lite::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
@@ -8,6 +8,7 @@ use smol::{block_on, channel::bounded, spawn, Task};
 
 mod http;
 mod tcp_socks5;
+mod udp;
 
 use crate::{
     client::{run_client_with, ClientStatistics},
@@ -181,3 +182,5 @@ async fn send_socks5_request(
     }
     Ok(bound)
 }
+
+const TIMEOUT: Duration = Duration::from_secs(3);

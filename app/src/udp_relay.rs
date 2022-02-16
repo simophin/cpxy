@@ -10,13 +10,13 @@ use std::borrow::Cow;
 use std::net::SocketAddr;
 use std::sync::Arc;
 
-async fn serve_socks5_udp_stream_relay<'a>(
+async fn serve_socks5_udp_stream_relay(
     socks5_sock: UdpSocket,
     mut socks5_buf: Vec<u8>,
     socks5_remote_addr: SocketAddr,
-    mut upstream: impl AsyncRead + AsyncWrite + Unpin + Send + Sync + 'a,
-    upstream_tx_count: &'a Counter,
-    upstream_rx_count: &'a Counter,
+    mut upstream: impl AsyncRead + AsyncWrite + Unpin + Send + Sync + 'static,
+    upstream_tx_count: Arc<Counter>,
+    upstream_rx_count: Arc<Counter>,
 ) -> anyhow::Result<()> {
     match UdpPacket::parse_udp(socks5_buf.as_slice()) {
         Ok(v) if v.frag_no == 0 => {
@@ -31,7 +31,7 @@ async fn serve_socks5_udp_stream_relay<'a>(
         socks5_buf,
         upstream,
         Some(MAX_STREAM_HDR_LEN),
-        |_, hdr_buf, out_buf| match UdpPacket::parse_udp(out_buf.as_slice())? {
+        move |_, hdr_buf, out_buf| match UdpPacket::parse_udp(out_buf.as_slice())? {
             p if p.frag_no == 0 => {
                 let mut hdr_buf = hdr_buf.unwrap();
                 UdpPacket::write_tcp_headers(&mut hdr_buf, &p.addr, p.data.len())?;
@@ -161,8 +161,8 @@ impl Relay {
                             buf,
                             socks5_remote_addr,
                             upstream,
-                            tx_count.as_ref(),
-                            rx_count.as_ref(),
+                            tx_count,
+                            rx_count,
                         )
                         .await;
                     }
@@ -174,12 +174,10 @@ impl Relay {
             }
             log::debug!("No upstream is able to handle {addr}");
             Err(last_error.unwrap())
-        }
-        else if c.allow_direct(&addr) {
+        } else if c.allow_direct(&addr) {
             log::debug!("Connecting to udp://{addr} directly");
             serve_socks5_udp_directly(socket, buf, socks5_remote_addr).await
-        }
-        else {
+        } else {
             log::info!("Blocking direct UDP connection to {addr}");
             Ok(())
         }

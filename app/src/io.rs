@@ -6,7 +6,7 @@ use futures_lite::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
 use smol::net::{
     TcpListener as AsyncTcpListener, TcpStream as AsyncTcpStream, UdpSocket as AsyncUdpSocket,
 };
-use smol::{spawn, Executor};
+use smol::spawn;
 use std::borrow::Cow;
 use std::io::{IoSlice, IoSliceMut};
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr};
@@ -37,13 +37,17 @@ impl UdpSocket {
     }
 
     pub async fn bind(v4: bool) -> smol::io::Result<Self> {
-        Ok(Self::from(
-            AsyncUdpSocket::bind(if v4 {
-                SocketAddr::new(IpAddr::V4(Ipv4Addr::UNSPECIFIED), 0)
-            } else {
-                SocketAddr::new(IpAddr::V6(Ipv6Addr::UNSPECIFIED), 0)
-            })
-            .await?,
+        Self::bind_addr(if v4 {
+            IpAddr::V4(Ipv4Addr::UNSPECIFIED)
+        } else {
+            IpAddr::V6(Ipv6Addr::UNSPECIFIED)
+        })
+        .await
+    }
+
+    pub async fn bind_addr(ip: IpAddr) -> smol::io::Result<Self> {
+        Ok(UdpSocket::from(
+            AsyncUdpSocket::bind(SocketAddr::new(ip, 0)).await?,
         ))
     }
 
@@ -275,27 +279,26 @@ pub async fn copy_udp_and_udp(
     race(task1, task2).await
 }
 
-pub async fn copy_udp_and_stream<'a>(
+pub async fn copy_udp_and_stream(
     udp: UdpSocket,
     mut udp_buf: Vec<u8>,
-    stream: impl AsyncRead + AsyncWrite + Unpin + Send + Sync + 'a,
+    stream: impl AsyncRead + AsyncWrite + Unpin + Send + Sync + 'static,
     stream_hdr_max_size: Option<usize>,
     transform_udp_buf: impl Fn(SocketAddr, Option<&mut Vec<u8>>, &mut Vec<u8>) -> anyhow::Result<()>
         + Send
         + Sync
-        + 'a,
+        + 'static,
     transform_stream_buf: impl Fn(&[u8], &mut Vec<u8>) -> anyhow::Result<Option<(usize, Address<'static>)>>
         + Send
         + Sync
-        + 'a,
+        + 'static,
 ) -> anyhow::Result<()> {
     let udp = Arc::new(udp);
     let (mut r, mut w) = split(stream);
-    let executor = Executor::new();
 
     let task1 = {
         let udp = udp.clone();
-        executor.spawn(async move {
+        spawn(async move {
             let mut stream_hdr = stream_hdr_max_size.map(Vec::with_capacity);
             loop {
                 unsafe {
@@ -329,7 +332,7 @@ pub async fn copy_udp_and_stream<'a>(
 
     let task2 = {
         let udp = udp.clone();
-        executor.spawn(async move {
+        spawn(async move {
             loop {
                 let mut stream_buf = RWBuffer::with_capacity(67000);
                 let mut udp_buf = Vec::new();

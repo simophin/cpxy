@@ -1,6 +1,6 @@
 use std::{borrow::Cow, fmt::Debug, ops::Deref};
 
-use anyhow::{anyhow, bail};
+use anyhow::{anyhow, bail, Context};
 use futures_lite::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
 use pin_project_lite::pin_project;
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
@@ -33,8 +33,8 @@ impl<'a> HttpRequest<'a> {
     {
         let mut headers = [httparse::EMPTY_HEADER; 32];
         let mut req = httparse::Request::new(&mut headers);
-        match req.parse(buf) {
-            Ok(httparse::Status::Complete(offset)) => {
+        match req.parse(buf).context("Pasring HTTP request")? {
+            httparse::Status::Complete(offset) => {
                 let method = req.method.ok_or_else(|| anyhow!("No method"))?;
                 let path = req.path.ok_or_else(|| anyhow!("No path"))?.to_string();
                 let headers = req
@@ -57,8 +57,7 @@ impl<'a> HttpRequest<'a> {
                     },
                 )))
             }
-            Ok(httparse::Status::Partial) => Ok(None),
-            Err(e) => Err(e.into()),
+            httparse::Status::Partial => Ok(None),
         }
     }
 
@@ -311,7 +310,7 @@ pub async fn parse_request<T: AsyncRead + Unpin + Send + Sync>(
         let mut req = httparse::Request::new(&mut headers);
         match req.parse(buf.read_buf()) {
             Ok(httparse::Status::Complete(offset)) => {
-                let method = req.method.unwrap_or_default().to_ascii_lowercase();
+                let method = req.method.unwrap_or_default().to_string();
                 let path = req.path.unwrap_or_default().to_string();
                 let headers = req
                     .headers

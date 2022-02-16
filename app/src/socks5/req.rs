@@ -69,7 +69,7 @@ impl<'a> ClientConnRequest<'a> {
     pub async fn respond(
         w: &mut (impl AsyncWrite + Unpin + Send + Sync),
         code: ConnStatusCode,
-        bound_addr: &Address<'static>,
+        bound_addr: &Address<'_>,
     ) -> anyhow::Result<()> {
         w.write_all(&[0x5, code.0, 0x00]).await?;
         bound_addr.write(w).await?;

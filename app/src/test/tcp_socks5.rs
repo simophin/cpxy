@@ -1,3 +1,5 @@
+use smol_timeout::TimeoutExt;
+
 use super::*;
 
 #[test]
@@ -11,7 +13,9 @@ fn test_tcp_socks5_proxy() {
         let mut socks5_client = TcpStream::connect_raw(client_addr).await.unwrap();
 
         send_socks5_request(&mut socks5_client, &Address::IP(echo_server_addr), false)
+            .timeout(TIMEOUT)
             .await
+            .unwrap()
             .unwrap();
 
         let msg = b"hello, world";
@@ -19,7 +23,9 @@ fn test_tcp_socks5_proxy() {
 
         assert_eq!(
             read_exact(&mut socks5_client, msg.len())
+                .timeout(TIMEOUT)
                 .await
+                .unwrap()
                 .unwrap()
                 .as_slice(),
             msg.as_ref()

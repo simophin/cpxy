@@ -73,7 +73,7 @@ impl Handshaker {
                         break;
                     }
                     (Err(e1), Err(e2)) => {
-                        return Err(anyhow!("No socks5/http detected: {e1}, {e2}"));
+                        return Err(anyhow!("No socks5/http detected: SOCK5: {e1:?}, HTTP: {e2}"));
                     }
                     (Err(_), Ok(None)) => parse_state = ParseState::HttpPartial,
                     (Ok(None), Err(_)) => parse_state = ParseState::SocksPartial,

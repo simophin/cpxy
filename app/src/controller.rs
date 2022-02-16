@@ -165,15 +165,15 @@ impl Controller {
             Ok(mut r) => {
                 log::debug!("Dispatching {} {}", r.method, r.path);
                 match (r.method.as_ref(), r.path.as_ref()) {
-                    ("options", _) => Ok(Response::Empty),
-                    ("get", p) if p.starts_with("/api/config") => {
+                    ("OPTIONS", _) => Ok(Response::Empty),
+                    ("GET", p) if p.starts_with("/api/config") => {
                         self.get_config().and_then(json_response)
                     }
-                    ("post", p) if p.starts_with("/api/config") => self
+                    ("POST", p) if p.starts_with("/api/config") => self
                         .set_basic_config(r.body_json().await?)
                         .await
                         .and_then(json_response),
-                    ("get", p) if p.starts_with("/api/stats") => {
+                    ("GET", p) if p.starts_with("/api/stats") => {
                         self.get_stats().and_then(json_response)
                     }
                     (m, p)
@@ -186,7 +186,7 @@ impl Controller {
                         };
 
                         match m {
-                            "get" => engine
+                            "GET" => engine
                                 .get_last_updated()
                                 .map(|last_updated| RuleResult {
                                     last_updated,
@@ -194,7 +194,7 @@ impl Controller {
                                 })
                                 .map_err(|e| ErrorResponse::Generic(e))
                                 .and_then(json_response),
-                            "post" => engine
+                            "POST" => engine
                                 .update(&self.current.0.socks5_address)
                                 .await
                                 .and_then(|num_rules| {
@@ -210,7 +210,7 @@ impl Controller {
                     }
 
                     // This MUST BE the last GET resource
-                    ("get", original_p) => {
+                    ("GET", original_p) => {
                         let p = if original_p == "/" || original_p.is_empty() {
                             "index.html"
                         } else {
@@ -224,11 +224,11 @@ impl Controller {
                             _ => Err(ErrorResponse::NotFound(original_p.to_string())),
                         }
                     }
-                    ("post", p) if p.starts_with("/api/upstream") => self
+                    ("POST", p) if p.starts_with("/api/upstream") => self
                         .update_upstreams(r.body_json().await?)
                         .await
                         .and_then(json_response),
-                    ("delete", p) if p.starts_with("/api/upstream") => self
+                    ("DELETE", p) if p.starts_with("/api/upstream") => self
                         .delete_upstreams(r.body_json().await?)
                         .await
                         .and_then(json_response),
