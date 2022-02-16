@@ -6,6 +6,9 @@ use futures_util::join;
 use maplit::hashmap;
 use smol::{block_on, channel::bounded, spawn, Task};
 
+mod http;
+mod tcp_socks5;
+
 use crate::{
     client::{run_client_with, ClientStatistics},
     config::{ClientConfig, UpstreamConfig},
@@ -177,66 +180,4 @@ async fn send_socks5_request(
         bail!("Connection refused with code = {code}");
     }
     Ok(bound)
-}
-
-#[test]
-fn test_tcp_socks5_proxy() {
-    let _ = env_logger::try_init();
-    block_on(async move {
-        let (_server, server_addr) = run_test_server().await;
-        let (_client, client_addr) = run_test_client(server_addr).await;
-        let (_echo_server, echo_server_addr) = echo_tcp_server().await;
-
-        let mut socks5_client = TcpStream::connect_raw(client_addr).await.unwrap();
-
-        send_socks5_request(&mut socks5_client, &Address::IP(echo_server_addr), false)
-            .await
-            .unwrap();
-
-        let msg = b"hello, world";
-        socks5_client.write_all(msg).await.unwrap();
-
-        assert_eq!(
-            read_exact(&mut socks5_client, msg.len())
-                .await
-                .unwrap()
-                .as_slice(),
-            msg.as_ref()
-        );
-    });
-}
-
-#[test]
-fn test_http_proxy() {
-    let _ = env_logger::try_init();
-    block_on(async move {
-        let (_server, server_addr) = run_test_server().await;
-        let (_client, client_addr) = run_test_client(server_addr).await;
-
-        let mut res = fetch_http_with_proxy(
-            "http://www.google.com",
-            "GET",
-            std::iter::empty(),
-            &Address::IP(client_addr),
-            None,
-        )
-        .await
-        .unwrap();
-
-        assert_eq!(res.status_code, 200);
-        assert!(!res.body().await.unwrap().is_empty());
-
-        let mut res = fetch_http_with_proxy(
-            "https://www.google.com",
-            "GET",
-            std::iter::empty(),
-            &Address::IP(client_addr),
-            None,
-        )
-        .await
-        .unwrap();
-
-        assert_eq!(res.status_code, 200);
-        assert!(!res.body().await.unwrap().is_empty());
-    });
 }
