@@ -3,6 +3,7 @@ extern crate core;
 mod broadcast;
 mod cipher;
 mod client;
+mod counter;
 mod fetch;
 mod handshake;
 mod http;
@@ -13,9 +14,8 @@ pub mod server;
 pub mod socks5;
 mod stream;
 mod tls;
+mod url;
 mod utils;
-
-mod counter;
 
 #[cfg(target_os = "android")]
 mod jni_export;

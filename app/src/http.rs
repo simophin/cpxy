@@ -4,9 +4,8 @@ use anyhow::{anyhow, bail};
 use futures_lite::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
 use pin_project_lite::pin_project;
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
-use url::Url;
 
-use crate::{socks5::Address, utils::RWBuffer};
+use crate::utils::RWBuffer;
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct HttpCommon<'a> {
@@ -74,26 +73,6 @@ impl<'a> HttpRequest<'a> {
 
         write!(buf, "\r\n")?;
         Ok(())
-    }
-
-    pub fn parse_absolute_url(url: &str) -> anyhow::Result<(bool, Address<'static>, String)> {
-        let url = Url::parse(url)?;
-        let (https, default_port) = match url.scheme() {
-            s if s.eq_ignore_ascii_case("http") => (false, 80),
-            s if s.eq_ignore_ascii_case("https") => (true, 443),
-            s => bail!("Unknown scheme {s} when parsing {url}"),
-        };
-
-        let address = Address::Name {
-            host: Cow::Owned(
-                url.domain()
-                    .ok_or_else(|| anyhow!("No host specified"))?
-                    .to_string(),
-            ),
-            port: url.port().unwrap_or(default_port),
-        };
-
-        Ok((https, address, url.path().to_string()))
     }
 }
 

@@ -95,7 +95,7 @@ impl<'a> FromStr for Address<'a> {
     type Err = anyhow::Error;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
-        Ok(Address::try_from(s)?.to_owned())
+        Ok(Address::try_from(s)?.into_owned())
     }
 }
 
@@ -177,12 +177,12 @@ impl<'a> Address<'a> {
         }
     }
 
-    pub fn to_owned(&self) -> Address<'static> {
+    pub fn into_owned(self) -> Address<'static> {
         match self {
             Address::IP(addr) => Address::IP(addr.clone()),
             Address::Name { host, port } => Address::Name {
-                host: Cow::Owned(host.to_string()),
-                port: *port,
+                host: Cow::Owned(host.into_owned()),
+                port,
             },
         }
     }

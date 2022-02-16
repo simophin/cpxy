@@ -5,6 +5,7 @@ use crate::socks5::{
     Address, ClientConnRequest, ClientGreeting, Command, ConnStatusCode, AUTH_NOT_ACCEPTED,
     AUTH_NO_PASSWORD,
 };
+use crate::url::HttpUrl;
 use crate::utils::RWBuffer;
 use anyhow::{anyhow, bail, Context};
 use futures_lite::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
@@ -171,14 +172,24 @@ async fn handshake_http(r: HttpRequest<'static>) -> anyhow::Result<ProxyRequest>
         HttpRequest { path, method, .. } if method.eq_ignore_ascii_case("connect") => {
             Ok(ProxyRequest::TCP { dst: path.parse()? })
         }
-        mut v => {
-            let (https, address, path) = HttpRequest::parse_absolute_url(v.path.as_ref())
-                .context("Parsing HTTP request path")?;
-            v.path = Cow::Owned(path);
+        HttpRequest {
+            path,
+            method,
+            common,
+        } => {
+            let HttpUrl {
+                is_https,
+                address,
+                path,
+            } = HttpUrl::try_from(path.as_ref()).context("Parsing HTTP request path")?;
             Ok(ProxyRequest::HTTP {
-                dst: address,
-                https,
-                req: v,
+                dst: address.into_owned(),
+                https: is_https,
+                req: HttpRequest {
+                    method: Cow::Owned(method.into_owned()),
+                    path: Cow::Owned(path.into_owned()),
+                    common,
+                },
             })
         }
     }
@@ -201,7 +212,7 @@ async fn handshake_socks5(
             None => {}
             Some((offset, ClientConnRequest { cmd, address })) => match cmd {
                 Command::CONNECT_TCP => {
-                    let dst = address.to_owned();
+                    let dst = address.into_owned();
                     buf.advance_read(offset);
                     return Ok(ProxyRequest::TCP { dst });
                 }

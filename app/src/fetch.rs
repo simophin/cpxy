@@ -9,6 +9,7 @@ use crate::{
     socks5::Address,
     stream::AsyncReadWrite,
     tls::connect_tls,
+    url::HttpUrl,
     utils::RWBuffer,
 };
 
@@ -92,13 +93,17 @@ pub async fn fetch_http_with_proxy<'a, 'b>(
         None
     };
 
-    let (https, address, path) = HttpRequest::parse_absolute_url(url)?;
+    let HttpUrl {
+        is_https,
+        address,
+        path,
+    } = url.try_into()?;
 
     let (mut client, buf) = send_http_with_proxy(
-        https,
+        is_https,
         &address,
         HttpRequest {
-            path: Cow::Owned(path),
+            path,
             method: Cow::Borrowed(method),
             common: HttpCommon { headers },
         },
