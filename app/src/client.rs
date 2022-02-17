@@ -8,7 +8,6 @@ use std::time::{Duration, UNIX_EPOCH};
 
 use crate::config::*;
 use crate::counter::Counter;
-use crate::dns::DnsResultCache;
 use crate::fetch::send_http;
 use crate::handshake::Handshaker;
 use crate::io::{TcpListener, TcpStream};
@@ -16,6 +15,7 @@ use crate::proxy::protocol::{ProxyRequest, ProxyResult};
 use crate::proxy::request_proxy_upstream;
 use crate::socks5::Address;
 use crate::stream::AsyncReadWrite;
+#[cfg(target_os = "linux")]
 use crate::transparent::serve_transparent_proxy_client;
 use crate::udp_relay;
 use crate::utils::{copy_duplex, RWBuffer};
@@ -73,13 +73,9 @@ pub async fn run_client_with(
                 let stats = stats.clone();
 
                 Some(spawn(async move {
-                    if let Err(e) = serve_transparent_proxy_client(
-                        listener,
-                        config,
-                        stats,
-                        Arc::new(DnsResultCache {}),
-                    )
-                    .await
+                    if let Err(e) =
+                        serve_transparent_proxy_client(listener, config, stats, Default::default())
+                            .await
                     {
                         log::error!("Error serving transparent proxy: {e:?}");
                     }
