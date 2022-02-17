@@ -7,6 +7,7 @@ use maplit::hashmap;
 use smol::{block_on, channel::bounded, spawn, Task};
 
 mod http;
+mod tcp_socks4;
 mod tcp_socks5;
 mod udp;
 

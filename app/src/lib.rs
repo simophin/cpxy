@@ -12,6 +12,7 @@ mod parse;
 mod pattern;
 mod proxy;
 pub mod server;
+mod socks4;
 pub mod socks5;
 mod stream;
 mod tls;
