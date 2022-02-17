@@ -1,10 +1,7 @@
 use std::{borrow::Cow, net::SocketAddr, os::unix::prelude::AsRawFd, sync::Arc};
 
 use anyhow::{bail, Context};
-use nix::{
-    libc::stat,
-    sys::socket::{setsockopt, sockopt::IpTransparent, SockAddr},
-};
+use nix::sys::socket::{setsockopt, sockopt::IpTransparent, SockAddr};
 use smol::spawn;
 
 use crate::{
