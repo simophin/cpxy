@@ -4,13 +4,13 @@ use std::net::IpAddr;
 pub struct DnsResultCache {}
 
 impl DnsResultCache {
-    pub fn find_domain(&self, addr: IpAddr) -> Option<String> {
+    pub fn find_domain(&self, _: IpAddr) -> Option<String> {
         None
     }
 
-    pub fn find_ip(&self, domain: &str) -> Option<IpAddr> {
+    pub fn find_ip(&self, _: &str) -> Option<IpAddr> {
         None
     }
 
-    pub async fn cache(&self, domain: &str, ip: Vec<IpAddr>) {}
+    pub async fn cache(&self, _: &str, _: Vec<IpAddr>) {}
 }

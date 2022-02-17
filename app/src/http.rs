@@ -1,4 +1,9 @@
-use std::{borrow::Cow, fmt::Debug, ops::Deref};
+use std::{
+    borrow::Cow,
+    fmt::{Debug, Display},
+    ops::Deref,
+    str::FromStr,
+};
 
 use anyhow::{anyhow, bail, Context};
 use futures_lite::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
@@ -7,9 +12,80 @@ use serde::{de::DeserializeOwned, Deserialize, Serialize};
 
 use crate::utils::RWBuffer;
 
+pub enum HeaderValue<'a> {
+    Str(Cow<'a, str>),
+    Dis(Box<dyn Display + Send + Sync + 'a>),
+}
+
+impl<'a> From<&'a str> for HeaderValue<'a> {
+    fn from(v: &'a str) -> Self {
+        HeaderValue::Str(Cow::Borrowed(v))
+    }
+}
+
+impl From<String> for HeaderValue<'_> {
+    fn from(v: String) -> Self {
+        HeaderValue::Str(Cow::Owned(v))
+    }
+}
+
+impl<'a> HeaderValue<'a> {
+    pub fn from_display(d: impl Send + Sync + Display + 'a) -> Self {
+        HeaderValue::Dis(Box::new(d))
+    }
+
+    pub fn as_str(&'a self) -> Cow<'a, str> {
+        match self {
+            HeaderValue::Str(s) => Cow::Borrowed(s.as_ref()),
+            HeaderValue::Dis(s) => Cow::Owned(s.to_string()),
+        }
+    }
+}
+
+impl<'a> FromStr for HeaderValue<'a> {
+    type Err = anyhow::Error;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        Ok(s.to_string().into())
+    }
+}
+
+impl<'a> Display for HeaderValue<'a> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            HeaderValue::Str(v) => f.write_str(v.as_ref()),
+            HeaderValue::Dis(d) => Display::fmt(d.as_ref(), f),
+        }
+    }
+}
+
+impl<'a> Debug for HeaderValue<'a> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        Display::fmt(self, f)
+    }
+}
+
+impl<'a> Serialize for HeaderValue<'a> {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        serializer.collect_str(self)
+    }
+}
+
+impl<'a, 'de> Deserialize<'de> for HeaderValue<'a> {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        Ok(<String as Deserialize>::deserialize(deserializer)?.into())
+    }
+}
+
 #[derive(Debug, Serialize, Deserialize)]
 pub struct HttpCommon<'a> {
-    pub headers: Vec<(Cow<'a, str>, Cow<'a, str>)>,
+    pub headers: Vec<(Cow<'a, str>, HeaderValue<'a>)>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -43,7 +119,7 @@ impl<'a> HttpRequest<'a> {
                     .map(|hdr| {
                         (
                             Cow::Owned(hdr.name.to_string()),
-                            Cow::Owned(String::from_utf8_lossy(hdr.value).to_string()),
+                            String::from_utf8_lossy(hdr.value).to_string().into(),
                         )
                     })
                     .collect();
@@ -89,20 +165,24 @@ impl<'a> Deref for HttpResponse<'a> {
 }
 
 impl<'a> HttpCommon<'a> {
-    pub fn get_header(&self, n: &str) -> Option<&str> {
+    pub fn get_header(&'a self, n: &str) -> Option<&HeaderValue<'a>> {
         self.headers
             .iter()
             .find(|(k, _)| k.eq_ignore_ascii_case(n))
-            .map(|(_, v)| v.as_ref())
+            .map(|(_, v)| v)
+    }
+
+    pub fn get_header_text(&'a self, n: &str) -> Option<Cow<'a, str>> {
+        self.get_header(n).map(|v| v.as_str())
     }
 
     pub fn get_content_length(&self) -> Option<usize> {
-        self.get_header("content-length")
+        self.get_header_text("content-length")
             .and_then(|v| v.parse().ok())
     }
 
-    pub fn get_content_type(&self) -> Option<&str> {
-        self.get_header("content-type")
+    pub fn get_content_type(&self) -> Option<Cow<str>> {
+        self.get_header_text("content-type")
     }
 }
 
@@ -131,7 +211,7 @@ impl<'a, I: Deref<Target = HttpCommon<'a>>, T: AsyncRead + Unpin + Send + Sync>
     pub async fn body(&mut self) -> anyhow::Result<Vec<u8>> {
         match (
             self.deref().get_content_length(),
-            self.deref().get_header("transfer-encoding"),
+            self.deref().get_header_text("transfer-encoding"),
         ) {
             (Some(len), _) if len > 0 => {
                 let mut buf = vec![0u8; len];
@@ -268,7 +348,7 @@ pub async fn parse_response<T: AsyncRead + Unpin + Send + Sync>(
                     .map(|hdr| {
                         (
                             Cow::Owned(hdr.name.to_string()),
-                            Cow::Owned(String::from_utf8_lossy(hdr.value).to_string()),
+                            String::from_utf8_lossy(hdr.value).to_string().into(),
                         )
                     })
                     .collect();
@@ -318,7 +398,7 @@ pub async fn parse_request<T: AsyncRead + Unpin + Send + Sync>(
                     .map(|hdr| {
                         (
                             Cow::Owned(hdr.name.to_string()),
-                            Cow::Owned(String::from_utf8_lossy(hdr.value).to_string()),
+                            String::from_utf8_lossy(hdr.value).to_string().into(),
                         )
                     })
                     .collect();
