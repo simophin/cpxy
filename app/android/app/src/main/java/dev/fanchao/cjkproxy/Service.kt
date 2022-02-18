@@ -10,6 +10,7 @@ import android.widget.Toast
 import androidx.core.app.NotificationCompat
 import dev.fanchao.CJKProxy
 import dev.fanchao.cjkproxy.ui.MainActivity
+import dev.fanchao.cjkproxy.ui.AdminActivity
 import io.reactivex.rxjava3.subjects.PublishSubject
 import java.io.File
 
@@ -48,6 +49,7 @@ class Service : android.app.Service() {
                 .setContentTitle("Proxy running")
                 .setPriority(NotificationCompat.PRIORITY_DEFAULT)
                 .setContentIntent(PendingIntent.getActivity(this, 0, Intent(this, MainActivity::class.java), PendingIntent.FLAG_IMMUTABLE))
+                .addAction(R.drawable.ic_add, "Admin", PendingIntent.getActivity(this, 0, Intent(this, AdminActivity::class.java), PendingIntent.FLAG_IMMUTABLE))
                 .build()
 
             startForeground(1, notification)

@@ -58,13 +58,15 @@ export default function BasicSettingsEdit({ onSaved, onCancelled, current_config
 
     const handleSave = async () => {
         try {
+            const transparent_address = transparentAddress.validate();
+
             let config: ClientConfig = {
                 ...current_config,
                 direct_accept: accept.validate(),
                 direct_reject: reject.validate(),
                 socks5_address: address.validate(),
                 socks5_udp_host: udpHost.validate(),
-                transparent_address: transparentAddress.validate(),
+                transparent_address: (transparent_address?.length === 0) ? undefined : transparent_address,
             };
 
             await request.execute('post', config);

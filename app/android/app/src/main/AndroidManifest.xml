@@ -26,6 +26,7 @@
         </activity>
         <activity
             android:launchMode="singleInstance"
+            android:exported="true"
             android:theme="@style/Theme.AppCompat.DayNight.NoActionBar"
             android:name=".ui.AdminActivity" />
 
