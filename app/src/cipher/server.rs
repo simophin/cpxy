@@ -3,6 +3,7 @@ use anyhow::bail;
 use futures_lite::io::split;
 use futures_lite::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
 
+use crate::buf::RWBuffer;
 use crate::http::{parse_request, HttpRequest};
 use crate::stream::VecStream;
 
@@ -48,7 +49,7 @@ fn check_request(
 pub async fn listen<T: AsyncRead + AsyncWrite + Send + Sync + Unpin>(
     stream: T,
 ) -> anyhow::Result<impl AsyncRead + AsyncWrite + Send + Sync + Unpin> {
-    let mut req = match parse_request(stream, Default::default()).await {
+    let mut req = match parse_request(stream, RWBuffer::new(512, 65536)).await {
         Ok(v) => v,
         Err((e, mut stream)) => {
             stream.write_all(b"HTTP/1.1 400 invalid request").await?;

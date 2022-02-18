@@ -1,5 +1,5 @@
+use crate::buf::RWBuffer;
 use crate::socks5::Address;
-use crate::utils::RWBuffer;
 use futures_lite::future::race;
 use futures_lite::io::split;
 use futures_lite::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
@@ -341,7 +341,7 @@ pub async fn copy_udp_and_stream(
         let udp = udp.clone();
         spawn(async move {
             loop {
-                let mut stream_buf = RWBuffer::with_capacity(67000);
+                let mut stream_buf = RWBuffer::new(67000, 67000);
                 let mut udp_buf = Vec::new();
                 match r.read(stream_buf.write_buf()).await? {
                     0 => return Ok(()),

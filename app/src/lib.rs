@@ -1,6 +1,7 @@
 extern crate core;
 
 mod broadcast;
+mod buf;
 mod cipher;
 mod client;
 mod counter;

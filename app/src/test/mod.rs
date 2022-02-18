@@ -12,13 +12,13 @@ mod tcp_socks5;
 mod udp;
 
 use crate::{
+    buf::RWBuffer,
     client::{run_client_with, ClientStatistics},
     config::{ClientConfig, UpstreamConfig},
     fetch::fetch_http_with_proxy,
     io::{TcpListener, TcpStream, UdpSocket},
     server::run_server,
     socks5::Address,
-    utils::RWBuffer,
 };
 
 pub async fn duplex(
@@ -138,7 +138,7 @@ async fn read_exact(r: &mut (impl AsyncRead + Unpin), n: usize) -> anyhow::Resul
 async fn parse_address(
     r: &mut (impl AsyncRead + Unpin),
 ) -> anyhow::Result<(Address<'static>, RWBuffer)> {
-    let mut buf = RWBuffer::default();
+    let mut buf = RWBuffer::new(128, 520);
     loop {
         match r.read(buf.write_buf()).await? {
             0 => bail!("Unexpected EOF"),

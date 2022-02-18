@@ -11,7 +11,7 @@ use futures_lite::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
 use pin_project_lite::pin_project;
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
 
-use crate::utils::RWBuffer;
+use crate::buf::RWBuffer;
 
 pub enum HeaderValue<'a> {
     Str(Cow<'a, str>),
@@ -229,7 +229,7 @@ impl<'a, I: Deref<Target = HttpCommon<'a>>, T: AsyncRead + Unpin + Send + Sync>
             }
             (_, Some(e)) if e.eq_ignore_ascii_case("chunked") => {
                 let mut final_buf = Vec::new();
-                let mut buf = RWBuffer::with_capacity(128);
+                let mut buf = RWBuffer::new(8, 24);
                 loop {
                     match self.read(buf.write_buf()).await? {
                         0 => return Ok(final_buf),

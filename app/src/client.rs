@@ -6,6 +6,7 @@ use std::net::SocketAddr;
 use std::sync::Arc;
 use std::time::{Duration, UNIX_EPOCH};
 
+use crate::buf::RWBuffer;
 use crate::config::*;
 use crate::counter::Counter;
 use crate::fetch::send_http;
@@ -18,7 +19,7 @@ use crate::stream::AsyncReadWrite;
 #[cfg(target_os = "linux")]
 use crate::transparent::serve_transparent_proxy_client;
 use crate::udp_relay;
-use crate::utils::{copy_duplex, RWBuffer};
+use crate::utils::copy_duplex;
 use futures_lite::future::race;
 use futures_lite::{AsyncRead, AsyncReadExt, AsyncWrite, Stream, StreamExt};
 use serde::{Deserialize, Serialize};
@@ -212,7 +213,7 @@ async fn serve_proxy_client(
     config: Arc<ClientConfig>,
     stats: Arc<ClientStatistics>,
 ) -> anyhow::Result<()> {
-    let mut buf = RWBuffer::default();
+    let mut buf = RWBuffer::new(128, 65536);
     let (handshaker, req) = Handshaker::start(&mut socks, &mut buf)
         .await
         .context("Handshaking")?;

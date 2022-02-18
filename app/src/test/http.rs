@@ -56,7 +56,7 @@ fn test_http_tunnel() {
             .write_all(format!("CONNECT {echo_server_addr} HTTP/1.1\r\n\r\n").as_bytes())
             .await
             .unwrap();
-        let mut http_stream = parse_response(proxy_client, Default::default())
+        let mut http_stream = parse_response(proxy_client, RWBuffer::new(4096, 8192))
             .timeout(TIMEOUT)
             .await
             .unwrap()

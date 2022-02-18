@@ -1,3 +1,4 @@
+use crate::buf::RWBuffer;
 use crate::http::HttpRequest;
 use crate::parse::ParseError;
 use crate::proxy::protocol::ProxyRequest;
@@ -10,7 +11,6 @@ use crate::socks5::{
     AUTH_NO_PASSWORD,
 };
 use crate::url::HttpUrl;
-use crate::utils::RWBuffer;
 use anyhow::{anyhow, bail, Context};
 use futures_lite::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
 use std::borrow::Cow;

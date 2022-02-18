@@ -2,7 +2,10 @@ use std::{borrow::Cow, fmt::Display, str::FromStr};
 
 use super::strategy::EncryptionStrategy;
 use super::stream::CipherStream;
-use crate::http::{parse_response, HeaderValue, HttpCommon, HttpRequest, HttpResponse};
+use crate::{
+    buf::RWBuffer,
+    http::{parse_response, HeaderValue, HttpCommon, HttpRequest, HttpResponse},
+};
 use anyhow::{anyhow, Context};
 use base64::{display::Base64Display, URL_SAFE_NO_PAD};
 use futures_lite::{AsyncRead, AsyncWrite};
@@ -112,7 +115,7 @@ pub async fn connect(
     .context("Writing request")?;
 
     // Parse and check response
-    let res = parse_response(r, Default::default())
+    let res = parse_response(r, RWBuffer::new(512, 65536))
         .await
         .context("Parsing cipher response")?;
 

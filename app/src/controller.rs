@@ -1,5 +1,6 @@
 use crate::abp::{adblock_list_engine, gfw_list_engine};
 use crate::broadcast::bounded;
+use crate::buf::RWBuffer;
 use crate::client::{run_client, ClientStatistics};
 use crate::config::{ClientConfig, UpstreamConfig};
 use crate::http::{parse_request, write_http_response};
@@ -161,7 +162,7 @@ impl Controller {
     }
 
     async fn dispatch(&mut self, r: impl AsyncRead + Unpin + Send + Sync) -> HttpResult<Response> {
-        match parse_request(r, Default::default()).await {
+        match parse_request(r, RWBuffer::new(512, 65536)).await {
             Ok(mut r) => {
                 log::debug!("Dispatching {} {}", r.method, r.path);
                 match (r.method.as_ref(), r.path.as_ref()) {

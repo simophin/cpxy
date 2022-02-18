@@ -1,7 +1,8 @@
+use crate::buf::RWBuffer;
 use crate::io::UdpSocket;
 use crate::proxy::protocol::ProxyResult;
 use crate::socks5::{Address, UdpPacket};
-use crate::utils::{write_bincode_lengthed_async, RWBuffer};
+use crate::utils::write_bincode_lengthed_async;
 use anyhow::anyhow;
 use futures_lite::future::race;
 use futures_lite::io::split;
@@ -16,7 +17,7 @@ async fn copy_stream_to_udp(
     mut src: impl AsyncRead + Unpin + Send + Sync,
     socket: &UdpSocket,
 ) -> anyhow::Result<()> {
-    let mut buf = RWBuffer::with_capacity(66000);
+    let mut buf = RWBuffer::new(66000, 66000);
     let mut addr_buf = String::new();
     loop {
         match src.read(buf.write_buf()).await? {

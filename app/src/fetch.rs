@@ -4,6 +4,7 @@ use anyhow::Context;
 use futures_lite::{AsyncRead, AsyncWrite, AsyncWriteExt};
 
 use crate::{
+    buf::RWBuffer,
     http::{AsyncHttpStream, HeaderValue, HttpCommon, HttpRequest, HttpResponse},
     io::TcpStream,
     socks5::Address,
@@ -110,5 +111,5 @@ pub async fn fetch_http_with_proxy<'a, 'b>(
         client.write_all(body).await?;
     }
 
-    super::http::parse_response(client, Default::default()).await
+    super::http::parse_response(client, RWBuffer::new(512, 65536)).await
 }
