@@ -74,7 +74,7 @@ impl VecStream {
 
 impl AsyncRead for VecStream {
     fn poll_read(
-        self: Pin<&mut Self>,
+        mut self: Pin<&mut Self>,
         _: &mut std::task::Context<'_>,
         buf: &mut [u8],
     ) -> Poll<std::io::Result<usize>> {
@@ -82,7 +82,8 @@ impl AsyncRead for VecStream {
         let start = self.1;
         let len = remaining.min(buf.len());
         let end = start + len;
-        buf.copy_from_slice(&self.0[start..end]);
+        (&mut buf[..len]).copy_from_slice(&self.0[start..end]);
+        self.1 += len;
         Poll::Ready(Ok(len))
     }
 }
