@@ -9,11 +9,10 @@ import android.os.IBinder
 import android.widget.Toast
 import androidx.core.app.NotificationCompat
 import dev.fanchao.CJKProxy
-import dev.fanchao.cjkproxy.ui.MainActivity
 import dev.fanchao.cjkproxy.ui.AdminActivity
+import dev.fanchao.cjkproxy.ui.MainActivity
 import io.reactivex.rxjava3.subjects.PublishSubject
 import java.io.File
-
 
 class Service : android.app.Service() {
     override fun onBind(p0: Intent?): IBinder? = null
@@ -26,7 +25,7 @@ class Service : android.app.Service() {
             val channel = NotificationChannel("default", "default", importance)
             // Register the channel with the system
             val notificationManager: NotificationManager =
-                getSystemService(NOTIFICATION_SERVICE) as NotificationManager
+                    getSystemService(NOTIFICATION_SERVICE) as NotificationManager
             notificationManager.createNotificationChannel(channel)
         }
     }
@@ -38,22 +37,45 @@ class Service : android.app.Service() {
                 runningPort = CJKProxy.getPort(instance)
             } catch (e: Exception) {
                 stopService(Intent(this, javaClass))
-                Toast.makeText(this, "Error starting server: ${e.message}", Toast.LENGTH_SHORT).show()
+                Toast.makeText(this, "Error starting server: ${e.message}", Toast.LENGTH_SHORT)
+                        .show()
                 return START_NOT_STICKY
             }
 
-
             createNotificationChannel()
-            val notification = NotificationCompat.Builder(this, "default")
-                .setSmallIcon(R.drawable.ic_add)
-                .setContentTitle("Proxy running")
-                .setPriority(NotificationCompat.PRIORITY_DEFAULT)
-                .setContentIntent(PendingIntent.getActivity(this, 0, Intent(this, MainActivity::class.java), PendingIntent.FLAG_IMMUTABLE))
-                .addAction(R.drawable.ic_add, "Admin", PendingIntent.getActivity(this, 0, Intent(this, AdminActivity::class.java), PendingIntent.FLAG_IMMUTABLE))
-                .build()
+            val notification =
+                    NotificationCompat.Builder(this, "default")
+                            .setSmallIcon(R.drawable.ic_add)
+                            .setContentTitle("Proxy running")
+                            .setPriority(NotificationCompat.PRIORITY_DEFAULT)
+                            .setContentIntent(
+                                    PendingIntent.getActivity(
+                                            this,
+                                            0,
+                                            Intent(this, MainActivity::class.java),
+                                            PendingIntent.FLAG_IMMUTABLE
+                                    )
+                            )
+                            .also { builder ->
+                                if (runningPort != null) {
+                                    builder.addAction(
+                                            R.drawable.ic_add,
+                                            "Admin",
+                                            PendingIntent.getActivity(
+                                                    this,
+                                                    0,
+                                                    Intent(this, AdminActivity::class.java)
+                                                            .putExtra("port", runningPort!!),
+                                                    PendingIntent.FLAG_IMMUTABLE
+                                            )
+                                    )
+                                }
+                            }
+                            .build()
 
             startForeground(1, notification)
             notifications.onNext(Unit)
+            return START_STICKY
         }
         return super.onStartCommand(intent, flags, startId)
     }
