@@ -10,7 +10,6 @@ use crate::{
     stream::AsyncReadWrite,
     tls::connect_tls,
     url::HttpUrl,
-    utils::RWBuffer,
 };
 
 pub async fn send_http_with_proxy(
@@ -18,10 +17,7 @@ pub async fn send_http_with_proxy(
     address: &Address<'_>,
     mut req: HttpRequest<'_>,
     http_proxy: &Address<'_>,
-) -> anyhow::Result<(
-    impl AsyncRead + AsyncWrite + Unpin + Send + Sync + 'static,
-    Vec<u8>,
-)> {
+) -> anyhow::Result<impl AsyncRead + AsyncWrite + Unpin + Send + Sync + 'static> {
     let mut client = TcpStream::connect(http_proxy)
         .await
         .with_context(|| format!("Connecting to proxy server: {http_proxy}"))?;
@@ -29,25 +25,17 @@ pub async fn send_http_with_proxy(
     let scheme = if https { "https://" } else { "http://" };
     req.path = Cow::Owned(format!("{scheme}{address}{}", req.path));
 
-    let mut buf = Vec::new();
-    req.to_writer(&mut buf).context("Writing request headers")?;
-    log::debug!(
-        "Sending http (proxy = {http_proxy}): {}",
-        String::from_utf8_lossy(&buf)
-    );
-    client.write_all(&buf).await?;
-
-    Ok((client, buf))
+    req.to_async_writer(&mut client)
+        .await
+        .context("Writing request headers")?;
+    Ok(client)
 }
 
 pub async fn send_http(
     https: bool,
     address: &Address<'_>,
     req: HttpRequest<'_>,
-) -> anyhow::Result<(
-    impl AsyncRead + AsyncWrite + Unpin + Send + Sync + 'static,
-    Vec<u8>,
-)> {
+) -> anyhow::Result<impl AsyncRead + AsyncWrite + Unpin + Send + Sync + 'static> {
     let client = TcpStream::connect(&address)
         .await
         .with_context(|| format!("Connecting to {address}"))?;
@@ -62,11 +50,11 @@ pub async fn send_http(
         AsyncReadWrite::new(client)
     };
 
-    let mut buf = Vec::new();
-    req.to_writer(&mut buf).context("Writing request headers")?;
-    client.write_all(&buf).await?;
+    req.to_async_writer(&mut client)
+        .await
+        .context("Writing request headers")?;
 
-    Ok((client, buf))
+    Ok(client)
 }
 
 pub async fn fetch_http_with_proxy<'a, 'b>(
@@ -106,7 +94,7 @@ pub async fn fetch_http_with_proxy<'a, 'b>(
             .push((Cow::Borrowed("Host"), HeaderValue::from_display(&address)));
     }
 
-    let (mut client, mut buf) = send_http_with_proxy(
+    let mut client = send_http_with_proxy(
         is_https,
         &address,
         HttpRequest {
@@ -122,6 +110,5 @@ pub async fn fetch_http_with_proxy<'a, 'b>(
         client.write_all(body).await?;
     }
 
-    buf.resize(8192, 0);
-    super::http::parse_response(client, RWBuffer::new(buf)).await
+    super::http::parse_response(client, Default::default()).await
 }

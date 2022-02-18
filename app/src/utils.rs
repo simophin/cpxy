@@ -78,14 +78,6 @@ impl RWBuffer<Vec<u8>> {
             write_cursor: 0,
         }
     }
-
-    pub fn new(buf: Vec<u8>) -> Self {
-        Self {
-            buf,
-            read_cursor: 0,
-            write_cursor: 0,
-        }
-    }
 }
 
 // impl<T: AsRef<[u8]>> RWBuffer<T> {

@@ -2,13 +2,10 @@ use std::{borrow::Cow, fmt::Display, str::FromStr};
 
 use super::strategy::EncryptionStrategy;
 use super::stream::CipherStream;
-use crate::{
-    http::{parse_response, HttpCommon, HttpRequest, HttpResponse},
-    utils::RWBuffer,
-};
+use crate::http::{parse_response, HeaderValue, HttpCommon, HttpRequest, HttpResponse};
 use anyhow::{anyhow, Context};
-use base64::URL_SAFE_NO_PAD;
-use futures_lite::{AsyncRead, AsyncWrite, AsyncWriteExt};
+use base64::{display::Base64Display, URL_SAFE_NO_PAD};
+use futures_lite::{AsyncRead, AsyncWrite};
 
 fn check_server_response(res: &HttpResponse) -> anyhow::Result<()> {
     match res.status_code {
@@ -98,24 +95,24 @@ pub async fn connect(
         wr_cipher.apply_keystream(initial_data.as_mut_slice());
         headers.push((
             Cow::Borrowed(INITIAL_DATA_HEADER),
-            base64::encode_config(&initial_data, INITIAL_DATA_CONFIG).into(),
+            HeaderValue::from_display(Base64Display::with_config(
+                &initial_data,
+                INITIAL_DATA_CONFIG,
+            )),
         ));
     }
 
-    let req = HttpRequest {
+    HttpRequest {
         common: HttpCommon { headers },
         method: Cow::Borrowed("GET"),
         path: Cow::Owned(params.to_string()),
-    };
-
-    initial_data.clear();
-    req.to_writer(&mut initial_data)?;
-    w.write_all(&initial_data).await?;
+    }
+    .to_async_writer(&mut w)
+    .await
+    .context("Writing request")?;
 
     // Parse and check response
-    initial_data.resize(initial_data.len().max(2048), 0); // Reuse this vector
-
-    let res = parse_response(r, RWBuffer::new(initial_data))
+    let res = parse_response(r, Default::default())
         .await
         .context("Parsing cipher response")?;
 

@@ -1,6 +1,7 @@
 use std::{
     borrow::Cow,
     fmt::{Debug, Display},
+    io::Write,
     ops::Deref,
     str::FromStr,
 };
@@ -137,13 +138,21 @@ impl<'a> HttpRequest<'a> {
         }
     }
 
-    pub fn to_writer(&self, buf: &mut impl std::io::Write) -> anyhow::Result<()> {
-        write!(buf, "{} {} HTTP/1.1\r\n", self.method, self.path)?;
+    pub async fn to_async_writer(
+        &self,
+        w: &mut (impl AsyncWrite + Unpin + Send + Sync),
+    ) -> anyhow::Result<()> {
+        let mut line_buf = Vec::new();
+        write!(&mut line_buf, "{} {} HTTP/1.1\r\n", self.method, self.path)?;
+        w.write_all(&line_buf).await?;
+
         for (k, v) in &self.headers {
-            write!(buf, "{k}: {v}\r\n")?;
+            line_buf.clear();
+            write!(&mut line_buf, "{k}: {v}\r\n")?;
+            w.write_all(&line_buf).await?;
         }
 
-        write!(buf, "\r\n")?;
+        w.write_all(b"\r\n").await?;
         Ok(())
     }
 }

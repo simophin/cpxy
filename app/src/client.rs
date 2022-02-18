@@ -265,7 +265,7 @@ async fn serve_proxy_client(
                 match req {
                     ProxyRequest::HTTP { dst, https, req } => {
                         match send_http(https, &dst, req).await {
-                            Ok((upstream, _)) => {
+                            Ok(upstream) => {
                                 handshaker.respond_ok(&mut socks, None).await?;
                                 copy_duplex(upstream, socks, None, None).await
                             }
