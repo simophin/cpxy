@@ -11,6 +11,7 @@ use std::borrow::Cow;
 use std::io::{IoSlice, IoSliceMut};
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr};
 use std::ops::{Deref, DerefMut};
+#[cfg(target_os = "linux")]
 use std::os::unix::prelude::{AsRawFd, RawFd};
 use std::pin::Pin;
 use std::sync::atomic::{AtomicUsize, Ordering};
@@ -201,6 +202,7 @@ impl TcpListener {
         Ok((TcpStream::from(stream), addr))
     }
 
+    #[cfg(target_os = "linux")]
     pub fn as_raw_fd(&self) -> RawFd {
         self.0.as_raw_fd()
     }
