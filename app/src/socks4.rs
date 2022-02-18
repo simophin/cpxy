@@ -44,11 +44,10 @@ pub fn parse_socks4_request<'a>(mut buf: &'a [u8]) -> anyhow::Result<Option<(usi
         None => return Ok(None),
     };
 
-    if !buf.has_remaining() {
-        return Ok(None);
-    }
-
-    let addr = if &ip[..3] == [0, 0, 0] {
+    let addr = if &ip[..3] == [0, 0, 0] && ip[3] != 0 {
+        if !buf.has_remaining() {
+            return Ok(None);
+        }
         match buf.iter().position(|x| *x == 0) {
             Some(v) => {
                 offset += v + 1;

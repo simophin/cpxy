@@ -4,7 +4,7 @@ use anyhow::Context;
 use futures_lite::{AsyncRead, AsyncWrite, AsyncWriteExt};
 
 use crate::{
-    http::{AsyncHttpStream, HttpCommon, HttpRequest, HttpResponse},
+    http::{AsyncHttpStream, HeaderValue, HttpCommon, HttpRequest, HttpResponse},
     io::TcpStream,
     socks5::Address,
     stream::AsyncReadWrite,
@@ -79,14 +79,14 @@ pub async fn fetch_http_with_proxy<'a, 'b>(
     AsyncHttpStream<HttpResponse<'static>, impl AsyncRead + AsyncWrite + Unpin + Send + Sync + 'a>,
 > {
     let mut headers = headers
-        .map(|(k, v)| (Cow::Borrowed(k), v))
+        .map(|(k, v)| (Cow::Borrowed(k), HeaderValue::Str(v)))
         .collect::<Vec<_>>();
 
     let body = if let Some((content_type, body)) = body {
-        headers.push((Cow::Borrowed("Content-Type"), Cow::Borrowed(content_type)));
+        headers.push((Cow::Borrowed("Content-Type"), content_type.into()));
         headers.push((
             Cow::Borrowed("Content-Length"),
-            Cow::Owned(format!("Content-Length: {}", body.len())),
+            HeaderValue::from_display(body.len()),
         ));
         Some(body)
     } else {
@@ -103,7 +103,7 @@ pub async fn fetch_http_with_proxy<'a, 'b>(
     if common.get_header("host").is_none() {
         common
             .headers
-            .push((Cow::Borrowed("Host"), Cow::Owned(address.to_string())));
+            .push((Cow::Borrowed("Host"), HeaderValue::from_display(&address)));
     }
 
     let (mut client, mut buf) = send_http_with_proxy(

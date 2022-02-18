@@ -1,9 +1,10 @@
 use super::client::CipherParams;
 use anyhow::bail;
 use futures_lite::io::split;
-use futures_lite::{AsyncRead, AsyncWrite, AsyncWriteExt};
+use futures_lite::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
 
 use crate::http::{parse_request, HttpRequest};
+use crate::stream::VecStream;
 
 use super::stream::CipherStream;
 use super::suite::{create_cipher, BoxedStreamCipher};
@@ -65,6 +66,13 @@ pub async fn listen<T: AsyncRead + AsyncWrite + Send + Sync + Unpin>(
         }
     };
 
+    let initial_data = match req.get_header(super::client::INITIAL_DATA_HEADER) {
+        Some(value) => {
+            base64::decode_config(value.as_str().as_ref(), super::client::INITIAL_DATA_CONFIG)?
+        }
+        None => Default::default(),
+    };
+
     // Respond client with correct details
     req.write_all(
         b"HTTP/1.1 101 Switching Protocols\r\n\
@@ -79,7 +87,7 @@ pub async fn listen<T: AsyncRead + AsyncWrite + Send + Sync + Unpin>(
 
     Ok(CipherStream::new(
         "server".to_string(),
-        r,
+        VecStream::new(initial_data).chain(r),
         w,
         rd_cipher,
         wr_cipher,

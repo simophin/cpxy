@@ -3,7 +3,7 @@ use std::{borrow::Cow, fmt::Display, str::FromStr};
 use super::strategy::EncryptionStrategy;
 use super::stream::CipherStream;
 use crate::{
-    http::{parse_response, HttpResponse},
+    http::{parse_response, HttpCommon, HttpRequest, HttpResponse},
     utils::RWBuffer,
 };
 use anyhow::{anyhow, Context};
@@ -60,6 +60,9 @@ where
     }
 }
 
+pub const INITIAL_DATA_CONFIG: base64::Config = base64::URL_SAFE_NO_PAD;
+pub const INITIAL_DATA_HEADER: &'static str = "X-Cache-Key";
+
 pub async fn connect(
     r: impl AsyncRead + Send + Sync + Unpin,
     mut w: impl AsyncWrite + Send + Sync + Unpin,
@@ -79,30 +82,38 @@ pub async fn connect(
         cipher_type,
     };
 
-    w.write_all(
-        format!(
-            "GET {params} HTTP/1.1\r\n\
-                      Connection: Upgrade\r\n\
-                      Host: {host}\r\n\
-                      Upgrade: WebSocket\r\n\
-                      Sec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==\r\n\
-                      Sec-WebSocket-Version: 20\r\n\r\n"
-        )
-        .as_bytes(),
-    )
-    .await?;
+    let mut headers = Vec::with_capacity(6);
+
+    headers.push((Cow::Borrowed("Connection"), "Upgrade".into()));
+    headers.push((Cow::Borrowed("Upgrade"), "WebSocket".into()));
+    headers.push((
+        Cow::Borrowed("Sec-WebSocket-Key"),
+        "dGhlIHNhbXBsZSBub25jZQ==".into(),
+    ));
+    headers.push((Cow::Borrowed("Sec-WebSocket-Version"), "13".into()));
+    headers.push((Cow::Borrowed("Host"), host.into()));
 
     // Send initial data encrypted
     if initial_data.len() > 0 {
         wr_cipher.apply_keystream(initial_data.as_mut_slice());
-        w.write_all(initial_data.as_slice())
-            .await
-            .context("Write initial data")?;
-        initial_data.clear();
+        headers.push((
+            Cow::Borrowed(INITIAL_DATA_HEADER),
+            base64::encode_config(&initial_data, INITIAL_DATA_CONFIG).into(),
+        ));
     }
 
+    let req = HttpRequest {
+        common: HttpCommon { headers },
+        method: Cow::Borrowed("GET"),
+        path: Cow::Owned(params.to_string()),
+    };
+
+    initial_data.clear();
+    req.to_writer(&mut initial_data)?;
+    w.write_all(&initial_data).await?;
+
     // Parse and check response
-    initial_data.resize(2048, 0); // Reuse this vector
+    initial_data.resize(initial_data.len().max(2048), 0); // Reuse this vector
 
     let res = parse_response(r, RWBuffer::new(initial_data))
         .await
