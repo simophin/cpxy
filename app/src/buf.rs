@@ -1,26 +1,99 @@
 use std::{
+    collections::VecDeque,
     io::{Read, Write},
     mem::MaybeUninit,
+    ops::{Deref, DerefMut},
+    sync::Mutex,
 };
 
 use bytes::BufMut;
+use lazy_static::lazy_static;
+
+struct Buf(Option<Box<[u8]>>);
+
+impl Deref for Buf {
+    type Target = [u8];
+
+    fn deref(&self) -> &Self::Target {
+        match self.0.as_ref() {
+            Some(b) => b.as_ref(),
+            None => b"",
+        }
+    }
+}
+
+impl DerefMut for Buf {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        match self.0.as_mut() {
+            Some(b) => b.as_mut(),
+            None => panic!("Should not deref_mut an empty slice"),
+        }
+    }
+}
 
 pub struct RWBuffer {
-    buf: Box<[u8]>,
+    buf: Buf,
     read_cursor: usize,
     write_cursor: usize,
     max_len: usize,
 }
 
+const MAX_BUFFER_LEN: usize = 128;
+
 fn new_buf(s: usize) -> Box<[u8]> {
+    let reused = match buffer_cache().lock() {
+        Ok(mut g) => match g.binary_search_by(|v| v.len().cmp(&s)) {
+            Ok(index) => g.remove(index),
+            Err(index) if g.len() > 0 && index < g.len() - 1 => g.remove(index + 1),
+            _ => None,
+        },
+        Err(_) => None,
+    };
+
+    if let Some(reused) = reused {
+        log::debug!("Reusing buffer size = {}, requesting = {}", reused.len(), s);
+        return reused;
+    }
+
     unsafe { vec![MaybeUninit::<u8>::uninit().assume_init(); s].into_boxed_slice() }
+}
+
+fn recycle_buf(b: Box<[u8]>) {
+    match buffer_cache().lock() {
+        Ok(mut g) if g.len() < MAX_BUFFER_LEN => {
+            let len = b.len();
+            log::debug!("Recycling buffer with size = {len}");
+            match g.binary_search_by(|v| v.len().cmp(&len)) {
+                Ok(index) => g.insert(index, b),
+                Err(index) => g.insert(index, b),
+            }
+        }
+        _ => (),
+    }
+}
+
+fn buffer_cache() -> &'static Mutex<VecDeque<Box<[u8]>>> {
+    lazy_static! {
+        static ref CACHE: Mutex<VecDeque<Box<[u8]>>> = Default::default();
+    }
+
+    &CACHE
+}
+
+impl Drop for RWBuffer {
+    fn drop(&mut self) {
+        match self.buf.0.take() {
+            Some(b) => recycle_buf(b),
+            None => {}
+        }
+    }
 }
 
 impl RWBuffer {
     pub fn new(init_capacity: usize, max_len: usize) -> Self {
         assert!(max_len >= init_capacity);
         Self {
-            buf: new_buf(init_capacity),
+            buf: Buf(Some(new_buf(init_capacity))),
             read_cursor: 0,
             write_cursor: 0,
             max_len,
@@ -71,7 +144,11 @@ impl RWBuffer {
             log::debug!("Growing buffer from {old_len} to {new_len}");
             let mut new_buf = new_buf(new_len);
             (&mut new_buf[..old_len]).copy_from_slice(self.buf.as_ref());
-            self.buf = new_buf;
+            match self.buf.0.take() {
+                Some(old_buf) => recycle_buf(old_buf),
+                _ => {}
+            };
+            self.buf = Buf(Some(new_buf));
         }
     }
 
