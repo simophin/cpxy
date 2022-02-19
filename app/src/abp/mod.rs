@@ -1,12 +1,11 @@
 use std::{
-    borrow::Cow,
     io::Read,
     path::{Path, PathBuf},
     sync::RwLock,
     time::{Duration, SystemTime},
 };
 
-use crate::{fetch::fetch_http_with_proxy, socks5::Address};
+use crate::{fetch::fetch_http_with_proxy, http::HeaderValue, socks5::Address};
 use adblock::{
     engine::Engine,
     lists::{FilterSet, ParseOptions},
@@ -117,10 +116,8 @@ async fn update_engine(
 
     let last_modified = last_modified
         .map(|v| {
-            Cow::Owned(
-                DateTime::<chrono::Utc>::from(v)
-                    .format("%a, %d %b %Y %H:%M:%S GMT")
-                    .to_string(),
+            HeaderValue::from_display(
+                DateTime::<chrono::Utc>::from(v).format("%a, %d %b %Y %H:%M:%S GMT"),
             )
         })
         .into_iter()

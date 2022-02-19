@@ -61,14 +61,14 @@ pub async fn send_http(
 pub async fn fetch_http_with_proxy<'a, 'b>(
     url: &'a str,
     method: &'a str,
-    headers: impl Iterator<Item = (&'b str, Cow<'b, str>)> + Send + Sync + 'b,
+    headers: impl Iterator<Item = (&'b str, HeaderValue<'b>)> + Send + Sync + 'b,
     http_proxy: &Address<'_>,
     body: Option<(&str, &[u8])>,
 ) -> anyhow::Result<
     AsyncHttpStream<HttpResponse<'static>, impl AsyncRead + AsyncWrite + Unpin + Send + Sync + 'a>,
 > {
     let mut headers = headers
-        .map(|(k, v)| (Cow::Borrowed(k), HeaderValue::Str(v)))
+        .map(|(k, v)| (Cow::Borrowed(k), v))
         .collect::<Vec<_>>();
 
     let body = if let Some((content_type, body)) = body {
