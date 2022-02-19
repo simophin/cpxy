@@ -55,6 +55,7 @@ fn new_buf(s: usize) -> Box<[u8]> {
         return reused;
     }
 
+    log::debug!("Creating new buffer size = {s}");
     unsafe { vec![MaybeUninit::<u8>::uninit().assume_init(); s].into_boxed_slice() }
 }
 
