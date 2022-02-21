@@ -122,9 +122,8 @@ impl Relay {
     pub async fn new(
         c: Arc<ClientConfig>,
         stats: Arc<ClientStatistics>,
-        v4: bool,
     ) -> anyhow::Result<(Self, SocketAddr)> {
-        let socket = UdpSocket::bind(v4).await?;
+        let socket = UdpSocket::bind_addr(c.socks5_udp_host).await?;
         let addr = socket.local_addr()?;
         Ok((Self { c, socket, stats }, addr))
     }

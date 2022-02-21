@@ -102,7 +102,7 @@ pub async fn run_client_with(
             log::info!("Client {addr} connected");
 
             select! {
-                result = serve_proxy_client(sock.is_v4(), sock, config, stats).fuse() => {
+                result = serve_proxy_client(sock, config, stats).fuse() => {
                     if let Err(e) = result {
                         log::error!("Error serving client {addr}: {e:?}");
                     }
@@ -208,7 +208,6 @@ async fn drain_socks(
 }
 
 async fn serve_proxy_client(
-    is_v4: bool,
     mut socks: impl AsyncRead + AsyncWrite + Unpin + Send + Sync + 'static,
     config: Arc<ClientConfig>,
     stats: Arc<ClientStatistics>,
@@ -295,7 +294,7 @@ async fn serve_proxy_client(
             }
         }
 
-        ProxyRequest::UDP => match udp_relay::Relay::new(config, stats, is_v4).await {
+        ProxyRequest::UDP => match udp_relay::Relay::new(config, stats).await {
             Ok((r, a)) => {
                 handshaker.respond_ok(&mut socks, Some(a)).await?;
                 race(r.run(), drain_socks(socks)).await
