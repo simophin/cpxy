@@ -9,17 +9,11 @@ use std::{
 use bytes::BufMut;
 use lazy_static::lazy_static;
 
-pub struct Buf {
-    dat: Option<Box<[u8]>>,
-    len: usize,
-}
+pub struct Buf(Vec<u8>);
 
 impl Buf {
     pub fn new(min_capacity: usize) -> Self {
-        Buf {
-            dat: Some(new_buf(min_capacity)),
-            len: 0,
-        }
+        Buf(Vec::from(new_buf(min_capacity)))
     }
 
     pub fn new_with_len(min_capacity: usize, len: usize) -> Self {
@@ -29,23 +23,24 @@ impl Buf {
     }
 
     pub fn len(&self) -> usize {
-        self.len
+        self.0.len()
     }
 
     pub fn capacity(&self) -> usize {
-        self.dat.as_ref().unwrap().len()
+        self.0.capacity()
     }
 
     pub fn set_len(&mut self, new_len: usize) {
         assert!(new_len <= self.capacity());
-        self.len = new_len;
+        unsafe { self.0.set_len(new_len) }
     }
 }
 
 impl Drop for Buf {
     fn drop(&mut self) {
-        if let Some(b) = self.dat.take() {
-            recycle_buf(b);
+        match std::mem::take(&mut self.0) {
+            v if v.capacity() > 0 => recycle_buf(v.into_boxed_slice()),
+            _ => {}
         }
     }
 }
@@ -54,35 +49,23 @@ impl Deref for Buf {
     type Target = [u8];
 
     fn deref(&self) -> &Self::Target {
-        match self.dat.as_ref() {
-            Some(b) => &b.as_ref()[..self.len],
-            None => b"",
-        }
+        &self.0
     }
 }
 
 impl DerefMut for Buf {
     fn deref_mut(&mut self) -> &mut Self::Target {
-        match self.dat.as_mut() {
-            Some(b) => &mut b.as_mut()[..self.len],
-            None => panic!("Should not deref_mut an empty slice"),
-        }
+        &mut self.0
     }
 }
 
 impl Write for Buf {
     fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
-        let len = buf.len().min(self.capacity() - self.len);
-        if len > 0 {
-            let start = self.len;
-            (&mut self.dat.as_mut().unwrap()[start..start + len]).copy_from_slice(&buf[..len]);
-            self.len += len;
-        }
-        Ok(len)
+        self.0.write(buf)
     }
 
     fn flush(&mut self) -> std::io::Result<()> {
-        Ok(())
+        self.0.flush()
     }
 }
 
