@@ -1,3 +1,4 @@
+use crate::buf::Buf;
 use crate::client::ClientStatistics;
 use crate::config::ClientConfig;
 use crate::counter::Counter;
@@ -8,47 +9,49 @@ use crate::socks5::{Address, UdpPacket};
 use futures_lite::{AsyncRead, AsyncWrite};
 use std::borrow::Cow;
 use std::net::SocketAddr;
+use std::ops::DerefMut;
 use std::sync::Arc;
 
 async fn serve_socks5_udp_stream_relay(
     socks5_sock: UdpSocket,
-    mut socks5_buf: Vec<u8>,
+    mut socks5_buf: Buf,
     socks5_remote_addr: SocketAddr,
     mut upstream: impl AsyncRead + AsyncWrite + Unpin + Send + Sync + 'static,
     upstream_tx_count: Arc<Counter>,
     upstream_rx_count: Arc<Counter>,
 ) -> anyhow::Result<()> {
-    match UdpPacket::parse_udp(socks5_buf.as_slice()) {
+    match UdpPacket::parse_udp(&socks5_buf) {
         Ok(v) if v.frag_no == 0 => {
             UdpPacket::write_tcp(&mut upstream, &v.addr, v.data.as_ref()).await?;
         }
+
         _ => {}
     };
-    socks5_buf.clear();
+    socks5_buf.set_len(0);
 
     copy_udp_and_stream(
         socks5_sock,
         socks5_buf,
         upstream,
         Some(MAX_STREAM_HDR_LEN),
-        move |_, hdr_buf, out_buf| match UdpPacket::parse_udp(out_buf.as_slice())? {
+        move |_, hdr_buf, out_buf| match UdpPacket::parse_udp(&out_buf)? {
             p if p.frag_no == 0 => {
-                let mut hdr_buf = hdr_buf.unwrap();
+                let mut hdr_buf = hdr_buf.unwrap().deref_mut();
                 UdpPacket::write_tcp_headers(&mut hdr_buf, &p.addr, p.data.len())?;
                 upstream_tx_count.inc(hdr_buf.len() + out_buf.len());
                 Ok(())
             }
             _ => {
-                hdr_buf.unwrap().clear();
-                out_buf.clear();
+                hdr_buf.unwrap().set_len(0);
+                out_buf.set_len(0);
                 Ok(())
             }
         },
-        move |buf, out| match UdpPacket::parse_tcp(buf)? {
+        move |buf, mut out| match UdpPacket::parse_tcp(buf)? {
             None => Ok(None),
             Some((offset, p)) => {
-                out.clear();
-                p.write_udp_sync(out)?;
+                out.set_len(0);
+                p.write_udp_sync(&mut out)?;
                 upstream_rx_count.inc(out.len());
                 Ok(Some((offset, Address::IP(socks5_remote_addr.clone()))))
             }
@@ -62,12 +65,12 @@ const MAX_STREAM_HDR_LEN: usize = 512;
 
 async fn serve_socks5_udp_directly(
     socks5_sock: UdpSocket,
-    mut socks5_buf: Vec<u8>,
+    mut socks5_buf: Buf,
     socks5_remote_addr: SocketAddr,
 ) -> anyhow::Result<()> {
     let upstream = UdpSocket::bind(socks5_sock.is_v4()).await?;
 
-    match UdpPacket::parse_udp(socks5_buf.as_slice()) {
+    match UdpPacket::parse_udp(&socks5_buf) {
         Ok(UdpPacket {
             frag_no,
             addr,
@@ -77,7 +80,7 @@ async fn serve_socks5_udp_directly(
         }
         _ => {}
     };
-    socks5_buf.clear();
+    socks5_buf.set_len(0);
 
     copy_udp_and_udp(
         socks5_sock,
@@ -85,7 +88,7 @@ async fn serve_socks5_udp_directly(
         upstream,
         Some(MAX_SOCKS5_UDP_HDR_LEN),
         None,
-        move |_, buf| match UdpPacket::parse_udp(buf.as_slice())? {
+        move |_, buf| match UdpPacket::parse_udp(buf)? {
             UdpPacket {
                 frag_no,
                 addr,
@@ -105,7 +108,7 @@ async fn serve_socks5_udp_directly(
 
             Ok(Some((
                 Address::IP(socks5_remote_addr.clone()),
-                Cow::Borrowed(&buf.as_slice()[hdr_offset..]),
+                Cow::Borrowed(&buf[hdr_offset..]),
             )))
         },
     )
@@ -131,16 +134,16 @@ impl Relay {
     pub async fn run(self) -> anyhow::Result<()> {
         let Relay { c, socket, stats } = self;
 
-        let mut buf = vec![0; 65536];
-        let socks5_remote_addr = match socket.recv_from(buf.as_mut_slice()).await? {
+        let mut buf = Buf::new_with_len(65536, 65536);
+        let socks5_remote_addr = match socket.recv_from(&mut buf).await? {
             (v, _) if v == 0 => return Ok(()),
             (v, addr) => {
-                buf.resize(v, 0);
+                buf.set_len(v);
                 addr
             }
         };
 
-        let UdpPacket { addr, .. } = UdpPacket::parse_udp(buf.as_slice())?;
+        let UdpPacket { addr, .. } = UdpPacket::parse_udp(&buf)?;
         let mut upstreams = c.find_best_upstream(stats.as_ref(), &addr);
 
         if !upstreams.is_empty() {

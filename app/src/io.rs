@@ -1,4 +1,4 @@
-use crate::buf::RWBuffer;
+use crate::buf::{Buf, RWBuffer};
 use crate::socks5::Address;
 use futures_lite::future::race;
 use futures_lite::io::split;
@@ -210,15 +210,15 @@ impl TcpListener {
 
 pub async fn copy_udp_and_udp(
     src: UdpSocket,
-    mut src_buf: Vec<u8>,
+    mut src_buf: Buf,
     dst: UdpSocket,
     src_hdr_len: Option<usize>,
     dst_hdr_len: Option<usize>,
-    src_to_dst_fn: impl Fn(SocketAddr, &mut Vec<u8>) -> anyhow::Result<Option<(Address, Cow<[u8]>)>>
+    src_to_dst_fn: impl Fn(SocketAddr, &mut Buf) -> anyhow::Result<Option<(Address, Cow<[u8]>)>>
         + Send
         + Sync
         + 'static,
-    dst_to_src_fn: impl Fn(SocketAddr, &mut Vec<u8>) -> anyhow::Result<Option<(Address, Cow<[u8]>)>>
+    dst_to_src_fn: impl Fn(SocketAddr, &mut Buf) -> anyhow::Result<Option<(Address, Cow<[u8]>)>>
         + Send
         + Sync
         + 'static,
@@ -236,12 +236,12 @@ pub async fn copy_udp_and_udp(
             }
 
             loop {
-                unsafe { src_buf.set_len(src_buf.capacity()) };
-                let addr = match src.recv_from(&mut src_buf.as_mut_slice()[start..]).await? {
-                    (n, a) if n > 0 => unsafe {
+                src_buf.set_len(src_buf.capacity());
+                let addr = match src.recv_from(&mut src_buf[start..]).await? {
+                    (n, a) if n > 0 => {
                         src_buf.set_len(start + n);
                         a
-                    },
+                    }
                     _ => return Ok(()),
                 };
 
@@ -256,21 +256,17 @@ pub async fn copy_udp_and_udp(
         let src = src.clone();
         let dst = dst.clone();
         spawn(async move {
-            let mut buf = vec![0u8; 65536];
+            let mut buf = Buf::new_with_len(65536, 65536);
             let start = src_hdr_len.unwrap_or(0);
             if start >= buf.capacity() {
                 panic!("Header size is greater than buf capacity");
             }
 
             loop {
-                unsafe {
-                    buf.set_len(buf.capacity());
-                }
-                let addr = match dst.recv_from(&mut buf.as_mut_slice()[start..]).await? {
+                buf.set_len(buf.capacity());
+                let addr = match dst.recv_from(&mut buf[start..]).await? {
                     v if v.0 > 0 => {
-                        unsafe {
-                            buf.set_len(start + v.0);
-                        }
+                        buf.set_len(start + v.0);
                         v.1
                     }
                     _ => return Ok(()),
@@ -288,14 +284,14 @@ pub async fn copy_udp_and_udp(
 
 pub async fn copy_udp_and_stream(
     udp: UdpSocket,
-    mut udp_buf: Vec<u8>,
+    mut udp_buf: Buf,
     stream: impl AsyncRead + AsyncWrite + Unpin + Send + Sync + 'static,
     stream_hdr_max_size: Option<usize>,
-    transform_udp_buf: impl Fn(SocketAddr, Option<&mut Vec<u8>>, &mut Vec<u8>) -> anyhow::Result<()>
+    transform_udp_buf: impl Fn(SocketAddr, Option<&mut Buf>, &mut Buf) -> anyhow::Result<()>
         + Send
         + Sync
         + 'static,
-    transform_stream_buf: impl Fn(&[u8], &mut Vec<u8>) -> anyhow::Result<Option<(usize, Address<'static>)>>
+    transform_stream_buf: impl Fn(&[u8], &mut Buf) -> anyhow::Result<Option<(usize, Address<'static>)>>
         + Send
         + Sync
         + 'static,
@@ -306,18 +302,14 @@ pub async fn copy_udp_and_stream(
     let task1 = {
         let udp = udp.clone();
         spawn(async move {
-            let mut stream_hdr = stream_hdr_max_size.map(Vec::with_capacity);
+            let mut stream_hdr = stream_hdr_max_size.map(Buf::new);
             loop {
-                unsafe {
-                    udp_buf.set_len(udp_buf.capacity());
-                }
+                udp_buf.set_len(udp_buf.capacity());
 
-                let addr = match udp.recv_from(udp_buf.as_mut_slice()).await? {
+                let addr = match udp.recv_from(&mut udp_buf).await? {
                     v if v.0 == 0 => return Ok(()),
                     (n, addr) => {
-                        unsafe {
-                            udp_buf.set_len(n);
-                        }
+                        udp_buf.set_len(n);
                         addr
                     }
                 };
@@ -325,13 +317,13 @@ pub async fn copy_udp_and_stream(
                 transform_udp_buf(addr, stream_hdr.as_mut(), &mut udp_buf)?;
                 match stream_hdr.as_ref() {
                     Some(hdr) if !hdr.is_empty() => {
-                        w.write_all(hdr.as_slice()).await?;
+                        w.write_all(&hdr).await?;
                     }
                     _ => {}
                 };
 
                 if !udp_buf.is_empty() {
-                    w.write_all(udp_buf.as_slice()).await?;
+                    w.write_all(&udp_buf).await?;
                 }
             }
         })
@@ -342,17 +334,17 @@ pub async fn copy_udp_and_stream(
         spawn(async move {
             loop {
                 let mut stream_buf = RWBuffer::new(67000, 67000);
-                let mut udp_buf = Vec::new();
+                let mut udp_buf = Buf::new(65536);
                 match r.read(stream_buf.write_buf()).await? {
                     0 => return Ok(()),
                     v => stream_buf.advance_write(v),
                 };
 
                 while stream_buf.remaining_read() > 0 {
-                    udp_buf.clear();
+                    udp_buf.set_len(0);
                     match transform_stream_buf(stream_buf.read_buf(), &mut udp_buf)? {
                         Some((offset, addr)) => {
-                            udp.send_to_addr(udp_buf.as_slice(), &addr).await?;
+                            udp.send_to_addr(&udp_buf, &addr).await?;
                             stream_buf.advance_read(offset);
                         }
                         None => break,

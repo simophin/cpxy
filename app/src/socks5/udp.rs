@@ -1,8 +1,9 @@
 use super::Address;
 use crate::parse::ParseError;
-use bytes::{Buf, BufMut};
+use byteorder::{BigEndian, WriteBytesExt};
+use bytes::Buf;
 use futures_lite::{AsyncWrite, AsyncWriteExt};
-use std::borrow::Cow;
+use std::{borrow::Cow, io::Write};
 
 #[derive(Debug, Clone, Eq, PartialEq)]
 pub struct UdpPacket<'a> {
@@ -50,14 +51,14 @@ impl<'a> UdpPacket<'a> {
     }
 
     pub fn write_tcp_headers(
-        w: &mut impl BufMut,
+        w: &mut impl Write,
         addr: &Address<'_>,
         data_len: usize,
     ) -> anyhow::Result<()> {
         let data_len: u16 = data_len.try_into()?;
 
         addr.write_to(w)?;
-        w.put_u16(data_len);
+        w.write_u16::<BigEndian>(data_len)?;
         Ok(())
     }
 
@@ -108,15 +109,15 @@ impl<'a> UdpPacket<'a> {
         })
     }
 
-    pub fn write_udp_sync(&self, b: &mut impl BufMut) -> anyhow::Result<()> {
-        b.put_slice(&[0, 0, self.frag_no]);
+    pub fn write_udp_sync(&self, b: &mut impl Write) -> anyhow::Result<()> {
+        b.write_all(&[0, 0, self.frag_no])?;
         self.addr.write_to(b)?;
-        b.put_slice(self.data.as_ref());
+        b.write_all(self.data.as_ref())?;
         Ok(())
     }
 
-    pub fn write_udp_headers(addr: &Address<'_>, b: &mut impl BufMut) -> anyhow::Result<()> {
-        b.put_slice(&[0, 0, 0]);
+    pub fn write_udp_headers(addr: &Address<'_>, b: &mut impl Write) -> anyhow::Result<()> {
+        b.write_all(&[0, 0, 0])?;
         addr.write_to(b)
     }
 

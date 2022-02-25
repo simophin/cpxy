@@ -9,14 +9,53 @@ use std::{
 use bytes::BufMut;
 use lazy_static::lazy_static;
 
-struct Buf(Option<Box<[u8]>>);
+pub struct Buf {
+    dat: Option<Box<[u8]>>,
+    len: usize,
+}
+
+impl Buf {
+    pub fn new(min_capacity: usize) -> Self {
+        Buf {
+            dat: Some(new_buf(min_capacity)),
+            len: 0,
+        }
+    }
+
+    pub fn new_with_len(min_capacity: usize, len: usize) -> Self {
+        let mut s = Self::new(min_capacity);
+        s.set_len(len);
+        s
+    }
+
+    pub fn len(&self) -> usize {
+        self.len
+    }
+
+    pub fn capacity(&self) -> usize {
+        self.dat.as_ref().unwrap().len()
+    }
+
+    pub fn set_len(&mut self, new_len: usize) {
+        assert!(new_len <= self.capacity());
+        self.len = new_len;
+    }
+}
+
+impl Drop for Buf {
+    fn drop(&mut self) {
+        if let Some(b) = self.dat.take() {
+            recycle_buf(b);
+        }
+    }
+}
 
 impl Deref for Buf {
     type Target = [u8];
 
     fn deref(&self) -> &Self::Target {
-        match self.0.as_ref() {
-            Some(b) => b.as_ref(),
+        match self.dat.as_ref() {
+            Some(b) => &b.as_ref()[..self.len],
             None => b"",
         }
     }
@@ -24,10 +63,26 @@ impl Deref for Buf {
 
 impl DerefMut for Buf {
     fn deref_mut(&mut self) -> &mut Self::Target {
-        match self.0.as_mut() {
-            Some(b) => b.as_mut(),
+        match self.dat.as_mut() {
+            Some(b) => &mut b.as_mut()[..self.len],
             None => panic!("Should not deref_mut an empty slice"),
         }
+    }
+}
+
+impl Write for Buf {
+    fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
+        let len = buf.len().min(self.capacity() - self.len);
+        if len > 0 {
+            let start = self.len;
+            (&mut self.dat.as_mut().unwrap()[start..start + len]).copy_from_slice(&buf[..len]);
+            self.len += len;
+        }
+        Ok(len)
+    }
+
+    fn flush(&mut self) -> std::io::Result<()> {
+        Ok(())
     }
 }
 
@@ -81,20 +136,11 @@ fn buffer_cache() -> &'static Mutex<VecDeque<Box<[u8]>>> {
     &CACHE
 }
 
-impl Drop for RWBuffer {
-    fn drop(&mut self) {
-        match self.buf.0.take() {
-            Some(b) => recycle_buf(b),
-            None => {}
-        }
-    }
-}
-
 impl RWBuffer {
     pub fn new(init_capacity: usize, max_len: usize) -> Self {
         assert!(max_len >= init_capacity);
         Self {
-            buf: Buf(Some(new_buf(init_capacity))),
+            buf: Buf::new_with_len(init_capacity, init_capacity),
             read_cursor: 0,
             write_cursor: 0,
             max_len,
@@ -143,13 +189,9 @@ impl RWBuffer {
         let new_len = self.max_len.min(old_len * 15 / 10);
         if new_len > old_len {
             log::debug!("Growing buffer from {old_len} to {new_len}");
-            let mut new_buf = new_buf(new_len);
+            let mut new_buf = Buf::new_with_len(new_len, new_len);
             (&mut new_buf[..old_len]).copy_from_slice(self.buf.as_ref());
-            match self.buf.0.take() {
-                Some(old_buf) => recycle_buf(old_buf),
-                _ => {}
-            };
-            self.buf = Buf(Some(new_buf));
+            self.buf = new_buf;
         }
     }
 

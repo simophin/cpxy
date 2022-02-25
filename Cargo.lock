@@ -349,6 +349,7 @@ dependencies = [
  "anyhow",
  "async-broadcast",
  "base64",
+ "byteorder",
  "bytes",
  "chacha20",
  "chrono",

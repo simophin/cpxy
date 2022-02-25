@@ -1,11 +1,13 @@
 use anyhow::{bail, Context};
+use byteorder::{BigEndian, WriteBytesExt};
 use serde::{Deserialize, Serialize};
 use std::borrow::Cow;
 use std::fmt::Formatter;
+use std::io::Write;
 use std::net::{Ipv4Addr, Ipv6Addr, SocketAddr, SocketAddrV4, SocketAddrV6};
 use std::str::FromStr;
 
-use bytes::{Buf, BufMut};
+use bytes::Buf;
 use futures_lite::{AsyncWrite, AsyncWriteExt};
 
 use crate::parse::ParseError;
@@ -221,24 +223,24 @@ impl<'a> Address<'a> {
         Ok(())
     }
 
-    pub fn write_to(&self, buf: &mut impl BufMut) -> anyhow::Result<()> {
+    pub fn write_to(&self, buf: &mut impl Write) -> anyhow::Result<()> {
         match self {
             Address::IP(SocketAddr::V4(addr)) => {
-                buf.put_u8(0x1);
-                buf.put_slice(&addr.ip().octets());
-                buf.put_u16(addr.port());
+                buf.write_u8(0x1)?;
+                buf.write_all(&addr.ip().octets())?;
+                buf.write_u16::<BigEndian>(addr.port())?;
             }
             Address::IP(SocketAddr::V6(addr)) => {
-                buf.put_u8(0x4);
-                buf.put_slice(&addr.ip().octets());
-                buf.put_u16(addr.port());
+                buf.write_u8(0x4)?;
+                buf.write_all(&addr.ip().octets())?;
+                buf.write_u16::<BigEndian>(addr.port())?;
             }
             Address::Name { host, port } => {
                 let host_len: u8 = host.as_bytes().len().try_into()?;
-                buf.put_u8(0x3);
-                buf.put_u8(host_len);
-                buf.put_slice(host.as_bytes());
-                buf.put_u16(*port);
+                buf.write_u8(0x3)?;
+                buf.write_u8(host_len)?;
+                buf.write_all(host.as_bytes())?;
+                buf.write_u16::<BigEndian>(*port)?;
             }
         }
         Ok(())
