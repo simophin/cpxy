@@ -6,7 +6,7 @@ use futures_lite::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
 use smol::net::{
     TcpListener as AsyncTcpListener, TcpStream as AsyncTcpStream, UdpSocket as AsyncUdpSocket,
 };
-use smol::spawn;
+use smol::{spawn, Async};
 use std::borrow::Cow;
 use std::io::{IoSlice, IoSliceMut};
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr};
@@ -38,6 +38,11 @@ impl UdpSocket {
         }
     }
 
+    pub fn bind_sync(addr: &SocketAddr) -> smol::io::Result<Self> {
+        let socket = std::net::UdpSocket::bind(addr)?;
+        Ok(AsyncUdpSocket::from(Async::new(socket)?).into())
+    }
+
     pub async fn bind(v4: bool) -> smol::io::Result<Self> {
         Self::bind_addr(if v4 {
             IpAddr::V4(Ipv4Addr::UNSPECIFIED)
@@ -47,10 +52,12 @@ impl UdpSocket {
         .await
     }
 
+    pub async fn bind_raw(addr: &SocketAddr) -> smol::io::Result<Self> {
+        Ok(UdpSocket::from(AsyncUdpSocket::bind(addr).await?))
+    }
+
     pub async fn bind_addr(ip: IpAddr) -> smol::io::Result<Self> {
-        Ok(UdpSocket::from(
-            AsyncUdpSocket::bind(SocketAddr::new(ip, 0)).await?,
-        ))
+        Self::bind_raw(&SocketAddr::new(ip, 0)).await
     }
 
     pub async fn send_to_addr(&self, buf: &[u8], addr: &Address<'_>) -> smol::io::Result<usize> {

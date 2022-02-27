@@ -22,6 +22,10 @@ impl Buf {
         s
     }
 
+    pub fn new_for_udp() -> Self {
+        Self::new_with_len(65536, 65536)
+    }
+
     pub fn len(&self) -> usize {
         self.0.len()
     }

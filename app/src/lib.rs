@@ -13,6 +13,7 @@ mod parse;
 mod pattern;
 mod proxy;
 pub mod server;
+mod shared_udp;
 mod socks4;
 pub mod socks5;
 mod stream;

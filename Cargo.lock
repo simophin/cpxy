@@ -226,6 +226,12 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "904dfeac50f3cdaba28fc6f57fdcddb75f49ed61346676a78c4ffe55877802fd"
 
 [[package]]
+name = "bit"
+version = "0.1.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "2b645c5c09a7d4035949cfce1a915785aaad6f17800c35fda8a8c311c491f284"
+
+[[package]]
 name = "bitflags"
 version = "1.3.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -349,6 +355,7 @@ dependencies = [
  "anyhow",
  "async-broadcast",
  "base64",
+ "bit",
  "byteorder",
  "bytes",
  "chacha20",
@@ -377,6 +384,7 @@ dependencies = [
  "serde_json",
  "serde_with",
  "serde_yaml",
+ "smallvec",
  "smol",
  "smol-timeout",
  "webpki-roots",
@@ -1378,6 +1386,12 @@ name = "slab"
 version = "0.4.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "9def91fd1e018fe007022791f865d0ccc9b3a0d5001e01aabb8b40e46000afb5"
+
+[[package]]
+name = "smallvec"
+version = "1.8.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "f2dd574626839106c320a323308629dcb1acfc96e32a8cba364ddc61ac23ee83"
 
 [[package]]
 name = "smol"
