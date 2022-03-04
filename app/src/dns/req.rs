@@ -1,6 +1,6 @@
 use std::fmt::Formatter;
 use std::io::Write;
-use std::net::SocketAddr;
+use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr};
 use std::time::Duration;
 use std::{
     borrow::Cow,
@@ -239,12 +239,46 @@ impl<'a> Debug for Question<'a> {
     }
 }
 
+#[derive(Debug)]
+pub enum AnswerRecord<'a> {
+    A(Ipv4Addr),
+    AAAA(Ipv6Addr),
+    Other(Type, Class, Cow<'a, [u8]>),
+}
+
+impl<'a> AnswerRecord<'a> {
+    fn record_type(&self) -> Type {
+        match self {
+            Self::A(_) => TYPE_A,
+            Self::AAAA(_) => TYPE_AAAA,
+            Self::Other(t, _, _) => t,
+        }
+    }
+
+    fn record_class(&self) -> Class {
+        match self {
+            Self::A(_) | Self::AAAA(_) => CLASS_IN,
+            Self::Other(_, c, _) => c,
+        }
+    }
+
+    fn new(t: Type, c: Class, data: Cow<'a, [u8]>) -> anyhow::Result<Self> {
+        Ok(match (t, c) {
+            (TYPE_A, CLASS_IN) if data.len() == 4 => {
+                Self::A(Ipv4Addr::from(data.as_ref().try_into()?))
+            }
+            (TYPE_AAAA, CLASS_IN) if data.len() == 16 => {
+                Self::AAAA(Ipv6Addr::from(data.as_ref().try_into()?))
+            }
+        })
+    }
+}
+
+#[derive(Debug)]
 pub struct Answer<'a> {
     pub name: Labeled<'a>,
-    pub t: Type,
-    pub class: Class,
     pub ttl: Duration,
-    pub rdata: Cow<'a, [u8]>,
+    pub record: AnswerRecord<'a>,
 }
 
 impl<'a> Answer<'a> {
@@ -319,15 +353,15 @@ pub struct Header(u16);
 
 impl Header {
     const fn new_request(opcode: OpCode) -> Self {
-        Self((opcode as u16) << 11 | (1 << 15))
+        Self((opcode as u16) << 11)
     }
 
     const fn new_response(response_code: ResponseCode) -> Self {
-        Self(response_code as u16)
+        Self((response_code as u16) | (1 << 15))
     }
 
     pub fn is_request(&self) -> bool {
-        self.0.bit(15)
+        !self.0.bit(15)
     }
 
     pub fn opcode(&self) -> OpCode {
@@ -499,7 +533,7 @@ mod test {
             Message::new_resolve_request(&mut buf, 1, "www.google.com").unwrap();
             socket.send_to(&buf, "8.8.8.8:53").await.unwrap();
 
-            buf.clear();
+            buf.resize(buf.capacity(), 0);
             let (len, addr) = socket
                 .recv_from(&mut buf)
                 .timeout(Duration::from_secs(5))

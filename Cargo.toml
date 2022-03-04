@@ -5,5 +5,8 @@ members = [
   "fetcher",
 ]
 
-# [profile.release]
-# strip = "symbols"
+[profile.dev]
+incremental = true
+
+[profile.release]
+strip = "symbols"
