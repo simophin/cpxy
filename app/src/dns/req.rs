@@ -270,6 +270,7 @@ impl<'a> AnswerRecord<'a> {
             (TYPE_AAAA, CLASS_IN) if data.len() == 16 => {
                 Self::AAAA(Ipv6Addr::from(data.as_ref().try_into()?))
             }
+            _ => Self::Other(t, c, data),
         })
     }
 }
