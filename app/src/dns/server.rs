@@ -1,13 +1,13 @@
 use std::{net::SocketAddr, sync::Arc};
 
-use super::req::Message;
-use anyhow::{anyhow, Context};
+use anyhow::Context;
 use futures_lite::Future;
 use futures_util::{select, FutureExt};
 use smol::spawn;
 
 use crate::{
     buf::Buf,
+    dns::req::Message,
     io::{TcpListener, TcpStream, UdpSocket},
     socks5::Address,
 };
@@ -30,7 +30,7 @@ where
         .await
         .context("Binding DNS TCP server")?;
 
-    let mut msg_buf = Buf::new_with_len(65536, 65536);
+    let mut msg_buf = Buf::new_for_udp();
 
     loop {
         select! {
@@ -41,7 +41,7 @@ where
                     log::error!("Error serving UDP client: {addr}: {e:?}");
                 }
 
-                msg_buf = Buf::new_with_len(65536, 65536);
+                msg_buf = Buf::new_for_udp();
             }
 
             c = tcp_server.accept().fuse() => {
@@ -62,7 +62,7 @@ async fn serve_tcp_client(mut c: TcpStream, addr: &SocketAddr) -> anyhow::Result
 }
 
 async fn handle_udp_packet<T>(
-    mut buf: Buf,
+    buf: Buf,
     addr: &SocketAddr,
     upstream: &(impl Fn(Buf) -> T + Send + Sync + Clone),
     cache: &Arc<DnsResultCache>,
@@ -70,16 +70,15 @@ async fn handle_udp_packet<T>(
 where
     T: Future<Output = anyhow::Result<Buf>> + Send + Sync,
 {
-    let msg = Message::parse(&buf).ok_or_else(|| anyhow!("Error parsing DNS message"))?;
-    log::debug!("Received DNS message: {msg:?} from {addr}");
+    let pkt = Message::parse(&buf).context("Error parseing request DNS")?;
+    log::debug!("Received DNS message: {pkt:?} from {addr}");
 
     //TODO: Look for cache
-    drop(msg);
+    drop(pkt);
 
     // Go to upstream
     let response = upstream(buf).await?;
-    let response_msg =
-        Message::parse(&response).ok_or_else(|| anyhow!("Error parsing response DNS message"))?;
+    let response_msg = Message::parse(&response).context("Error parsing response DNS message")?;
     log::debug!("Received DNS reply: {response_msg:?}");
 
     todo!();

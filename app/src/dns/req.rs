@@ -1,40 +1,73 @@
+use std::fmt::Formatter;
+use std::io::Write;
 use std::{
     borrow::Cow,
     fmt::{Debug, Display},
-    net::SocketAddr,
     str::FromStr,
 };
 
 use anyhow::{bail, Context};
 use bit::BitIndex;
+use byteorder::{BigEndian, WriteBytesExt};
 use bytes::Buf;
+use either::Either;
 use smallvec::SmallVec;
 
-use crate::shared_udp::IDParser;
-
-#[derive(PartialEq, Eq, Debug)]
-pub struct Labeled<'a>(Cow<'a, [u8]>);
+#[derive(Eq, Debug)]
+pub enum Labeled<'a> {
+    Buffered(Cow<'a, [u8]>),
+    Stringed(Cow<'a, str>),
+}
 
 impl<'a> Default for Labeled<'a> {
     fn default() -> Self {
-        Labeled(Cow::Borrowed(b""))
-    }
-}
-
-impl<'a> AsRef<[u8]> for Labeled<'a> {
-    fn as_ref(&self) -> &[u8] {
-        self.0.as_ref()
+        Labeled::Buffered(Cow::Borrowed(b""))
     }
 }
 
 impl<'a> Labeled<'a> {
     pub fn iter(&'a self) -> impl Iterator<Item = &'a str> {
-        LabeledIterator(self.0.as_ref())
+        LabeledIterator(match self {
+            Self::Buffered(b) => Either::Left(b.as_ref()),
+            Self::Stringed(str) => Either::Right(str),
+        })
     }
 
     pub fn parse(b: &'a [u8]) -> Option<(usize, Labeled<'a>)> {
         let end = b.iter().position(|x| *x == 0)? + 1;
-        Some((end, Self(Cow::Borrowed(&b[..end]))))
+        Some((end, Self::Buffered(Cow::Borrowed(&b[..end]))))
+    }
+
+    fn check_string(domain: &str) -> anyhow::Result<&str> {
+        for seg in domain.split('.') {
+            if seg.is_empty() {
+                bail!("Invalid domain name {domain}");
+            }
+
+            if seg.as_bytes().len() > 255 {
+                bail!("Segment {seg} of domain {domain} is more than 255 in length")
+            }
+        }
+        Ok(domain)
+    }
+}
+
+impl<'a> TryFrom<&'a str> for Labeled<'a> {
+    type Error = anyhow::Error;
+
+    fn try_from(value: &'a str) -> Result<Self, Self::Error> {
+        let s = Self::check_string(value)?;
+        Ok(Self::Stringed(Cow::Borrowed(s)))
+    }
+}
+
+impl<'a> PartialEq for Labeled<'a> {
+    fn eq(&self, other: &Self) -> bool {
+        match (self, other) {
+            (Self::Buffered(l0), Self::Buffered(r0)) => l0 == r0,
+            (Self::Stringed(l0), Self::Stringed(r0)) => l0 == r0,
+            (lhs, rhs) => lhs.iter().eq(rhs.iter()),
+        }
     }
 }
 
@@ -42,48 +75,71 @@ impl FromStr for Labeled<'static> {
     type Err = anyhow::Error;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
-        let mut buf = Vec::with_capacity(s.as_bytes().len() + 2);
-        for seg in s.split('.') {
-            if seg.is_empty() {
-                bail!("Invalid domain name {s}");
-            }
-            let seg_bytes = seg.as_bytes();
-            let seg_len: u8 = seg_bytes
-                .len()
-                .try_into()
-                .with_context(|| format!("Segment {seg} of domain {s} is more than 255 in size"))?;
-
-            buf.push(seg_len);
-            buf.extend_from_slice(seg_bytes);
-        }
-        buf.push(0);
-        Ok(Self(Cow::Owned(buf)))
+        Ok(Self::Stringed(Cow::Owned(
+            Self::check_string(s)?.to_string(),
+        )))
     }
 }
 
-struct LabeledIterator<'a>(&'a [u8]);
+impl<'a> Labeled<'a> {
+    pub fn to_writer(&self, w: &mut impl Write) -> anyhow::Result<()> {
+        match self {
+            Self::Buffered(buf) => {
+                w.write_all(buf.as_ref())?;
+            }
+            _ => {
+                for seg in self.iter() {
+                    let seg_bytes = seg.as_bytes();
+                    w.write(&[seg_bytes.len() as u8])?;
+                    w.write_all(seg_bytes)?;
+                }
+                w.write(&[0])?;
+            }
+        }
+        Ok(())
+    }
+}
+
+struct LabeledIterator<'a>(Either<&'a [u8], &'a str>);
 
 impl<'a> Iterator for LabeledIterator<'a> {
     type Item = &'a str;
 
     fn next(&mut self) -> Option<Self::Item> {
-        if self.0.is_empty() {
-            return None;
-        }
+        match self.0 {
+            Either::Right(s) => {
+                if s.is_empty() {
+                    return None;
+                }
 
-        let len = self.0.get_u8() as usize;
-        if self.0.remaining() < len || len == 0 {
-            return None;
-        }
+                let (curr, rest) = match s.find('.') {
+                    Some(index) => (&s[..index], &s[index + 1..]),
+                    None => (s, ""),
+                };
 
-        let (s, rest) = self.0.split_at(len);
-        self.0 = rest;
+                self.0 = Either::Right(rest);
+                Some(curr)
+            }
 
-        match std::str::from_utf8(s) {
-            Ok(v) => Some(v),
-            Err(e) => {
-                log::error!("Invalid UTF-8 string in domain name: {e:?}");
-                None
+            Either::Left(mut buf) => {
+                if buf.is_empty() {
+                    return None;
+                }
+
+                let len = buf.get_u8() as usize;
+                if buf.remaining() < len || len == 0 {
+                    return None;
+                }
+
+                let (s, buf) = buf.split_at(len);
+                self.0 = Either::Left(buf);
+                match std::str::from_utf8(s) {
+                    Ok(v) => Some(v),
+                    Err(e) => {
+                        log::error!("Invalid UTF-8 string in domain name: {e:?}");
+                        None
+                    }
+                }
             }
         }
     }
@@ -104,14 +160,54 @@ impl<'a> Display for Labeled<'a> {
     }
 }
 
+trait Record<'a> {
+    fn parse(b: &'a [u8]) -> Option<(usize, Self)>
+    where
+        Self: 'a + Sized;
+
+    fn parse_vec<const N: usize>(b: &mut &'a [u8], count: usize) -> SmallVec<[Self; N]>
+    where
+        Self: 'a + Sized,
+    {
+        let mut ret = SmallVec::with_capacity(count);
+
+        for _ in 0..count {
+            match Self::parse(*b) {
+                Some((offset, v)) => {
+                    b.advance(offset);
+                    ret.push(v);
+                }
+                None => break,
+            }
+        }
+
+        ret
+    }
+}
+
+pub type Type = u16;
+pub const TYPE_A: Type = 1;
+
+pub type Class = u16;
+pub const CLASS_IN: Class = 1;
+
 pub struct Question<'a> {
     pub domain_name: Labeled<'a>,
-    pub t: u16,
-    pub class: u16,
+    pub t: Type,
+    pub class: Class,
 }
 
 impl<'a> Question<'a> {
-    pub fn parse(mut b: &'a [u8]) -> Option<(usize, Question<'a>)> {
+    fn to_writer(&self, w: &mut impl Write) -> anyhow::Result<()> {
+        self.domain_name.to_writer(w)?;
+        w.write_u16::<BigEndian>(self.t)?;
+        w.write_u16::<BigEndian>(self.class)?;
+        Ok(())
+    }
+}
+
+impl<'a> Record<'a> for Question<'a> {
+    fn parse(mut b: &'a [u8]) -> Option<(usize, Question<'a>)> {
         let (label_offset, domain_name) = Labeled::parse(b)?;
         if b.len() >= label_offset + 4 {
             b.advance(label_offset);
@@ -127,22 +223,6 @@ impl<'a> Question<'a> {
             ));
         }
         None
-    }
-
-    pub fn parse_vec(b: &mut &'a [u8], count: usize) -> SmallVec<[Question<'a>; 1]> {
-        let mut ret = SmallVec::with_capacity(count);
-
-        for _ in 0..count {
-            match Self::parse(*b) {
-                Some((offset, v)) => {
-                    b.advance(offset);
-                    ret.push(v);
-                }
-                None => break,
-            }
-        }
-
-        ret
     }
 }
 
@@ -163,6 +243,18 @@ pub struct Answer<'a> {
     pub rdata: Cow<'a, [u8]>,
 }
 
+impl<'a> Answer<'a> {
+    fn to_writer(&self, w: &mut impl Write) -> anyhow::Result<()> {
+        let rdata_len: u16 = self.rdata.len().try_into().context("Excessive rdata")?;
+        self.name.to_writer(w)?;
+        w.write_u16::<BigEndian>(self.t)?;
+        w.write_u16::<BigEndian>(self.class)?;
+        w.write_u16::<BigEndian>(rdata_len)?;
+        w.write_all(self.rdata.as_ref())?;
+        Ok(())
+    }
+}
+
 impl<'a> Debug for Answer<'a> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("Answer")
@@ -174,8 +266,8 @@ impl<'a> Debug for Answer<'a> {
     }
 }
 
-impl<'a> Answer<'a> {
-    pub fn parse(mut b: &'a [u8]) -> Option<(usize, Answer<'a>)> {
+impl<'a> Record<'a> for Answer<'a> {
+    fn parse(mut b: &'a [u8]) -> Option<(usize, Answer<'a>)> {
         let (
             offset,
             Question {
@@ -204,37 +296,59 @@ impl<'a> Answer<'a> {
             },
         ))
     }
+}
 
-    pub fn parse_vec<const N: usize>(b: &mut &'a [u8], count: usize) -> SmallVec<[Answer<'a>; N]> {
-        let mut ret = SmallVec::with_capacity(count);
+pub type OpCode = u8;
+pub const OPCODE_REQUEST: OpCode = 0;
 
-        for _ in 0..count {
-            match Self::parse(*b) {
-                Some((offset, v)) => {
-                    b.advance(offset);
-                    ret.push(v);
-                }
-                None => break,
-            }
-        }
+pub type ResponseCode = u8;
+pub const RESPONSE_CODE_SUCCESS: ResponseCode = 0;
+pub const RESPONSE_CODE_INVALID_FORMAT: ResponseCode = 1;
+pub const RESPONSE_CODE_SERVER_FAILURE: ResponseCode = 2;
 
-        ret
+pub struct Header(u16);
+
+impl Header {
+    const fn new_request(opcode: OpCode) -> Self {
+        Self((opcode as u16) << 11 | (1 << 15))
+    }
+
+    const fn new_response(response_code: ResponseCode) -> Self {
+        Self(response_code as u16)
+    }
+
+    pub fn is_request(&self) -> bool {
+        self.0.bit(15)
+    }
+
+    pub fn opcode(&self) -> OpCode {
+        self.0.bit_range(11..15) as u8
+    }
+
+    pub fn is_aa(&self) -> bool {
+        self.0.bit(10)
+    }
+
+    pub fn is_truncated(&self) -> bool {
+        self.0.bit(9)
+    }
+
+    pub fn recursion_desired(&self) -> bool {
+        self.0.bit(8)
+    }
+
+    pub fn recursion_available(&self) -> bool {
+        self.0.bit(7)
+    }
+
+    pub fn response_code(&self) -> u16 {
+        self.0.bit_range(0..4)
     }
 }
 
-pub struct Message<'a> {
-    pub id: u16,
-    header: u16,
-    pub questions: SmallVec<[Question<'a>; 1]>,
-    pub answers: SmallVec<[Answer<'a>; 2]>,
-    pub nsr: SmallVec<[Answer<'a>; 1]>,
-    pub ar: SmallVec<[Answer<'a>; 1]>,
-}
-
-impl<'a> Debug for Message<'a> {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("Message")
-            .field("id", &self.id)
+impl Debug for Header {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Header")
             .field("is_request", &self.is_request())
             .field("opcode", &self.opcode())
             .field("is_aa", &self.is_aa())
@@ -242,50 +356,28 @@ impl<'a> Debug for Message<'a> {
             .field("recursion_desired", &self.recursion_desired())
             .field("recursion_available", &self.recursion_available())
             .field("response_code", &self.response_code())
-            .field("questions", &self.questions)
-            .field("answers", &self.answers)
-            .field("nsr", &self.nsr)
-            .field("ar", &self.ar)
             .finish()
     }
 }
 
+#[derive(Debug)]
+pub struct Message<'a> {
+    pub id: u16,
+    pub header: Header,
+    pub questions: SmallVec<[Question<'a>; 1]>,
+    pub answers: SmallVec<[Answer<'a>; 2]>,
+    pub nsr: SmallVec<[Answer<'a>; 1]>,
+    pub ar: SmallVec<[Answer<'a>; 1]>,
+}
+
 impl<'a> Message<'a> {
-    pub fn is_request(&self) -> bool {
-        self.header.bit(15)
-    }
-
-    pub fn opcode(&self) -> u16 {
-        self.header.bit_range(11..15)
-    }
-
-    pub fn is_aa(&self) -> bool {
-        self.header.bit(10)
-    }
-
-    pub fn is_truncated(&self) -> bool {
-        self.header.bit(9)
-    }
-
-    pub fn recursion_desired(&self) -> bool {
-        self.header.bit(8)
-    }
-
-    pub fn recursion_available(&self) -> bool {
-        self.header.bit(7)
-    }
-
-    pub fn response_code(&self) -> u16 {
-        self.header.bit_range(0..4)
-    }
-
     pub fn parse(mut b: &'a [u8]) -> Option<Message<'a>> {
         if b.len() < 12 {
             return None;
         }
 
         let id = b.get_u16();
-        let header = b.get_u16();
+        let header = Header(b.get_u16());
         let qdcount = b.get_u16() as usize;
         let ancount = b.get_u16() as usize;
         let nscount = b.get_u16() as usize;
@@ -300,20 +392,35 @@ impl<'a> Message<'a> {
             ar: Answer::parse_vec(&mut b, arcount),
         })
     }
-}
 
-impl<'a> IDParser for Message<'a> {
-    type IDType = u16;
+    fn write_headers(
+        w: &mut impl Write,
+        id: u16,
+        header: u16,
+        qcount: u16,
+        ancount: u16,
+        nscount: u16,
+        arcount: u16,
+    ) -> anyhow::Result<()> {
+        w.write_u16::<BigEndian>(id)?;
+        w.write_u16::<BigEndian>(header)?;
+        w.write_u16::<BigEndian>(qcount)?;
+        w.write_u16::<BigEndian>(ancount)?;
+        w.write_u16::<BigEndian>(nscount)?;
+        w.write_u16::<BigEndian>(arcount)?;
+        Ok(())
+    }
 
-    fn parse_id(mut buf: &[u8], _: Option<&SocketAddr>) -> anyhow::Result<Self::IDType> {
-        if buf.len() < 12 {
-            bail!(
-                "Invalid len for DNS header, expected at last 12, got: {}",
-                buf.len()
-            );
-        }
+    pub fn new_resolve_request(w: &mut impl Write, id: u16, domain: &str) -> anyhow::Result<()> {
+        let q = Question {
+            domain_name: domain.try_into()?,
+            t: TYPE_A,
+            class: CLASS_IN,
+        };
 
-        Ok(buf.get_u16())
+        Self::write_headers(w, id, Header::new_request(OPCODE_REQUEST).0, 1, 0, 0, 0)?;
+        q.to_writer(w)?;
+        Ok(())
     }
 }
 
@@ -328,7 +435,7 @@ mod test {
         assert_eq!(domain, l.to_string().as_str());
 
         let mut buf = Vec::new();
-        buf.extend_from_slice(l.as_ref());
+        l.to_writer(&mut buf).unwrap();
         buf.extend_from_slice(b"hello, world");
         let (offset, parsed) = Labeled::parse(&buf).unwrap();
         assert_eq!(parsed, l);

@@ -1,17 +1,16 @@
 use anyhow::{anyhow, bail};
-use futures_lite::StreamExt;
 use std::{
     collections::HashMap,
     fmt::Debug,
     hash::Hash,
     net::{Ipv4Addr, SocketAddr, SocketAddrV4},
     sync::{Arc, Mutex},
-    time::{Duration, Instant},
+    time::Instant,
 };
 
 use smol::{
     channel::{bounded, Receiver, Sender},
-    spawn, Task, Timer,
+    spawn, Task,
 };
 
 use crate::{buf::Buf, io::UdpSocket};
@@ -27,14 +26,10 @@ pub struct SharedClient<ID> {
     task: Task<anyhow::Result<()>>,
 }
 
-pub trait IDParser {
-    type IDType;
-
-    fn parse_id(buf: &[u8], addr: Option<&SocketAddr>) -> anyhow::Result<Self::IDType>;
-}
-
 impl<ID: Send + Sync + Eq + Hash + Debug + 'static> SharedClient<ID> {
-    pub fn new<ToID: IDParser<IDType = ID> + Send + Sync + 'static>() -> anyhow::Result<Self> {
+    pub fn new(
+        id_parser: fn(&[u8], Option<&SocketAddr>) -> anyhow::Result<ID>,
+    ) -> anyhow::Result<Self> {
         let socket = Arc::new(UdpSocket::bind_sync(&SocketAddr::V4(SocketAddrV4::new(
             Ipv4Addr::UNSPECIFIED,
             0,
@@ -48,7 +43,7 @@ impl<ID: Send + Sync + Eq + Hash + Debug + 'static> SharedClient<ID> {
                 loop {
                     let (len, addr) = socket.recv_from(&mut buf).await?;
                     buf.set_len(len);
-                    match ToID::parse_id(&buf, Some(&addr)) {
+                    match id_parser(&buf, Some(&addr)) {
                         Ok(id) => {
                             let sender = waiting_queue
                                 .lock()

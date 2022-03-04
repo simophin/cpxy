@@ -10,7 +10,12 @@
     <option name="openedFilesInfos">
       <list>
         <OpenedFileInfo>
-          <option name="fileUrl" value="mock:///DiffPreview" />
+          <option name="caretOffset" value="734" />
+          <option name="fileUrl" value="file://$PROJECT_DIR$/app/src/client.rs" />
+        </OpenedFileInfo>
+        <OpenedFileInfo>
+          <option name="caretOffset" value="5567" />
+          <option name="fileUrl" value="file://$PROJECT_DIR$/app/src/dns/req.rs" />
         </OpenedFileInfo>
       </list>
     </option>
