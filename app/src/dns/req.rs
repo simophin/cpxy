@@ -1,5 +1,7 @@
 use std::fmt::Formatter;
 use std::io::Write;
+use std::net::SocketAddr;
+use std::time::Duration;
 use std::{
     borrow::Cow,
     fmt::{Debug, Display},
@@ -187,6 +189,7 @@ trait Record<'a> {
 
 pub type Type = u16;
 pub const TYPE_A: Type = 1;
+pub const TYPE_AAAA: Type = 28;
 
 pub type Class = u16;
 pub const CLASS_IN: Class = 1;
@@ -238,17 +241,20 @@ impl<'a> Debug for Question<'a> {
 
 pub struct Answer<'a> {
     pub name: Labeled<'a>,
-    pub t: u16,
-    pub class: u16,
+    pub t: Type,
+    pub class: Class,
+    pub ttl: Duration,
     pub rdata: Cow<'a, [u8]>,
 }
 
 impl<'a> Answer<'a> {
     fn to_writer(&self, w: &mut impl Write) -> anyhow::Result<()> {
         let rdata_len: u16 = self.rdata.len().try_into().context("Excessive rdata")?;
+        let ttl: u32 = self.ttl.as_secs().try_into().context("Excessive TTL")?;
         self.name.to_writer(w)?;
         w.write_u16::<BigEndian>(self.t)?;
         w.write_u16::<BigEndian>(self.class)?;
+        w.write_u32::<BigEndian>(ttl)?;
         w.write_u16::<BigEndian>(rdata_len)?;
         w.write_all(self.rdata.as_ref())?;
         Ok(())
@@ -277,9 +283,11 @@ impl<'a> Record<'a> for Answer<'a> {
             },
         ) = Question::parse(b)?;
         b.advance(offset);
-        if b.remaining() < 2 {
+        if b.remaining() < 6 {
             return None;
         }
+
+        let ttl = b.get_u32();
 
         let rdata_len = b.get_u16() as usize;
         if b.remaining() < rdata_len {
@@ -291,6 +299,7 @@ impl<'a> Record<'a> for Answer<'a> {
             Self {
                 name: domain_name,
                 t,
+                ttl: Duration::from_secs(ttl as u64),
                 class,
                 rdata,
             },
@@ -422,10 +431,49 @@ impl<'a> Message<'a> {
         q.to_writer(w)?;
         Ok(())
     }
+
+    pub fn new_resolve_answer(
+        w: &mut impl Write,
+        id: u16,
+        ttl: Duration,
+        addr: &SocketAddr,
+    ) -> anyhow::Result<()> {
+        Self::write_headers(
+            w,
+            id,
+            Header::new_response(RESPONSE_CODE_SUCCESS).0,
+            0,
+            1,
+            0,
+            0,
+        )?;
+
+        let (data, t) = match addr {
+            SocketAddr::V4(addr) => (Either::Left(addr.ip().octets()), TYPE_A),
+            SocketAddr::V6(addr) => (Either::Right(addr.ip().octets()), TYPE_AAAA),
+        };
+
+        Answer {
+            name: Default::default(),
+            t,
+            ttl,
+            class: CLASS_IN,
+            rdata: Cow::Borrowed(match data.as_ref() {
+                Either::Left(v) => v.as_ref(),
+                Either::Right(v) => v.as_ref(),
+            }),
+        }
+        .to_writer(w)
+    }
 }
 
 #[cfg(test)]
 mod test {
+    use smol::block_on;
+    use smol_timeout::TimeoutExt;
+
+    use crate::io::UdpSocket;
+
     use super::*;
 
     #[test]
@@ -440,5 +488,29 @@ mod test {
         let (offset, parsed) = Labeled::parse(&buf).unwrap();
         assert_eq!(parsed, l);
         assert_eq!(&buf[offset..], b"hello, world");
+    }
+
+    #[test]
+    fn resolve_works() {
+        let _ = env_logger::try_init();
+        block_on(async move {
+            let socket = UdpSocket::bind(true).await.unwrap();
+            let mut buf = Vec::with_capacity(65536);
+            Message::new_resolve_request(&mut buf, 1, "www.google.com").unwrap();
+            socket.send_to(&buf, "8.8.8.8:53").await.unwrap();
+
+            buf.clear();
+            let (len, addr) = socket
+                .recv_from(&mut buf)
+                .timeout(Duration::from_secs(5))
+                .await
+                .unwrap()
+                .unwrap();
+
+            buf.resize(len, 0);
+            log::info!("Received {len} bytes from {addr}");
+            let res = Message::parse(&buf).unwrap();
+            log::info!("Received {res:?} from {addr}");
+        });
     }
 }
