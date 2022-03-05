@@ -333,10 +333,8 @@ impl<'a> Record<'a> for Answer<'a> {
             offset + 2 + rdata_len,
             Self {
                 name: domain_name,
-                t,
                 ttl: Duration::from_secs(ttl as u64),
-                class,
-                rdata,
+                record: AnswerRecord::new(t, class, rdata)?,
             },
         ))
     }
