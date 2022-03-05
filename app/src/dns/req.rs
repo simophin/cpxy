@@ -314,8 +314,52 @@ impl<'a> AnswerRecord<'a> {
 }
 
 #[derive(Debug)]
+pub enum AnswerName<'a> {
+    QName(Labeled<'a>),
+    Pointer(u16),
+}
+
+impl<'a> Default for AnswerName<'a> {
+    fn default() -> Self {
+        AnswerName::QName(Default::default())
+    }
+}
+
+impl<'a> AnswerName<'a> {
+    fn to_writer(&self, w: &mut impl Write) -> anyhow::Result<()> {
+        match self {
+            Self::QName(l) => l.to_writer(w),
+            Self::Pointer(u) => {
+                w.write_u16::<BigEndian>(*u | (0x11 << 14))?;
+                Ok(())
+            }
+        }
+    }
+
+    fn parse(mut b: &'a [u8]) -> anyhow::Result<Option<(&'a [u8], AnswerName<'a>)>> {
+        if b.len() < 2 {
+            return Ok(None);
+        }
+
+        let mut ptr = u16::from_be_bytes([b[0], b[1]]);
+        if ptr.bit(14) && ptr.bit(15) {
+            ptr.set_bit(14, false);
+            ptr.set_bit(15, false);
+            b.advance(2);
+            Ok(Some((b, AnswerName::Pointer(ptr))))
+        } else {
+            match Labeled::parse(b) {
+                Ok(Some((b, v))) => Ok(Some((b, AnswerName::QName(v)))),
+                Ok(None) => Ok(None),
+                Err(e) => Err(e),
+            }
+        }
+    }
+}
+
+#[derive(Debug)]
 pub struct Answer<'a> {
-    pub name: Labeled<'a>,
+    pub name: AnswerName<'a>,
     pub ttl: Duration,
     pub record: AnswerRecord<'a>,
 }
@@ -334,7 +378,7 @@ impl<'a> Answer<'a> {
 
 impl<'a> Record<'a> for Answer<'a> {
     fn parse(b: &'a [u8]) -> anyhow::Result<Option<(&'a [u8], Answer<'a>)>> {
-        let (mut b, name) = match Labeled::parse(b)? {
+        let (mut b, name) = match AnswerName::parse(b)? {
             Some(v) => v,
             None => return Ok(None),
         };
