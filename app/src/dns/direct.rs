@@ -40,7 +40,7 @@ pub async fn query_direct(input: Buf, upstream_dns: &SocketAddr) -> anyhow::Resu
 mod test {
     use smol::block_on;
 
-    use crate::dns::req::{Message, TYPE_A};
+    use crate::dns::req::{AnswerRecord, Message};
 
     use super::*;
 
@@ -56,9 +56,9 @@ mod test {
             let res_buf = query_direct(buf, &"8.8.8.8:53".parse().unwrap())
                 .await
                 .unwrap();
-            let msg = Message::parse(&res_buf).unwrap();
+            let msg = Message::parse(&res_buf).unwrap().unwrap();
             let answer = msg.answers.iter().next().unwrap();
-            assert_eq!(answer.t, TYPE_A);
+            assert!(matches!(answer.record, AnswerRecord::A(addr)))
         });
     }
 }

@@ -1,6 +1,6 @@
 use std::fmt::Formatter;
 use std::io::Write;
-use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr};
+use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
 use std::time::Duration;
 use std::{
     borrow::Cow,
@@ -15,7 +15,7 @@ use bytes::Buf;
 use either::Either;
 use smallvec::SmallVec;
 
-#[derive(Eq, Debug)]
+#[derive(Eq)]
 pub enum Labeled<'a> {
     Buffered(Cow<'a, [u8]>),
     Stringed(Cow<'a, str>),
@@ -27,6 +27,12 @@ impl<'a> Default for Labeled<'a> {
     }
 }
 
+impl<'a> Debug for Labeled<'a> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        Display::fmt(&self, f)
+    }
+}
+
 impl<'a> Labeled<'a> {
     pub fn iter(&'a self) -> impl Iterator<Item = &'a str> {
         LabeledIterator(match self {
@@ -35,9 +41,15 @@ impl<'a> Labeled<'a> {
         })
     }
 
-    pub fn parse(b: &'a [u8]) -> Option<(usize, Labeled<'a>)> {
-        let end = b.iter().position(|x| *x == 0)? + 1;
-        Some((end, Self::Buffered(Cow::Borrowed(&b[..end]))))
+    pub fn parse(b: &'a [u8]) -> anyhow::Result<Option<(&'a [u8], Labeled<'a>)>> {
+        let end = b
+            .iter()
+            .position(|x| *x == 0)
+            .context("Finding NULL terminator for Name")?;
+        Ok(Some((
+            &b[end + 1..],
+            Self::Buffered(Cow::Borrowed(&b[..end])),
+        )))
     }
 
     fn check_string(domain: &str) -> anyhow::Result<&str> {
@@ -163,27 +175,30 @@ impl<'a> Display for Labeled<'a> {
 }
 
 trait Record<'a> {
-    fn parse(b: &'a [u8]) -> Option<(usize, Self)>
+    fn parse(b: &'a [u8]) -> anyhow::Result<Option<(&'a [u8], Self)>>
     where
         Self: 'a + Sized;
 
-    fn parse_vec<const N: usize>(b: &mut &'a [u8], count: usize) -> SmallVec<[Self; N]>
+    fn parse_vec<const N: usize>(
+        b: &mut &'a [u8],
+        count: usize,
+    ) -> anyhow::Result<SmallVec<[Self; N]>>
     where
         Self: 'a + Sized,
     {
         let mut ret = SmallVec::with_capacity(count);
 
         for _ in 0..count {
-            match Self::parse(*b) {
-                Some((offset, v)) => {
-                    b.advance(offset);
+            match Self::parse(*b)? {
+                Some((r, v)) => {
+                    *b = r;
                     ret.push(v);
                 }
-                None => break,
+                None => bail!("Unexpected incomplete element"),
             }
         }
 
-        ret
+        Ok(ret)
     }
 }
 
@@ -210,22 +225,25 @@ impl<'a> Question<'a> {
 }
 
 impl<'a> Record<'a> for Question<'a> {
-    fn parse(mut b: &'a [u8]) -> Option<(usize, Question<'a>)> {
-        let (label_offset, domain_name) = Labeled::parse(b)?;
-        if b.len() >= label_offset + 4 {
-            b.advance(label_offset);
-            let t = b.get_u16();
-            let class = b.get_u16();
-            return Some((
-                label_offset + 4,
-                Self {
-                    domain_name,
-                    t,
-                    class,
-                },
-            ));
+    fn parse(b: &'a [u8]) -> anyhow::Result<Option<(&'a [u8], Question<'a>)>> {
+        let (mut b, domain_name) = match Labeled::parse(b)? {
+            Some(v) => v,
+            None => return Ok(None),
+        };
+        if b.len() < 4 {
+            return Ok(None);
         }
-        None
+
+        let t = b.get_u16();
+        let class = b.get_u16();
+        Ok(Some((
+            b,
+            Self {
+                domain_name,
+                t,
+                class,
+            },
+        )))
     }
 }
 
@@ -251,27 +269,47 @@ impl<'a> AnswerRecord<'a> {
         match self {
             Self::A(_) => TYPE_A,
             Self::AAAA(_) => TYPE_AAAA,
-            Self::Other(t, _, _) => t,
+            Self::Other(t, _, _) => *t,
         }
     }
 
     fn record_class(&self) -> Class {
         match self {
             Self::A(_) | Self::AAAA(_) => CLASS_IN,
-            Self::Other(_, c, _) => c,
+            Self::Other(_, c, _) => *c,
         }
     }
 
     fn new(t: Type, c: Class, data: Cow<'a, [u8]>) -> anyhow::Result<Self> {
         Ok(match (t, c) {
             (TYPE_A, CLASS_IN) if data.len() == 4 => {
-                Self::A(Ipv4Addr::from(data.as_ref().try_into()?))
+                let data: [u8; 4] = data.as_ref().try_into()?;
+                Self::A(Ipv4Addr::from(data))
             }
             (TYPE_AAAA, CLASS_IN) if data.len() == 16 => {
-                Self::AAAA(Ipv6Addr::from(data.as_ref().try_into()?))
+                let data: [u8; 16] = data.as_ref().try_into()?;
+                Self::AAAA(Ipv6Addr::from(data))
             }
             _ => Self::Other(t, c, data),
         })
+    }
+
+    fn to_writer(&self, w: &mut impl Write) -> anyhow::Result<()> {
+        match self {
+            Self::A(addr) => {
+                w.write_u16::<BigEndian>(4)?;
+                w.write_all(addr.octets().as_ref())?;
+            }
+            Self::AAAA(addr) => {
+                w.write_u16::<BigEndian>(16)?;
+                w.write_all(addr.octets().as_ref())?;
+            }
+            Self::Other(_, _, data) => {
+                w.write_u16::<BigEndian>(data.len().try_into().context("Record data too big")?)?;
+                w.write_all(data.as_ref())?;
+            }
+        }
+        Ok(())
     }
 }
 
@@ -284,59 +322,43 @@ pub struct Answer<'a> {
 
 impl<'a> Answer<'a> {
     fn to_writer(&self, w: &mut impl Write) -> anyhow::Result<()> {
-        let rdata_len: u16 = self.rdata.len().try_into().context("Excessive rdata")?;
         let ttl: u32 = self.ttl.as_secs().try_into().context("Excessive TTL")?;
         self.name.to_writer(w)?;
-        w.write_u16::<BigEndian>(self.t)?;
-        w.write_u16::<BigEndian>(self.class)?;
+        w.write_u16::<BigEndian>(self.record.record_type())?;
+        w.write_u16::<BigEndian>(self.record.record_class())?;
         w.write_u32::<BigEndian>(ttl)?;
-        w.write_u16::<BigEndian>(rdata_len)?;
-        w.write_all(self.rdata.as_ref())?;
+        self.record.to_writer(w)?;
         Ok(())
     }
 }
 
-impl<'a> Debug for Answer<'a> {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("Answer")
-            .field("name", &self.name)
-            .field("t", &self.t)
-            .field("class", &self.class)
-            .field("rdata_len", &self.rdata.len())
-            .finish()
-    }
-}
-
 impl<'a> Record<'a> for Answer<'a> {
-    fn parse(mut b: &'a [u8]) -> Option<(usize, Answer<'a>)> {
-        let (
-            offset,
-            Question {
-                domain_name,
-                t,
-                class,
-            },
-        ) = Question::parse(b)?;
-        b.advance(offset);
-        if b.remaining() < 6 {
-            return None;
+    fn parse(b: &'a [u8]) -> anyhow::Result<Option<(&'a [u8], Answer<'a>)>> {
+        let (mut b, name) = match Labeled::parse(b)? {
+            Some(v) => v,
+            None => return Ok(None),
+        };
+
+        if b.remaining() < 10 {
+            return Ok(None);
         }
 
+        let t = b.get_u16();
+        let class = b.get_u16();
         let ttl = b.get_u32();
-
         let rdata_len = b.get_u16() as usize;
         if b.remaining() < rdata_len {
-            return None;
+            return Ok(None);
         }
         let rdata = Cow::Borrowed(&b[..rdata_len]);
-        Some((
-            offset + 2 + rdata_len,
+        Ok(Some((
+            b,
             Self {
-                name: domain_name,
+                name,
                 ttl: Duration::from_secs(ttl as u64),
                 record: AnswerRecord::new(t, class, rdata)?,
             },
-        ))
+        )))
     }
 }
 
@@ -413,9 +435,9 @@ pub struct Message<'a> {
 }
 
 impl<'a> Message<'a> {
-    pub fn parse(mut b: &'a [u8]) -> Option<Message<'a>> {
+    pub fn parse(mut b: &'a [u8]) -> anyhow::Result<Option<Message<'a>>> {
         if b.len() < 12 {
-            return None;
+            return Ok(None);
         }
 
         let id = b.get_u16();
@@ -425,14 +447,14 @@ impl<'a> Message<'a> {
         let nscount = b.get_u16() as usize;
         let arcount = b.get_u16() as usize;
 
-        Some(Self {
+        Ok(Some(Self {
             id,
             header,
-            questions: Question::parse_vec(&mut b, qdcount),
-            answers: Answer::parse_vec(&mut b, ancount),
-            nsr: Answer::parse_vec(&mut b, nscount),
-            ar: Answer::parse_vec(&mut b, arcount),
-        })
+            questions: Question::parse_vec(&mut b, qdcount)?,
+            answers: Answer::parse_vec(&mut b, ancount)?,
+            nsr: Answer::parse_vec(&mut b, nscount)?,
+            ar: Answer::parse_vec(&mut b, arcount)?,
+        }))
     }
 
     fn write_headers(
@@ -469,7 +491,7 @@ impl<'a> Message<'a> {
         w: &mut impl Write,
         id: u16,
         ttl: Duration,
-        addr: &SocketAddr,
+        addr: &IpAddr,
     ) -> anyhow::Result<()> {
         Self::write_headers(
             w,
@@ -481,20 +503,13 @@ impl<'a> Message<'a> {
             0,
         )?;
 
-        let (data, t) = match addr {
-            SocketAddr::V4(addr) => (Either::Left(addr.ip().octets()), TYPE_A),
-            SocketAddr::V6(addr) => (Either::Right(addr.ip().octets()), TYPE_AAAA),
-        };
-
         Answer {
             name: Default::default(),
-            t,
             ttl,
-            class: CLASS_IN,
-            rdata: Cow::Borrowed(match data.as_ref() {
-                Either::Left(v) => v.as_ref(),
-                Either::Right(v) => v.as_ref(),
-            }),
+            record: match addr {
+                IpAddr::V4(addr) => AnswerRecord::A(*addr),
+                IpAddr::V6(addr) => AnswerRecord::AAAA(*addr),
+            },
         }
         .to_writer(w)
     }
@@ -518,13 +533,14 @@ mod test {
         let mut buf = Vec::new();
         l.to_writer(&mut buf).unwrap();
         buf.extend_from_slice(b"hello, world");
-        let (offset, parsed) = Labeled::parse(&buf).unwrap();
+        let (buf, parsed) = Labeled::parse(&buf).unwrap().unwrap();
         assert_eq!(parsed, l);
-        assert_eq!(&buf[offset..], b"hello, world");
+        assert_eq!(buf, b"hello, world");
     }
 
     #[test]
     fn resolve_works() {
+        std::env::set_var("RUST_LOG", "debug");
         let _ = env_logger::try_init();
         block_on(async move {
             let socket = UdpSocket::bind(true).await.unwrap();
