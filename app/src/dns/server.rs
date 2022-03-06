@@ -7,7 +7,7 @@ use smol::spawn;
 
 use crate::{
     buf::Buf,
-    dns::req::Message,
+    dns::message::{Message, Record},
     io::{TcpListener, TcpStream, UdpSocket},
     socks5::Address,
 };
@@ -70,7 +70,9 @@ async fn handle_udp_packet<T>(
 where
     T: Future<Output = anyhow::Result<Buf>> + Send + Sync,
 {
-    let pkt = Message::parse(&buf).context("Error parseing request DNS")?;
+    let pkt = Message::parse(&buf)
+        .context("Error parseing request DNS")?
+        .1;
     log::debug!("Received DNS message: {pkt:?} from {addr}");
 
     //TODO: Look for cache
@@ -78,7 +80,9 @@ where
 
     // Go to upstream
     let response = upstream(buf).await?;
-    let response_msg = Message::parse(&response).context("Error parsing response DNS message")?;
+    let response_msg = Message::parse(&response)
+        .context("Error parsing response DNS message")?
+        .1;
     log::debug!("Received DNS reply: {response_msg:?}");
 
     todo!();

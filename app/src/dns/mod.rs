@@ -1,6 +1,9 @@
+mod answer;
 mod cache;
 mod direct;
-mod req;
+mod labeled;
+mod message;
+mod question;
 mod server;
 
 pub use cache::DnsResultCache;
