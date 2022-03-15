@@ -1,4 +1,4 @@
-use std::{borrow::Cow, net::SocketAddr, os::unix::prelude::AsRawFd, sync::Arc};
+use std::{net::SocketAddr, os::unix::prelude::AsRawFd, sync::Arc};
 
 use anyhow::{bail, Context};
 use nix::sys::socket::{setsockopt, sockopt::IpTransparent, SockAddr};
@@ -7,7 +7,6 @@ use smol::spawn;
 use crate::{
     client::ClientStatistics,
     config::ClientConfig,
-    dns::DnsResultCache,
     io::{TcpListener, TcpStream},
     proxy::{
         protocol::{ProxyRequest, ProxyResult},
@@ -21,7 +20,6 @@ pub async fn serve_transparent_proxy_client(
     listener: TcpListener,
     config: Arc<ClientConfig>,
     stats: Arc<ClientStatistics>,
-    cache: Arc<DnsResultCache>,
 ) -> anyhow::Result<()> {
     setsockopt(listener.as_raw_fd(), IpTransparent, &true)?;
     loop {
@@ -36,9 +34,8 @@ pub async fn serve_transparent_proxy_client(
 
         let config = config.clone();
         let stats = stats.clone();
-        let cache = cache.clone();
         spawn(async move {
-            if let Err(e) = serve_client(socket, target, config, stats, cache).await {
+            if let Err(e) = serve_client(socket, target, config, stats).await {
                 log::error!("Error serving client {addr}: {e:?}");
             }
             log::info!("Client {addr} disconnected");
@@ -52,21 +49,11 @@ async fn serve_client(
     target: SocketAddr,
     config: Arc<ClientConfig>,
     stats: Arc<ClientStatistics>,
-    cache: Arc<DnsResultCache>,
 ) -> anyhow::Result<()> {
-    let upstream_lookup_address = match cache.find_domain(target.ip()) {
-        Some(domain) => Address::Name {
-            host: Cow::Owned(domain),
-            port: target.port(),
-        },
-        None => Address::IP(target.clone()),
-    };
-
-    let mut upstreams = config.find_best_upstream(stats.as_ref(), &upstream_lookup_address);
+    let target = Address::IP(target);
+    let mut upstreams = config.find_best_upstream(stats.as_ref(), &target);
     if !upstreams.is_empty() {
-        let proxy_request = ProxyRequest::TCP {
-            dst: Address::IP(target),
-        };
+        let proxy_request = ProxyRequest::TCP { dst: target };
         while let Some((name, config)) = upstreams.pop() {
             log::debug!("Trying upstream {name}");
             match request_proxy_upstream(config, &proxy_request).await? {
@@ -87,9 +74,9 @@ async fn serve_client(
         }
 
         bail!("No upstream is available to serve this request")
-    } else if config.allow_direct(&upstream_lookup_address) {
+    } else if config.allow_direct(&target) {
         log::debug!("Connect directly to {target}");
-        let upstream = TcpStream::connect_raw(target).await?;
+        let upstream = TcpStream::connect(&target).await?;
         copy_duplex(socket, upstream, None, None).await
     } else {
         bail!("No way to connect to target: {target}")

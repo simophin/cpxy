@@ -74,10 +74,7 @@ pub async fn run_client_with(
                 let stats = stats.clone();
 
                 Some(spawn(async move {
-                    if let Err(e) =
-                        serve_transparent_proxy_client(listener, config, stats, Default::default())
-                            .await
-                    {
+                    if let Err(e) = serve_transparent_proxy_client(listener, config, stats).await {
                         log::error!("Error serving transparent proxy: {e:?}");
                     }
                 }))
