@@ -16,8 +16,6 @@ use crate::proxy::protocol::{ProxyRequest, ProxyResult};
 use crate::proxy::request_proxy_upstream;
 use crate::socks5::Address;
 use crate::stream::AsyncReadWrite;
-#[cfg(target_os = "linux")]
-use crate::transparent::serve_transparent_proxy_client;
 use crate::udp_relay;
 use crate::utils::copy_duplex;
 use futures_lite::future::race;
@@ -61,31 +59,13 @@ impl ClientStatistics {
 
 pub async fn run_client_with(
     proxy_listener: TcpListener,
-    transparent_listener: Option<TcpListener>,
     config: Arc<ClientConfig>,
     stats: Arc<ClientStatistics>,
     mut shutdown_rx: impl Stream<Item = ()> + Clone + Unpin + Send + Sync + 'static,
 ) -> anyhow::Result<()> {
-    #[cfg(target_os = "linux")]
-    let _transparent_task = {
-        match transparent_listener {
-            Some(listener) => {
-                let config = config.clone();
-                let stats = stats.clone();
-
-                Some(spawn(async move {
-                    if let Err(e) = serve_transparent_proxy_client(listener, config, stats).await {
-                        log::error!("Error serving transparent proxy: {e:?}");
-                    }
-                }))
-            }
-            None => None,
-        }
-    };
-
     loop {
         let (sock, addr) = select! {
-            v1 = proxy_listener.accept().fuse() => v1.context("Listening for SOCKS5 connection")?,
+            v1 = proxy_listener.accept().fuse() => v1.context("Listening for SOCKS5/SOCKS4/HTTP/TPROXY connection")?,
             _ = shutdown_rx.next().fuse() => {
                 log::info!("Socks5 listening cancelled");
                 return Ok(());
@@ -144,41 +124,18 @@ pub async fn run_client(
         let proxy_listener = match TcpListener::bind(&config.socks5_address).await {
             Ok(v) => v,
             Err(e) => {
-                log::error!("Error listening for socks proxy: {e:?}");
+                log::error!("Error listening for proxy proxy: {e:?}");
                 current_task = None;
                 continue;
             }
         };
-        log::info!("Socks5 server listening on {}", config.socks5_address);
-
-        #[cfg(target_os = "linux")]
-        let transparent_listener = match &config.transparent_address {
-            Some(addr) => match TcpListener::bind(addr).await {
-                Ok(v) => Some(v),
-                Err(e) => {
-                    log::error!("Error listening for transparent proxy: {e:?}");
-                    current_task = None;
-                    continue;
-                }
-            },
-            None => None,
-        };
-
-        #[cfg(not(target_os = "linux"))]
-        let transparent_listener = None;
+        log::info!("Proxy server listening on {}", config.socks5_address);
 
         let config = config.clone();
         let stats = stats.clone();
         let shutdown_rx = shutdown_rx.clone();
         current_task = Some(spawn(async move {
-            run_client_with(
-                proxy_listener,
-                transparent_listener,
-                config,
-                stats,
-                shutdown_rx,
-            )
-            .await
+            run_client_with(proxy_listener, config, stats, shutdown_rx).await
         }));
     }
 }
@@ -205,7 +162,7 @@ async fn drain_socks(
 }
 
 async fn serve_proxy_client(
-    mut socks: impl AsyncRead + AsyncWrite + Unpin + Send + Sync + 'static,
+    mut socks: TcpStream,
     config: Arc<ClientConfig>,
     stats: Arc<ClientStatistics>,
 ) -> anyhow::Result<()> {

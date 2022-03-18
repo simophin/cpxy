@@ -1,5 +1,6 @@
 use crate::buf::RWBuffer;
 use crate::http::HttpRequest;
+use crate::io::TcpStream;
 use crate::parse::ParseError;
 use crate::proxy::protocol::ProxyRequest;
 use crate::socks4::{
@@ -10,6 +11,7 @@ use crate::socks5::{
     Address, ClientConnRequest, ClientGreeting, Command, ConnStatusCode, AUTH_NOT_ACCEPTED,
     AUTH_NO_PASSWORD,
 };
+use crate::transparent::get_original_socket_addr;
 use crate::url::HttpUrl;
 use anyhow::{anyhow, bail, Context};
 use futures_lite::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
@@ -50,15 +52,26 @@ enum HandshakeType {
     Socks4,
     Http,
     HttpTcpChannel,
+    Transparent,
 }
 
 pub struct Handshaker(HandshakeType);
 
 impl Handshaker {
     pub async fn start(
-        stream: &mut (impl AsyncRead + AsyncWrite + Send + Sync + Unpin),
+        stream: &mut TcpStream,
         buf: &mut RWBuffer,
     ) -> anyhow::Result<(Handshaker, ProxyRequest)> {
+        if let Some(orig) = get_original_socket_addr(stream) {
+            log::info!("Redirecting transparent proxy to: {orig}");
+            return Ok((
+                Handshaker(HandshakeType::Transparent),
+                ProxyRequest::TCP {
+                    dst: Address::IP(orig),
+                },
+            ));
+        }
+
         let mut parse_state = ParseState::Init;
         let proxy_state: ProxyState;
 
@@ -187,13 +200,11 @@ impl Handshaker {
                 stream.write_all(b"HTTP/1.1 200 OK\r\n\r\n").await?;
                 Ok(())
             }
+            (HandshakeType::Transparent, _) => Ok(()),
         }
     }
 
-    pub async fn respond_err(
-        self,
-        stream: &mut (impl AsyncWrite + Send + Sync + Unpin),
-    ) -> anyhow::Result<()> {
+    pub async fn respond_err(self, stream: &mut TcpStream) -> anyhow::Result<()> {
         match self.0 {
             HandshakeType::Socks5 => {
                 ClientConnRequest::respond(stream, ConnStatusCode::FAILED, &Default::default())
@@ -207,10 +218,14 @@ impl Handshaker {
                 )
                 .await
             }
-            _ => {
+            HandshakeType::Http | HandshakeType::HttpTcpChannel => {
                 stream
                     .write_all(b"HTTP/1.1 500 Internal server error\r\n\r\n")
                     .await?;
+                Ok(())
+            }
+            HandshakeType::Transparent => {
+                stream.close().await?;
                 Ok(())
             }
         }

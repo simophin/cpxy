@@ -170,9 +170,6 @@ pub struct ClientConfig {
 
     #[serde(default = "default_socks5_udp_host")]
     pub socks5_udp_host: IpAddr,
-
-    #[serde(default)]
-    pub transparent_address: Option<Address<'static>>,
 }
 
 impl Default for ClientConfig {
@@ -183,7 +180,6 @@ impl Default for ClientConfig {
             socks5_udp_host: default_socks5_udp_host(),
             direct_accept: Default::default(),
             direct_reject: Default::default(),
-            transparent_address: None,
         }
     }
 }
