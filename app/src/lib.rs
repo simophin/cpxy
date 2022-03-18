@@ -16,7 +16,6 @@ mod socks4;
 pub mod socks5;
 mod stream;
 mod tls;
-mod transparent;
 mod url;
 mod utils;
 

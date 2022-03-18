@@ -2,7 +2,7 @@ use anyhow::anyhow;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::fmt::{Display, Formatter};
-use std::net::{IpAddr, Ipv4Addr};
+use std::net::{IpAddr, Ipv4Addr, SocketAddr};
 use std::str::FromStr;
 use std::time::UNIX_EPOCH;
 
@@ -150,7 +150,7 @@ const fn default_socks5_udp_host() -> IpAddr {
     IpAddr::V4(Ipv4Addr::UNSPECIFIED)
 }
 
-fn default_socks5_address() -> Address<'static> {
+fn default_socks5_address() -> SocketAddr {
     "127.0.0.1:5000".parse().unwrap()
 }
 
@@ -166,7 +166,7 @@ pub struct ClientConfig {
     pub direct_reject: Vec<TrafficMatchRule>,
 
     #[serde(default = "default_socks5_address")]
-    pub socks5_address: Address<'static>,
+    pub socks5_address: SocketAddr,
 
     #[serde(default = "default_socks5_udp_host")]
     pub socks5_udp_host: IpAddr,
@@ -208,6 +208,10 @@ impl ClientConfig {
             Address::IP(addr) => find_geoip(&addr.ip()),
             _ => None,
         };
+
+        if let Some(c) = &country_code {
+            log::info!("Got country code {c} for {target}");
+        }
 
         let mut upstreams: Vec<(&str, &UpstreamConfig, usize)> = {
             // Find suitable upstreams first

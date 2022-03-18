@@ -11,7 +11,7 @@ use crate::config::*;
 use crate::counter::Counter;
 use crate::fetch::send_http;
 use crate::handshake::Handshaker;
-use crate::io::{TcpListener, TcpStream};
+use crate::io::{TcpListener, TcpStream, UdpSocket};
 use crate::proxy::protocol::{ProxyRequest, ProxyResult};
 use crate::proxy::request_proxy_upstream;
 use crate::socks5::Address;
@@ -21,7 +21,7 @@ use crate::utils::copy_duplex;
 use futures_lite::future::race;
 use futures_lite::{AsyncRead, AsyncReadExt, AsyncWrite, Stream, StreamExt};
 use serde::{Deserialize, Serialize};
-use smol::{spawn, Task};
+use smol::{spawn, Executor, Task};
 
 #[derive(Default, Serialize, Deserialize, Debug, Clone)]
 pub struct UpstreamStatistics {
@@ -57,41 +57,45 @@ impl ClientStatistics {
     }
 }
 
-pub async fn run_client_with(
+fn start_udp_client_with(
+    _: UdpSocket,
+    _: Arc<ClientConfig>,
+    _: Arc<ClientStatistics>,
+) -> Task<anyhow::Result<()>> {
+    spawn(async move { Ok(()) })
+}
+
+pub async fn run_tcp_client_with(
     proxy_listener: TcpListener,
     config: Arc<ClientConfig>,
     stats: Arc<ClientStatistics>,
-    mut shutdown_rx: impl Stream<Item = ()> + Clone + Unpin + Send + Sync + 'static,
 ) -> anyhow::Result<()> {
+    let executor = Executor::new();
     loop {
         let (sock, addr) = select! {
             v1 = proxy_listener.accept().fuse() => v1.context("Listening for SOCKS5/SOCKS4/HTTP/TPROXY connection")?,
-            _ = shutdown_rx.next().fuse() => {
-                log::info!("Socks5 listening cancelled");
-                return Ok(());
-            }
+            _ = executor.tick().fuse() => {
+                let mut tick_num = 10;
+                while executor.try_tick() && tick_num >= 0 {
+                    tick_num -= 1;
+                }
+                continue;
+            },
         };
 
         let config = config.clone();
         let stats = stats.clone();
-        let mut shutdown_rx = shutdown_rx.clone();
-        spawn(async move {
-            log::info!("Client {addr} connected");
+        executor
+            .spawn(async move {
+                log::info!("Client {addr} connected");
 
-            select! {
-                result = serve_proxy_client(sock, config, stats).fuse() => {
-                    if let Err(e) = result {
-                        log::error!("Error serving client {addr}: {e:?}");
-                    }
-                },
-                _ = shutdown_rx.next().fuse() => {
-                    log::info!("Cancelling service of SOCKS5 client {addr}");
+                if let Err(e) = serve_proxy_client(sock, config, stats).await {
+                    log::error!("Error serving client {addr}: {e:?}");
                 }
-            };
 
-            log::info!("Client {addr} disconnected");
-        })
-        .detach();
+                log::info!("Client {addr} disconnected");
+            })
+            .detach();
     }
 }
 
@@ -101,9 +105,7 @@ pub async fn run_client(
         + Sync
         + Unpin,
 ) -> anyhow::Result<()> {
-    let mut current_task: Option<Task<anyhow::Result<()>>> = None;
-    let (mut shutdown_tx, shutdown_rx) = async_broadcast::broadcast::<()>(1);
-    shutdown_tx.set_overflow(true);
+    let mut current_tasks: Option<(Task<_>, Task<_>)> = None;
 
     loop {
         log::debug!("Listening for next config");
@@ -116,27 +118,34 @@ pub async fn run_client(
         };
 
         log::debug!("Using configuration {config:?}");
-        if let Some(task) = current_task {
-            let _ = shutdown_tx.broadcast(()).await;
-            let _ = task.await;
+        if let Some(tasks) = current_tasks {
+            drop(tasks);
         }
+        current_tasks = None;
 
-        let proxy_listener = match TcpListener::bind(&config.socks5_address).await {
+        let proxy_listener = match TcpListener::bind(&Address::IP(config.socks5_address)).await {
             Ok(v) => v,
             Err(e) => {
-                log::error!("Error listening for proxy proxy: {e:?}");
-                current_task = None;
+                log::error!("Error listening for TCP proxy: {e:?}");
                 continue;
             }
         };
+        let socket = match UdpSocket::bind_raw(&config.socks5_address).await {
+            Ok(v) => v,
+            Err(e) => {
+                log::error!("Error listening for UDP tproxy: {e:?}");
+                continue;
+            }
+        };
+
         log::info!("Proxy server listening on {}", config.socks5_address);
 
         let config = config.clone();
         let stats = stats.clone();
-        let shutdown_rx = shutdown_rx.clone();
-        current_task = Some(spawn(async move {
-            run_client_with(proxy_listener, config, stats, shutdown_rx).await
-        }));
+        current_tasks = Some((
+            start_udp_client_with(socket, config.clone(), stats.clone()),
+            spawn(async move { run_tcp_client_with(proxy_listener, config, stats).await }),
+        ));
     }
 }
 

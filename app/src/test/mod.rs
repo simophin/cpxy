@@ -4,7 +4,7 @@ use anyhow::bail;
 use futures_lite::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
 use futures_util::join;
 use maplit::hashmap;
-use smol::{block_on, channel::bounded, spawn, Task};
+use smol::{block_on, spawn, Task};
 
 mod http;
 mod tcp_socks4;
@@ -13,7 +13,7 @@ mod udp;
 
 use crate::{
     buf::RWBuffer,
-    client::{run_client_with, ClientStatistics},
+    client::{run_tcp_client_with, ClientStatistics},
     config::{ClientConfig, UpstreamConfig},
     fetch::fetch_http_with_proxy,
     io::{TcpListener, TcpStream, UdpSocket},
@@ -86,7 +86,7 @@ pub async fn run_test_client(upstream_address: SocketAddr) -> (Task<()>, SocketA
             let socks5_address = addr.clone();
             spawn(async move {
                 let config = ClientConfig {
-                    socks5_address: Address::IP(socks5_address),
+                    socks5_address,
                     direct_accept: Default::default(),
                     direct_reject: Default::default(),
                     upstreams: hashmap! {
@@ -102,16 +102,10 @@ pub async fn run_test_client(upstream_address: SocketAddr) -> (Task<()>, SocketA
                     socks5_udp_host: "0.0.0.0".parse().unwrap(),
                 };
                 let stats = ClientStatistics::new(&config);
-                let (_tx, shutdown_rx) = bounded(2);
 
-                run_client_with(
-                    listener,
-                    Arc::new(config),
-                    Arc::new(stats),
-                    shutdown_rx,
-                )
-                .await
-                .unwrap();
+                run_tcp_client_with(listener, Arc::new(config), Arc::new(stats))
+                    .await
+                    .unwrap();
             })
         },
         addr,

@@ -5,6 +5,7 @@ use crate::client::{run_client, ClientStatistics};
 use crate::config::{ClientConfig, UpstreamConfig};
 use crate::http::{parse_request, write_http_response};
 use crate::io::TcpListener;
+use crate::socks5::Address;
 use anyhow::{anyhow, Context};
 use async_broadcast::Sender;
 use chrono::{DateTime, Utc};
@@ -196,7 +197,7 @@ impl Controller {
                                 .map_err(|e| ErrorResponse::Generic(e))
                                 .and_then(json_response),
                             "POST" => engine
-                                .update(&self.current.0.socks5_address)
+                                .update(&Address::IP(self.current.0.socks5_address))
                                 .await
                                 .and_then(|num_rules| {
                                     Ok(RuleResult {

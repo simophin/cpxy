@@ -11,7 +11,6 @@ use crate::socks5::{
     Address, ClientConnRequest, ClientGreeting, Command, ConnStatusCode, AUTH_NOT_ACCEPTED,
     AUTH_NO_PASSWORD,
 };
-use crate::transparent::get_original_socket_addr;
 use crate::url::HttpUrl;
 use anyhow::{anyhow, bail, Context};
 use futures_lite::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
@@ -62,7 +61,7 @@ impl Handshaker {
         stream: &mut TcpStream,
         buf: &mut RWBuffer,
     ) -> anyhow::Result<(Handshaker, ProxyRequest)> {
-        if let Some(orig) = get_original_socket_addr(stream) {
+        if let Some(orig) = stream.get_original_dst() {
             log::info!("Redirecting transparent proxy to: {orig}");
             return Ok((
                 Handshaker(HandshakeType::Transparent),
