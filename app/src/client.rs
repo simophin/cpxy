@@ -6,7 +6,7 @@ use std::net::SocketAddr;
 use std::sync::Arc;
 use std::time::{Duration, UNIX_EPOCH};
 
-use crate::buf::RWBuffer;
+use crate::buf::{Buf, RWBuffer};
 use crate::config::*;
 use crate::counter::Counter;
 use crate::fetch::send_http;
@@ -57,12 +57,19 @@ impl ClientStatistics {
     }
 }
 
-fn start_udp_client_with(
-    _: UdpSocket,
+async fn start_udp_client_with(
+    socket: UdpSocket,
     _: Arc<ClientConfig>,
     _: Arc<ClientStatistics>,
-) -> Task<anyhow::Result<()>> {
-    spawn(async move { Ok(()) })
+) -> anyhow::Result<Task<anyhow::Result<()>>> {
+    socket.set_receive_original_dst()?;
+    Ok(spawn(async move {
+        loop {
+            let mut buf = Buf::new_for_udp();
+            let (len, src, orig_dst) = socket.recvmsg(&mut buf).await?;
+            log::info!("Received message from {src}, orig_dst = {orig_dst:?}, len = {len}");
+        }
+    }))
 }
 
 pub async fn run_tcp_client_with(
@@ -143,7 +150,7 @@ pub async fn run_client(
         let config = config.clone();
         let stats = stats.clone();
         current_tasks = Some((
-            start_udp_client_with(socket, config.clone(), stats.clone()),
+            start_udp_client_with(socket, config.clone(), stats.clone()).await?,
             spawn(async move { run_tcp_client_with(proxy_listener, config, stats).await }),
         ));
     }
