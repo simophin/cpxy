@@ -43,6 +43,7 @@ bit = "0"
 enum-primitive-derive = "0"
 num-traits = "0"
 either = "1"
+libc = "0"
 
 [dev-dependencies]
 maplit = "1"

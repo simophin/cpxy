@@ -76,6 +76,119 @@ impl UdpSocket {
         Ok(self.0.recv_from(buf).await?)
     }
 
+    #[cfg(unix)]
+    fn buf_to_v6(buf: *const libc::c_void, buf_len: usize) -> Option<SocketAddr> {
+        use libc::sockaddr_in6;
+        use std::net::SocketAddrV6;
+
+        if buf_len < std::mem::size_of::<sockaddr_in6>() {
+            return None;
+        }
+
+        let addr = unsafe { &*(buf as *const sockaddr_in6) };
+        Some(SocketAddr::V6(SocketAddrV6::new(
+            Ipv6Addr::from(addr.sin6_addr.s6_addr),
+            u16::from_be(addr.sin6_port),
+            u32::from_be(addr.sin6_flowinfo),
+            u32::from_be(addr.sin6_scope_id),
+        )))
+    }
+
+    #[cfg(unix)]
+    fn buf_to_v4(buf: *const libc::c_void, buf_len: usize) -> Option<SocketAddr> {
+        use libc::sockaddr_in;
+        use std::net::SocketAddrV4;
+
+        if buf_len < std::mem::size_of::<sockaddr_in>() {
+            return None;
+        }
+
+        let addr = unsafe { &*(buf as *const sockaddr_in) };
+        Some(SocketAddr::V4(SocketAddrV4::new(
+            Ipv4Addr::from(addr.sin_addr.s_addr),
+            u16::from_be(addr.sin_port),
+        )))
+    }
+
+    #[cfg(unix)]
+    pub async fn recvmsg(
+        &self,
+        buf: &mut [u8],
+    ) -> anyhow::Result<(usize, SocketAddr, Option<SocketAddr>)> {
+        futures_lite::future::poll_fn(|ctx| self.0.poll_readable(ctx)).await?;
+
+        use std::os::unix::prelude::AsRawFd;
+
+        use anyhow::bail;
+        use libc::{
+            c_void, cmsghdr, iovec, msghdr, recvmsg, sockaddr_in, sockaddr_in6, CMSG_DATA,
+            CMSG_FIRSTHDR, CMSG_NXTHDR, IPV6_ORIGDSTADDR, IP_ORIGDSTADDR, MSG_DONTWAIT, SOL_IP,
+            SOL_IPV6,
+        };
+
+        let mut received_addr = [0u8; std::mem::size_of::<sockaddr_in6>()];
+        let mut cmsg_buf = [0u8; 24];
+
+        let mut iov = iovec {
+            iov_base: buf.as_mut_ptr() as *mut c_void,
+            iov_len: buf.len(),
+        };
+
+        let mut hdr = msghdr {
+            msg_name: received_addr.as_mut_ptr() as *mut c_void,
+            msg_namelen: received_addr.len() as u32,
+            msg_iov: &mut iov,
+            msg_iovlen: 1,
+            msg_control: cmsg_buf.as_mut_ptr() as *mut c_void,
+            msg_controllen: cmsg_buf.len(),
+            msg_flags: 0,
+        };
+        let rc = unsafe { recvmsg(self.0.as_raw_fd(), &mut hdr, MSG_DONTWAIT) };
+
+        if rc != 0 {
+            bail!("Error calling recvmsg, rc = {rc}");
+        }
+
+        let received_addr = match hdr.msg_namelen as usize {
+            len if len == std::mem::size_of::<sockaddr_in6>() => {
+                Self::buf_to_v6(hdr.msg_name, hdr.msg_namelen as usize).unwrap()
+            }
+            len if len == std::mem::size_of::<sockaddr_in>() => {
+                Self::buf_to_v4(hdr.msg_name, hdr.msg_namelen as usize).unwrap()
+            }
+            len => bail!("Invalid received message len {len}"),
+        };
+
+        let received_len = iov.iov_len;
+
+        unsafe {
+            let mut cmsg = CMSG_FIRSTHDR(&hdr);
+            while cmsg != std::ptr::null_mut() {
+                let cmsghdr {
+                    cmsg_level,
+                    cmsg_type,
+                    cmsg_len,
+                } = &*cmsg;
+                if *cmsg_level == SOL_IP && *cmsg_type == IP_ORIGDSTADDR {
+                    return Ok((
+                        received_len,
+                        received_addr,
+                        Self::buf_to_v4(CMSG_DATA(cmsg) as *const c_void, *cmsg_len),
+                    ));
+                } else if *cmsg_level == SOL_IPV6 && *cmsg_type == IPV6_ORIGDSTADDR {
+                    return Ok((
+                        received_len,
+                        received_addr,
+                        Self::buf_to_v6(CMSG_DATA(cmsg) as *const c_void, *cmsg_len),
+                    ));
+                }
+                cmsg = CMSG_NXTHDR(&hdr, cmsg);
+            }
+        }
+
+        Ok((received_len, received_addr, None))
+    }
+
     pub fn local_addr(&self) -> anyhow::Result<SocketAddr> {
         Ok(self.0.as_ref().local_addr()?)
     }

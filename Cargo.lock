@@ -374,6 +374,7 @@ dependencies = [
  "ipnetwork",
  "jni",
  "lazy_static",
+ "libc",
  "log",
  "maplit",
  "mime_guess",
