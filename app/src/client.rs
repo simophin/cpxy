@@ -1,10 +1,12 @@
 use anyhow::{anyhow, bail, Context};
+use futures_lite::io::split;
 use futures_util::{select, FutureExt};
+use smol::channel::{bounded, Sender, TrySendError};
 use smol_timeout::TimeoutExt;
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 use std::net::SocketAddr;
 use std::sync::Arc;
-use std::time::{Duration, UNIX_EPOCH};
+use std::time::{Duration, Instant, UNIX_EPOCH};
 
 use crate::buf::{Buf, RWBuffer};
 use crate::config::*;
@@ -19,9 +21,9 @@ use crate::stream::AsyncReadWrite;
 use crate::udp_relay;
 use crate::utils::copy_duplex;
 use futures_lite::future::race;
-use futures_lite::{AsyncRead, AsyncReadExt, AsyncWrite, Stream, StreamExt};
+use futures_lite::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt, Stream, StreamExt};
 use serde::{Deserialize, Serialize};
-use smol::{spawn, Executor, Task};
+use smol::{spawn, Executor, Task, Timer};
 
 #[derive(Default, Serialize, Deserialize, Debug, Clone)]
 pub struct UpstreamStatistics {
@@ -57,17 +59,151 @@ impl ClientStatistics {
     }
 }
 
+struct UdpConnection {
+    established: Instant,
+    sender: Sender<Buf>,
+    task: Task<anyhow::Result<()>>,
+}
+
+type UdpClient = BTreeMap<SocketAddr, UdpConnection>;
+
+fn serve_udp_conn(
+    socket: Arc<UdpSocket>,
+    client_addr: SocketAddr,
+    dst: SocketAddr,
+    config: Arc<ClientConfig>,
+    stats: Arc<ClientStatistics>,
+) -> UdpConnection {
+    let (sender, receiver) = bounded::<Buf>(10);
+    let task = spawn(async move {
+        let upstreams = config.find_best_upstream(&stats, &Address::IP(dst));
+        if !upstreams.is_empty() {
+            let proxy_req = ProxyRequest::UDPConn { dst };
+            for (name, config) in upstreams {
+                log::info!("Trying upstream {name} for UDP://{dst}");
+                match request_proxy_upstream(config, &proxy_req).await {
+                    Ok((ProxyResult::Granted { .. }, upstream, latency)) => {
+                        log::info!(
+                            "Upstream {name} granted for UDP://{dst}, latency = {latency:?}"
+                        );
+
+                        let (mut upstream_r, mut upstream_w) = split(upstream);
+
+                        let _tcp_task: Task<anyhow::Result<()>> = spawn(async move {
+                            let mut length_buf = [0u8; 2];
+                            loop {
+                                upstream_r
+                                    .read_exact(&mut length_buf)
+                                    .await
+                                    .context("Reading message length")?;
+
+                                let size = u16::from_be_bytes(length_buf) as usize;
+                                let mut buf = Buf::new_with_len(size, size);
+                                upstream_r
+                                    .read_exact(&mut buf)
+                                    .await
+                                    .context("Reading message")?;
+                                socket
+                                    .send_to(&buf, &client_addr)
+                                    .await
+                                    .context("Sending back to UDP")?;
+                            }
+                        });
+
+                        while let Ok(buf) = receiver.recv().await {
+                            if buf.len() < 65536 {
+                                bail!(
+                                    "Unable to send UDP packet more than 65536: got {}",
+                                    buf.len()
+                                );
+                            }
+
+                            upstream_w
+                                .write_all(buf.len().to_be_bytes().as_ref())
+                                .await
+                                .context("Writing UDP length")?;
+                            upstream_w
+                                .write_all(&buf)
+                                .await
+                                .context("Writing UDP data")?;
+                        }
+
+                        return Ok(());
+                    }
+                    Ok((r, _, _)) => {
+                        log::info!("Upstream {name} rejected UDP://{dst} with result: {r:?}");
+                        return Err(r.into());
+                    }
+                    Err(e) => {
+                        log::error!("Error connecting to upstream for UDP://{dst}: {e:?}");
+                        continue;
+                    }
+                }
+            }
+        }
+
+        Ok(())
+    });
+    UdpConnection {
+        sender,
+        task,
+        established: Instant::now(),
+    }
+}
+
 async fn start_udp_client_with(
     socket: UdpSocket,
-    _: Arc<ClientConfig>,
-    _: Arc<ClientStatistics>,
+    config: Arc<ClientConfig>,
+    stats: Arc<ClientStatistics>,
 ) -> anyhow::Result<Task<anyhow::Result<()>>> {
+    socket.set_trasnparent()?;
     socket.set_receive_original_dst()?;
+    let socket = Arc::new(socket);
     Ok(spawn(async move {
+        let interval = Duration::from_secs(60);
+        let mut clients = HashMap::<SocketAddr, UdpClient>::new();
+        let mut buf = Buf::new_for_udp();
+        let mut cleanup_timer = futures_util::FutureExt::fuse(Timer::at(Instant::now() + interval));
+
         loop {
-            let mut buf = Buf::new_for_udp();
-            let (len, src, orig_dst) = socket.recvmsg(&mut buf).await?;
-            log::info!("Received message from {src}, orig_dst = {orig_dst:?}, len = {len}");
+            let (len, src, orig_dst) = select! {
+                msg = socket.recvmsg(&mut buf).fuse() => {
+                    match msg {
+                        Ok((len, src, Some(dst))) => (len, src, dst),
+                        Ok(_) => {
+                            log::warn!("No ORIGDST specified in UDP message");
+                            continue;
+                        }
+                        Err(e) => {
+                            log::error!("Error receiving UDP message");
+                            return Err(e);
+                        }
+                    }
+                }
+                _ = cleanup_timer => {
+                    log::info!("Executing cleanup timer");
+                    continue;
+                }
+            };
+            log::info!("Received message from {src}, orig_dst = {orig_dst}, len = {len}");
+            buf.set_len(len);
+
+            match clients
+                .entry(src)
+                .or_insert_with(|| UdpClient::default())
+                .entry(orig_dst)
+                .or_insert_with(|| {
+                    serve_udp_conn(socket.clone(), src, orig_dst, config.clone(), stats.clone())
+                })
+                .sender
+                .try_send(buf)
+            {
+                Ok(_) => buf = Buf::new_for_udp(),
+                Err(TrySendError::Full(b)) | Err(TrySendError::Closed(b)) => {
+                    buf = b;
+                    buf.set_len(buf.capacity());
+                }
+            };
         }
     }))
 }
@@ -112,7 +248,7 @@ pub async fn run_client(
         + Sync
         + Unpin,
 ) -> anyhow::Result<()> {
-    let mut current_tasks: Option<(Task<_>, Task<_>)> = None;
+    let mut current_tasks = Vec::<Task<_>>::with_capacity(2);
 
     loop {
         log::debug!("Listening for next config");
@@ -125,10 +261,7 @@ pub async fn run_client(
         };
 
         log::debug!("Using configuration {config:?}");
-        if let Some(tasks) = current_tasks {
-            drop(tasks);
-        }
-        current_tasks = None;
+        current_tasks.clear();
 
         let proxy_listener = match TcpListener::bind(&Address::IP(config.socks5_address)).await {
             Ok(v) => v,
@@ -137,6 +270,7 @@ pub async fn run_client(
                 continue;
             }
         };
+
         let socket = match UdpSocket::bind_raw(&config.socks5_address).await {
             Ok(v) => v,
             Err(e) => {
@@ -145,14 +279,22 @@ pub async fn run_client(
             }
         };
 
-        log::info!("Proxy server listening on {}", config.socks5_address);
+        match start_udp_client_with(socket, config.clone(), stats.clone()).await {
+            Ok(task) => current_tasks.push(task),
+            Err(e) => {
+                log::error!("Error starting UDP client: {e:?}");
+                continue;
+            }
+        };
 
-        let config = config.clone();
-        let stats = stats.clone();
-        current_tasks = Some((
-            start_udp_client_with(socket, config.clone(), stats.clone()).await?,
-            spawn(async move { run_tcp_client_with(proxy_listener, config, stats).await }),
-        ));
+        {
+            let config = config.clone();
+            current_tasks.push(spawn(async move {
+                run_tcp_client_with(proxy_listener, config, stats).await
+            }));
+        }
+
+        log::info!("Proxy server listening on {}", config.socks5_address);
     }
 }
 
@@ -274,7 +416,7 @@ async fn serve_proxy_client(
                 Err(e.into())
             }
         },
-        ProxyRequest::DNS { .. } => {
+        ProxyRequest::UDPConn { .. } | ProxyRequest::DNS { .. } => {
             handshaker.respond_err(&mut socks).await?;
             bail!("Unsupported DNS request")
         }

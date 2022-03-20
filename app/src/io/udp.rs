@@ -4,6 +4,8 @@ use std::{
 };
 
 use anyhow::Context;
+use libc::EWOULDBLOCK;
+use nix::errno::errno;
 use smol::Async;
 
 use crate::socks5::Address;
@@ -72,8 +74,42 @@ impl UdpSocket {
         Ok(self.0.send_to(buf, addr).await?)
     }
 
+    pub async fn wait_read(&self) -> anyhow::Result<()> {
+        futures_lite::future::poll_fn(|ctx| self.0.poll_readable(ctx)).await?;
+        Ok(())
+    }
+
     pub async fn recv_from(&self, buf: &mut [u8]) -> anyhow::Result<(usize, SocketAddr)> {
         Ok(self.0.recv_from(buf).await?)
+    }
+
+    #[cfg(unix)]
+    pub fn set_trasnparent(&self) -> anyhow::Result<()> {
+        use std::{ffi::CStr, mem::size_of_val, os::unix::prelude::AsRawFd};
+
+        use anyhow::bail;
+        use libc::{c_void, setsockopt, socklen_t, strerror, IPPROTO_IP, IP_TRANSPARENT};
+        use nix::errno::errno;
+
+        let value = 1usize;
+        let rc = unsafe {
+            setsockopt(
+                self.0.as_raw_fd(),
+                IPPROTO_IP,
+                IP_TRANSPARENT,
+                &value as *const usize as *const c_void,
+                size_of_val(&value) as socklen_t,
+            )
+        };
+
+        if rc != 0 {
+            bail!("Unable to set transparent proxy: {}", unsafe {
+                CStr::from_ptr(strerror(errno()) as *const i8)
+                    .to_str()
+                    .unwrap()
+            });
+        }
+        Ok(())
     }
 
     #[cfg(unix)]
@@ -143,9 +179,24 @@ impl UdpSocket {
 
         let addr = unsafe { &*(buf as *const sockaddr_in) };
         Some(SocketAddr::V4(SocketAddrV4::new(
-            Ipv4Addr::from(addr.sin_addr.s_addr),
+            Ipv4Addr::from(u32::from_be(addr.sin_addr.s_addr)),
             u16::from_be(addr.sin_port),
         )))
+    }
+
+    #[cfg(unix)]
+    pub fn get_original_dst(&self) -> Option<SocketAddr> {
+        use std::{net::SocketAddrV4, os::unix::prelude::AsRawFd};
+
+        use nix::sys::socket::{getsockopt, sockopt::OriginalDst};
+        let addr = getsockopt(self.0.as_raw_fd(), OriginalDst).ok()?;
+
+        let addr = SocketAddr::V4(SocketAddrV4::new(
+            u32::from_be(addr.sin_addr.s_addr).into(),
+            u16::from_be(addr.sin_port),
+        ));
+
+        Some(addr)
     }
 
     #[cfg(unix)]
@@ -154,14 +205,20 @@ impl UdpSocket {
         buf: &mut [u8],
     ) -> anyhow::Result<(usize, SocketAddr, Option<SocketAddr>)> {
         futures_lite::future::poll_fn(|ctx| self.0.poll_readable(ctx)).await?;
+        self.recvmsg_sync(buf)?.context("No readable message")
+    }
 
-        use std::{cell::RefCell, mem::size_of, os::unix::prelude::AsRawFd};
+    pub fn recvmsg_sync(
+        &self,
+        buf: &mut [u8],
+    ) -> anyhow::Result<Option<(usize, SocketAddr, Option<SocketAddr>)>> {
+        use std::{cell::RefCell, ffi::CStr, mem::size_of, os::unix::prelude::AsRawFd};
 
         use anyhow::bail;
         use libc::{
-            c_void, cmsghdr, iovec, msghdr, recvmsg, sockaddr_in, sockaddr_in6, CMSG_DATA,
-            CMSG_FIRSTHDR, CMSG_NXTHDR, CMSG_SPACE, IPV6_ORIGDSTADDR, IP_ORIGDSTADDR, MSG_DONTWAIT,
-            SOL_IP, SOL_IPV6,
+            c_void, cmsghdr, iovec, msghdr, recvmsg, sockaddr_in, sockaddr_in6, strerror,
+            CMSG_DATA, CMSG_FIRSTHDR, CMSG_NXTHDR, CMSG_SPACE, IPV6_ORIGDSTADDR, IP_ORIGDSTADDR,
+            MSG_DONTWAIT, SOL_IP, SOL_IPV6,
         };
 
         thread_local! {
@@ -188,8 +245,14 @@ impl UdpSocket {
             };
             let rc = unsafe { recvmsg(self.0.as_raw_fd(), &mut hdr, MSG_DONTWAIT) };
 
-            if rc != 0 {
-                bail!("Error calling recvmsg, rc = {rc}");
+            if rc < 0 {
+                let err = errno();
+                if err == EWOULDBLOCK {
+                    return Ok(None);
+                }
+                bail!("Error calling recvmsg, error = {:?}", unsafe {
+                    CStr::from_ptr(strerror(err)).to_str()
+                });
             }
 
             let received_addr = match hdr.msg_namelen as usize {
@@ -202,7 +265,7 @@ impl UdpSocket {
                 len => bail!("Invalid received message len {len}"),
             };
 
-            let received_len = iov.iov_len;
+            let received_len = rc as usize;
 
             unsafe {
                 let mut cmsg = CMSG_FIRSTHDR(&hdr);
@@ -213,23 +276,23 @@ impl UdpSocket {
                         cmsg_len,
                     } = &*cmsg;
                     if *cmsg_level == SOL_IP && *cmsg_type == IP_ORIGDSTADDR {
-                        return Ok((
+                        return Ok(Some((
                             received_len,
                             received_addr,
                             Self::buf_to_v4(CMSG_DATA(cmsg) as *const c_void, *cmsg_len),
-                        ));
+                        )));
                     } else if *cmsg_level == SOL_IPV6 && *cmsg_type == IPV6_ORIGDSTADDR {
-                        return Ok((
+                        return Ok(Some((
                             received_len,
                             received_addr,
                             Self::buf_to_v6(CMSG_DATA(cmsg) as *const c_void, *cmsg_len),
-                        ));
+                        )));
                     }
                     cmsg = CMSG_NXTHDR(&hdr, cmsg);
                 }
             }
 
-            Ok((received_len, received_addr, None))
+            Ok(Some((received_len, received_addr, self.get_original_dst())))
         })
     }
 

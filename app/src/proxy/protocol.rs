@@ -13,6 +13,9 @@ pub enum ProxyRequest {
     TCP {
         dst: Address<'static>,
     },
+    UDPConn {
+        dst: SocketAddr,
+    },
     UDP,
     DNS {
         domains: Vec<String>,

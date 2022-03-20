@@ -40,10 +40,10 @@
             },
             "args": [
                 "client",
-                "--config=example/multiple.yaml",
+                "--config=${HOME}/.proxy.yaml",
             ],
             "env": {
-                "RUST_LOG": "debug"
+                "RUST_LOG": "info"
             },
             "cwd": "${workspaceFolder}"
         },
