@@ -44,6 +44,7 @@ enum-primitive-derive = "0"
 num-traits = "0"
 either = "1"
 libc = "0"
+uuid = { version = "0", features = ["v4"] }
 
 [dev-dependencies]
 maplit = "1"

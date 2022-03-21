@@ -1,6 +1,5 @@
 use crate::buf::RWBuffer;
 use crate::http::HttpRequest;
-use crate::io::TcpStream;
 use crate::parse::ParseError;
 use crate::proxy::protocol::ProxyRequest;
 use crate::socks4::{
@@ -58,10 +57,11 @@ pub struct Handshaker(HandshakeType);
 
 impl Handshaker {
     pub async fn start(
-        stream: &mut TcpStream,
+        stream: &mut (impl AsyncRead + AsyncWrite + Unpin + Send + Sync),
+        transparent_addr: Option<SocketAddr>,
         buf: &mut RWBuffer,
     ) -> anyhow::Result<(Handshaker, ProxyRequest)> {
-        if let Some(orig) = stream.get_original_dst() {
+        if let Some(orig) = transparent_addr {
             log::info!("Redirecting transparent proxy to: {orig}");
             return Ok((
                 Handshaker(HandshakeType::Transparent),
@@ -203,7 +203,10 @@ impl Handshaker {
         }
     }
 
-    pub async fn respond_err(self, stream: &mut TcpStream) -> anyhow::Result<()> {
+    pub async fn respond_err(
+        self,
+        stream: &mut (impl AsyncWrite + Unpin + Send + Sync),
+    ) -> anyhow::Result<()> {
         match self.0 {
             HandshakeType::Socks5 => {
                 ClientConnRequest::respond(stream, ConnStatusCode::FAILED, &Default::default())

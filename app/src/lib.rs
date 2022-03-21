@@ -11,6 +11,7 @@ mod http;
 mod parse;
 mod pattern;
 mod proxy;
+pub mod rsocks;
 pub mod server;
 mod socks4;
 pub mod socks5;

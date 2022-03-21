@@ -5,7 +5,7 @@ use std::{
 
 use anyhow::Context;
 use libc::EWOULDBLOCK;
-use nix::errno::errno;
+
 use smol::Async;
 
 use crate::socks5::Address;
@@ -208,6 +208,7 @@ impl UdpSocket {
         self.recvmsg_sync(buf)?.context("No readable message")
     }
 
+    #[cfg(unix)]
     pub fn recvmsg_sync(
         &self,
         buf: &mut [u8],
@@ -220,6 +221,7 @@ impl UdpSocket {
             CMSG_DATA, CMSG_FIRSTHDR, CMSG_NXTHDR, CMSG_SPACE, IPV6_ORIGDSTADDR, IP_ORIGDSTADDR,
             MSG_DONTWAIT, SOL_IP, SOL_IPV6,
         };
+        use nix::errno::errno;
 
         thread_local! {
             static CMSG_BUF: RefCell<Vec<u8>>  = RefCell::new(vec![0u8; unsafe { CMSG_SPACE(size_of::<sockaddr_in6>() as u32) } as usize]);
