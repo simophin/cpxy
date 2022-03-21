@@ -32,11 +32,11 @@ pub async fn send_http_with_proxy(
     Ok(client)
 }
 
-pub async fn send_http(
+pub async fn send_http<'a>(
     https: bool,
     address: &Address<'_>,
     req: HttpRequest<'_>,
-) -> anyhow::Result<impl AsyncRead + AsyncWrite + Unpin + Send + Sync + 'static> {
+) -> anyhow::Result<impl AsyncRead + AsyncWrite + Unpin + Send + Sync + 'a> {
     let client = TcpStream::connect(&address)
         .await
         .with_context(|| format!("Connecting to {address}"))?;

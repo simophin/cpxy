@@ -41,8 +41,8 @@ mod f {
 
     pub async fn connect_tls(
         host: &str,
-        stream: impl AsyncRead + AsyncWrite + Unpin + Send + Sync + 'static,
-    ) -> anyhow::Result<impl AsyncRead + AsyncWrite + Unpin + Send + Sync + 'static> {
+        stream: impl AsyncRead + AsyncWrite + Unpin + Send + Sync,
+    ) -> anyhow::Result<impl AsyncRead + AsyncWrite + Unpin + Send + Sync> {
         lazy_static! {
             static ref CONFIG: Arc<rustls::ClientConfig> = Arc::new(create_config());
         }

@@ -5,8 +5,7 @@ use std::{
     time::Duration,
 };
 
-use anyhow::{anyhow, bail, Context};
-use futures_lite::AsyncWriteExt;
+use anyhow::{anyhow, Context};
 use futures_util::{select, FutureExt};
 use serde::{Deserialize, Serialize};
 use smol::{
@@ -16,10 +15,10 @@ use smol::{
 use smol_timeout::TimeoutExt;
 
 use crate::{
-    buf::RWBuffer,
-    http::{parse_request, AsyncHttpStream, HttpRequest},
+    http::{AsyncHttpStream, HttpRequest},
     io::{TcpListener, TcpStream},
     utils::{copy_duplex, read_bincode_lengthed_async, write_bincode_lengthed_async},
+    ws::serve_websocket,
 };
 
 use super::{client::ClientCommand, ConnectionId};
@@ -52,36 +51,10 @@ impl Default for Server {
 
 async fn serve_control_connection(
     stream: TcpStream,
-    addr: SocketAddr,
+    _: SocketAddr,
     server: Arc<Server>,
 ) -> anyhow::Result<()> {
-    let mut req = parse_request(stream, RWBuffer::new(512, 65536))
-        .await
-        .map_err(|(e, _)| e)?;
-
-    if !req
-        .get_header_text("Connection")
-        .unwrap_or_default()
-        .eq_ignore_ascii_case("upgrade")
-        || !req
-            .get_header_text("Upgrade")
-            .unwrap_or_default()
-            .eq_ignore_ascii_case("websocket")
-    {
-        req.write_all(b"HTTP/1.1 401 Invalid Header\r\n\r\n")
-            .await?;
-        bail!("Invalid HTTP request from {addr}");
-    }
-
-    req.write_all(
-        b"HTTP/1.1 101 Switching Protocols\r\n\
-    Upgrade: WebSocket\r\n\
-    Connection: Upgrade\r\n\
-    Sec-WebSocket-Accept: s3pPLMBiTxaQ9kYGzzhZRbK+xOo=\r\n\
-    \r\n",
-    )
-    .await
-    .context("Write control response headers")?;
+    let mut req = serve_websocket(stream).await?.respond_success().await?;
 
     match read_bincode_lengthed_async(&mut req).await? {
         ConnectionType::Main => {

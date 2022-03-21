@@ -15,11 +15,11 @@ static TCP_SOCKET_COUNT: AtomicUsize = AtomicUsize::new(0);
 pub struct TcpStream(AsyncTcpStream);
 
 impl TcpStream {
-    pub async fn connect_raw(a: impl smol::net::AsyncToSocketAddrs) -> smol::io::Result<Self> {
+    pub async fn connect_raw(a: impl smol::net::AsyncToSocketAddrs) -> anyhow::Result<Self> {
         Ok(Self::from(AsyncTcpStream::connect(a).await?))
     }
 
-    pub async fn connect(a: &Address<'_>) -> smol::io::Result<Self> {
+    pub async fn connect(a: &Address<'_>) -> anyhow::Result<Self> {
         match a {
             Address::IP(addr) => Ok(TcpStream::from(AsyncTcpStream::connect(addr).await?)),
             Address::Name { host, port } => Ok(TcpStream::from(

@@ -2,20 +2,11 @@ use std::{borrow::Cow, fmt::Display, str::FromStr};
 
 use super::strategy::EncryptionStrategy;
 use super::stream::CipherStream;
-use crate::{
-    buf::RWBuffer,
-    http::{parse_response, HeaderValue, HttpCommon, HttpRequest, HttpResponse},
-};
+use crate::{http::HeaderValue, ws::negotiate_websocket};
 use anyhow::{anyhow, Context};
 use base64::{display::Base64Display, URL_SAFE_NO_PAD};
-use futures_lite::{AsyncRead, AsyncWrite};
-
-fn check_server_response(res: &HttpResponse) -> anyhow::Result<()> {
-    match res.status_code {
-        101 => Ok(()),
-        _ => Err(anyhow!("Expecting http code = 101, got {res:?}")),
-    }
-}
+use futures_lite::{io::split, AsyncRead, AsyncWrite};
+use std::fmt::Write;
 
 pub struct CipherParams<'a> {
     pub key: Cow<'a, [u8]>,
@@ -64,9 +55,7 @@ pub const INITIAL_DATA_CONFIG: base64::Config = base64::URL_SAFE_NO_PAD;
 pub const INITIAL_DATA_HEADER: &'static str = "X-Cache-Key";
 
 pub async fn connect(
-    r: impl AsyncRead + Send + Sync + Unpin,
-    mut w: impl AsyncWrite + Send + Sync + Unpin,
-    host: &str,
+    mut url: String,
     send_strategy: EncryptionStrategy,
     recv_strategy: EncryptionStrategy,
     mut initial_data: Vec<u8>,
@@ -82,46 +71,25 @@ pub async fn connect(
         cipher_type,
     };
 
-    let mut headers = Vec::with_capacity(6);
-
-    headers.push((Cow::Borrowed("Connection"), "Upgrade".into()));
-    headers.push((Cow::Borrowed("Upgrade"), "WebSocket".into()));
-    headers.push((
-        Cow::Borrowed("Sec-WebSocket-Key"),
-        "dGhlIHNhbXBsZSBub25jZQ==".into(),
-    ));
-    headers.push((Cow::Borrowed("Sec-WebSocket-Version"), "13".into()));
-    headers.push((Cow::Borrowed("Host"), host.into()));
-
-    // Send initial data encrypted
     if initial_data.len() > 0 {
-        wr_cipher.apply_keystream(initial_data.as_mut_slice());
-        headers.push((
-            Cow::Borrowed(INITIAL_DATA_HEADER),
-            HeaderValue::from_display(Base64Display::with_config(
-                &initial_data,
-                INITIAL_DATA_CONFIG,
-            )),
-        ));
+        wr_cipher.apply_keystream(&mut initial_data);
     }
 
-    HttpRequest {
-        common: HttpCommon { headers },
-        method: Cow::Borrowed("GET"),
-        path: Cow::Owned(params.to_string()),
-    }
-    .to_async_writer(&mut w)
-    .await
-    .context("Writing request")?;
+    let _ = write!(&mut url, "{}", params);
 
-    // Parse and check response
-    let res = parse_response(r, RWBuffer::new(512, 65536))
-        .await
-        .context("Parsing cipher response")?;
-
-    log::debug!("Cipher response = {res:?}");
-
-    check_server_response(&res)?;
+    let (r, w) = split(
+        negotiate_websocket(
+            &url,
+            vec![(
+                Cow::Borrowed(INITIAL_DATA_HEADER),
+                HeaderValue::from_display(Base64Display::with_config(
+                    &initial_data,
+                    INITIAL_DATA_CONFIG,
+                )),
+            )],
+        )
+        .await?,
+    );
 
     let rd_cipher = recv_strategy.wrap_cipher(
         super::suite::create_cipher(cipher_type, key.as_slice(), iv.as_slice())
@@ -130,7 +98,7 @@ pub async fn connect(
 
     Ok(CipherStream::new(
         "client".to_string(),
-        res,
+        r,
         w,
         rd_cipher,
         wr_cipher,

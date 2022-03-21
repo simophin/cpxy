@@ -19,6 +19,7 @@ mod stream;
 mod tls;
 mod url;
 mod utils;
+mod ws;
 
 #[cfg(target_os = "android")]
 mod jni_export;

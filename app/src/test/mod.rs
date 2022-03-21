@@ -39,6 +39,15 @@ pub async fn duplex(
     (client, server)
 }
 
+pub async fn create_http_server() -> (TcpListener, String) {
+    let listener = TcpListener::bind(&"127.0.0.1:0".parse().unwrap())
+        .await
+        .unwrap();
+
+    let addr = listener.local_addr().unwrap();
+    (listener, format!("http://{addr}"))
+}
+
 pub async fn echo_tcp_server() -> (Task<()>, SocketAddr) {
     let socket = TcpListener::bind(&Default::default()).await.unwrap();
     let addr = socket.local_addr().unwrap();

@@ -1,33 +1,24 @@
 use super::client::CipherParams;
 use anyhow::bail;
 use futures_lite::io::split;
-use futures_lite::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
+use futures_lite::{AsyncRead, AsyncReadExt, AsyncWrite};
 
-use crate::buf::RWBuffer;
-use crate::http::{parse_request, HttpRequest};
 use crate::stream::VecStream;
+use crate::ws::serve_websocket;
 
 use super::stream::CipherStream;
 use super::suite::{create_cipher, BoxedStreamCipher};
 
 fn check_request(
-    req: &HttpRequest,
+    path: &str,
 ) -> Result<(BoxedStreamCipher, BoxedStreamCipher), (&'static str, &'static str)> {
-    // log::debug!("Received request: {:?}", req);
-    if !req.method.eq_ignore_ascii_case("get") {
-        return Err((
-            "HTTP/1.1 401 Unsupported method\r\n\r\n",
-            "Unsupported HTTP method",
-        ));
-    }
-
     let CipherParams {
         key,
         iv,
         send_strategy: client_send_strategy,
         recv_strategy: client_receive_strategy,
         cipher_type,
-    } = match req.path.parse() {
+    } = match path.parse() {
         Ok(v) => v,
         Err(e) => {
             log::error!("Error parsing params: {e}");
@@ -49,25 +40,17 @@ fn check_request(
 pub async fn listen<T: AsyncRead + AsyncWrite + Send + Sync + Unpin>(
     stream: T,
 ) -> anyhow::Result<impl AsyncRead + AsyncWrite + Send + Sync + Unpin> {
-    let mut req = match parse_request(stream, RWBuffer::new(512, 65536)).await {
-        Ok(v) => v,
-        Err((e, mut stream)) => {
-            stream.write_all(b"HTTP/1.1 400 invalid request").await?;
-            return Err(e.into());
-        }
-    };
+    let req = serve_websocket(stream).await?;
 
-    log::debug!("Got request: {req:?}");
-
-    let (rd_cipher, wr_cipher) = match check_request(&req) {
+    let (rd_cipher, wr_cipher) = match check_request(req.request().path.as_ref()) {
         Ok(v) => v,
         Err((res, err)) => {
-            req.write_all(res.as_bytes()).await?;
+            req.respond_fail_with_raw_response(res.as_bytes()).await?;
             bail!("{err}");
         }
     };
 
-    let initial_data = match req.get_header(super::client::INITIAL_DATA_HEADER) {
+    let initial_data = match req.request().get_header(super::client::INITIAL_DATA_HEADER) {
         Some(value) => {
             base64::decode_config(value.as_str().as_ref(), super::client::INITIAL_DATA_CONFIG)?
         }
@@ -75,14 +58,7 @@ pub async fn listen<T: AsyncRead + AsyncWrite + Send + Sync + Unpin>(
     };
 
     // Respond client with correct details
-    req.write_all(
-        b"HTTP/1.1 101 Switching Protocols\r\n\
-                    Upgrade: WebSocket\r\n\
-                    Connection: Upgrade\r\n\
-                    Sec-WebSocket-Accept: s3pPLMBiTxaQ9kYGzzhZRbK+xOo=\r\n\
-                    \r\n",
-    )
-    .await?;
+    let req = req.respond_success().await?;
 
     let (r, w) = split(req);
 
@@ -100,41 +76,27 @@ mod test {
     use super::super::client::connect;
     use super::super::strategy::EncryptionStrategy;
     use super::*;
-    use crate::test::duplex;
-    use futures_lite::AsyncReadExt;
+    use crate::test::create_http_server;
+    use futures_lite::{io::copy, AsyncReadExt, AsyncWriteExt};
     use rand::RngCore;
     use smol::spawn;
 
     #[test]
     fn test_cipher_server() {
         smol::block_on(async move {
-            let (client, server) = duplex(256).await;
+            let (http_server, url) = create_http_server().await;
             let server_task = spawn(async move {
-                let mut server = listen(server).await.expect("To listen");
-                let mut buf = vec![0u8; 256];
                 loop {
-                    let n = match server
-                        .read(buf.as_mut_slice())
-                        .await
-                        .expect("To read cipher stream")
-                    {
-                        0 => break,
-                        v => v,
-                    };
-
-                    server
-                        .write_all(&buf.as_slice()[..n])
-                        .await
-                        .expect("To reply to client");
+                    let (stream, _) = http_server.accept().await.unwrap();
+                    let stream = listen(stream).await.unwrap();
+                    let (r, w) = split(stream);
+                    copy(r, w).await.unwrap();
                 }
             });
 
             let data = b"hello, world";
-            let (client_r, client_w) = split(client);
             let mut client = connect(
-                client_r,
-                client_w,
-                "localhost",
+                url,
                 EncryptionStrategy::FirstN(5.try_into().unwrap()),
                 EncryptionStrategy::Always,
                 data.to_vec(),
