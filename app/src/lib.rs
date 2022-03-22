@@ -21,6 +21,9 @@ mod url;
 mod utils;
 mod ws;
 
+#[cfg(target_os = "linux")]
+pub mod vpn;
+
 #[cfg(target_os = "android")]
 mod jni_export;
 

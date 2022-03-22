@@ -1,7 +1,10 @@
 use std::{borrow::Cow, net::SocketAddr, sync::Arc};
 
 use futures_lite::{future::race, io::split, AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
-use smol::spawn;
+use smol::{
+    channel::{Receiver, SendError, Sender},
+    spawn, Task,
+};
 
 use crate::{
     buf::{Buf, RWBuffer},
