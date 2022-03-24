@@ -52,7 +52,7 @@ pub async fn negotiate_websocket<'a>(
 }
 
 pub struct WebSocketServeResult<T> {
-    sec_key: String,
+    _sec_key: String,
     stream: AsyncHttpStream<HttpRequest<'static>, T>,
 }
 
@@ -113,7 +113,7 @@ pub async fn serve_websocket<T: AsyncRead + AsyncWrite + Unpin + Send + Sync>(
         && websocket_key.len() > 0
     {
         return Ok(WebSocketServeResult {
-            sec_key: websocket_key.into_owned(),
+            _sec_key: websocket_key.into_owned(),
             stream: req,
         });
     }

@@ -85,11 +85,10 @@ impl UdpSocket {
 
     #[cfg(unix)]
     pub fn set_trasnparent(&self) -> anyhow::Result<()> {
-        use std::{ffi::CStr, mem::size_of_val, os::unix::prelude::AsRawFd};
+        use std::{mem::size_of_val, os::unix::prelude::AsRawFd};
 
         use anyhow::bail;
-        use libc::{c_void, setsockopt, socklen_t, strerror, IPPROTO_IP, IP_TRANSPARENT};
-        use nix::errno::errno;
+        use libc::{c_void, setsockopt, socklen_t, IPPROTO_IP, IP_TRANSPARENT};
 
         let value = 1usize;
         let rc = unsafe {
@@ -103,11 +102,7 @@ impl UdpSocket {
         };
 
         if rc != 0 {
-            bail!("Unable to set transparent proxy: {}", unsafe {
-                CStr::from_ptr(strerror(errno()) as *const i8)
-                    .to_str()
-                    .unwrap()
-            });
+            bail!("Unable to set transparent proxy: {}", nix::errno::errno());
         }
         Ok(())
     }
@@ -217,9 +212,9 @@ impl UdpSocket {
 
         use anyhow::bail;
         use libc::{
-            c_void, cmsghdr, iovec, msghdr, recvmsg, sockaddr_in, sockaddr_in6, strerror,
-            CMSG_DATA, CMSG_FIRSTHDR, CMSG_NXTHDR, CMSG_SPACE, IPV6_ORIGDSTADDR, IP_ORIGDSTADDR,
-            MSG_DONTWAIT, SOL_IP, SOL_IPV6,
+            c_void, cmsghdr, iovec, msghdr, recvmsg, sockaddr_in, sockaddr_in6, socklen_t,
+            strerror, CMSG_DATA, CMSG_FIRSTHDR, CMSG_NXTHDR, CMSG_SPACE, IPV6_ORIGDSTADDR,
+            IP_ORIGDSTADDR, MSG_DONTWAIT, SOL_IP, SOL_IPV6,
         };
         use nix::errno::errno;
 
@@ -238,7 +233,7 @@ impl UdpSocket {
 
             let mut hdr = msghdr {
                 msg_name: received_addr.as_mut_ptr() as *mut c_void,
-                msg_namelen: received_addr.len() as u32,
+                msg_namelen: received_addr.len() as socklen_t,
                 msg_iov: &mut iov,
                 msg_iovlen: 1,
                 msg_control: cmsg_buf.as_mut_ptr() as *mut c_void,

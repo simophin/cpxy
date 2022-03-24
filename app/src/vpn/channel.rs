@@ -9,7 +9,7 @@ use crate::buf::Buf;
 pub struct ChannelDevice {
     outgoing_tx: Sender<Buf>,
     incoming_rx: Receiver<Buf>,
-    mtu: usize,
+    pub mtu: usize,
     medium: Medium,
 }
 
@@ -30,25 +30,22 @@ impl ChannelDevice {
     }
 }
 
-pub struct AsyncRxToken(Option<Buf>);
+pub struct AsyncRxToken(Buf);
 
 impl RxToken for AsyncRxToken {
     fn consume<R, F>(mut self, _timestamp: Instant, f: F) -> smoltcp::Result<R>
     where
         F: FnOnce(&mut [u8]) -> smoltcp::Result<R>,
     {
-        if let Some(mut buf) = self.0 {
-            f(&mut buf)
-        } else {
-            Err(smoltcp::Error::Exhausted)
-        }
+        log::debug!("Received {} bytes", self.0.len());
+        f(&mut self.0)
     }
 }
 
 pub struct AsyncTxToken(Sender<Buf>);
 
 impl TxToken for AsyncTxToken {
-    fn consume<R, F>(self, timestamp: Instant, len: usize, f: F) -> smoltcp::Result<R>
+    fn consume<R, F>(self, _timestamp: Instant, len: usize, f: F) -> smoltcp::Result<R>
     where
         F: FnOnce(&mut [u8]) -> smoltcp::Result<R>,
     {
@@ -56,7 +53,8 @@ impl TxToken for AsyncTxToken {
         let r = f(&mut buf)?;
         self.0
             .try_send(buf)
-            .map_err(|e| smoltcp::Error::Exhausted)?;
+            .map_err(|_| smoltcp::Error::Exhausted)?;
+        log::debug!("Sent {} bytes", len);
         Ok(r)
     }
 }
@@ -66,8 +64,10 @@ impl<'a> Device<'a> for ChannelDevice {
     type TxToken = AsyncTxToken;
 
     fn receive(&'a mut self) -> Option<(Self::RxToken, Self::TxToken)> {
-        let buf = self.incoming_rx.try_recv().ok();
-        Some((AsyncRxToken(buf), AsyncTxToken(self.outgoing_tx.clone())))
+        Some((
+            AsyncRxToken(self.incoming_rx.try_recv().ok()?),
+            AsyncTxToken(self.outgoing_tx.clone()),
+        ))
     }
 
     fn transmit(&'a mut self) -> Option<Self::TxToken> {

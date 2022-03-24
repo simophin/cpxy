@@ -41,6 +41,8 @@ pub async fn send_http<'a>(
         .await
         .with_context(|| format!("Connecting to {address}"))?;
 
+    client.set_nodelay(true).context("Enabling NO_DELAY")?;
+
     let mut client = if https {
         AsyncReadWrite::new(
             connect_tls(address.get_host().as_ref(), client)
