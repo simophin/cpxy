@@ -1,6 +1,6 @@
 use super::noop::new_no_op;
 use super::partial::new_partial_stream_cipher;
-use super::suite::BoxedStreamCipher;
+use super::suite::{BoxedStreamCipher, StreamCipherExt};
 use crate::proxy::protocol::ProxyRequest;
 use anyhow::anyhow;
 use std::num::NonZeroUsize;
@@ -43,9 +43,9 @@ impl EncryptionStrategy {
 
     pub fn wrap_cipher(&self, c: BoxedStreamCipher) -> BoxedStreamCipher {
         match self {
-            EncryptionStrategy::FirstN(n) => new_partial_stream_cipher(*n, c),
+            EncryptionStrategy::FirstN(n) => Box::new(new_partial_stream_cipher(*n, c)),
             EncryptionStrategy::Always => c,
-            EncryptionStrategy::Never => new_no_op(),
+            EncryptionStrategy::Never => Box::new(new_no_op()),
         }
     }
 }

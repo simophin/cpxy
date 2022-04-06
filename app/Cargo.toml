@@ -7,7 +7,6 @@ version = "0.1.0"
 
 [dependencies]
 adblock = {version = "0", default-features = false, features = ["full-regex-handling", "embedded-domain-resolver"]}
-aes = {version = "0", features = ["ctr"]}
 anyhow = "1"
 async-broadcast = "0"
 base64 = "0"
@@ -69,6 +68,3 @@ name = "proxy"
 [target.'cfg(not(target_arch = "mips"))'.dependencies]
 futures-rustls = "0"
 webpki-roots = "0"
-
-[target.'cfg(any(target_arch = "x86_64", target_arch = "x86", target_arch = "aarch64"))'.dependencies]
-cpufeatures = "0"

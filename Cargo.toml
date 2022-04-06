@@ -1,9 +1,8 @@
 [workspace]
 
 members = [
-  # "app",
+  "app",
   # "fetcher",
-  "userip"
 ]
 
 [profile.dev]

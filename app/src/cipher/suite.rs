@@ -1,36 +1,11 @@
 use anyhow::anyhow;
-use cipher::{NewCipher, StreamCipher, StreamCipherSeek};
+use cipher::{KeyIvInit, StreamCipher, StreamCipherSeek};
 use rand::Rng;
-
-#[cfg(any(target_arch = "x86_64", target_arch = "x86", target_arch = "aarch64"))]
-cpufeatures::new!(cpuid_aes, "aes");
-
-#[cfg(not(any(target_arch = "x86_64", target_arch = "x86", target_arch = "aarch64")))]
-mod cpuid_aes {
-    pub const fn get() -> bool {
-        false
-    }
-}
 
 pub trait StreamCipherExt: StreamCipher {
     fn will_modify_data(&self) -> bool;
 
     fn rewind(&mut self, cnt: usize);
-}
-
-impl StreamCipherExt for aes::Aes128Ctr {
-    fn will_modify_data(&self) -> bool {
-        true
-    }
-
-    fn rewind(&mut self, cnt: usize) {
-        log::debug!(
-            "Rewinding AES, current_pos = {}, cnt = {}",
-            self.current_pos::<usize>(),
-            cnt
-        );
-        self.seek(self.current_pos::<usize>() - cnt)
-    }
 }
 
 impl StreamCipherExt for chacha20::ChaCha20 {
@@ -45,6 +20,25 @@ impl StreamCipherExt for chacha20::ChaCha20 {
 
 pub type BoxedStreamCipher = Box<dyn StreamCipherExt + Send + Sync>;
 
+impl StreamCipher for BoxedStreamCipher {
+    fn try_apply_keystream_inout(
+        &mut self,
+        buf: cipher::inout::InOutBuf<'_, '_, u8>,
+    ) -> Result<(), cipher::StreamCipherError> {
+        Box::as_mut(self).try_apply_keystream_inout(buf)
+    }
+}
+
+impl StreamCipherExt for BoxedStreamCipher {
+    fn will_modify_data(&self) -> bool {
+        Box::as_ref(self).will_modify_data()
+    }
+
+    fn rewind(&mut self, cnt: usize) {
+        Box::as_mut(self).rewind(cnt)
+    }
+}
+
 pub type CipherType = u8;
 pub type CipherKey = Vec<u8>;
 pub type CipherIv = Vec<u8>;
@@ -55,9 +49,6 @@ pub fn create_cipher(
     iv: &[u8],
 ) -> anyhow::Result<BoxedStreamCipher> {
     match cipher_type {
-        0 => Ok(Box::new(aes::Aes128Ctr::new_from_slices(key, iv).map_err(
-            |_| anyhow!("Invalid key/iv lengths for AES cipher"),
-        )?)),
         1 => Ok(Box::new(
             chacha20::ChaCha20::new_from_slices(key, iv)
                 .map_err(|_| anyhow!("Invalid key/iv lengths for Chacha20 cipher"))?,
@@ -70,29 +61,18 @@ pub fn pick_cipher() -> (CipherType, BoxedStreamCipher, CipherKey, CipherIv) {
     let mut key;
     let mut iv;
     let cipher_type;
-    let cipher: BoxedStreamCipher = if cpuid_aes::get() {
-        key = vec![0u8; 16];
-        iv = vec![0u8; 16];
-        rand::thread_rng().fill(key.as_mut_slice());
-        rand::thread_rng().fill(iv.as_mut_slice());
-        log::info!("Use AES cipher");
-        cipher_type = 0;
-        Box::new(
-            aes::Aes128Ctr::new_from_slices(key.as_slice(), iv.as_slice())
-                .expect("To create Aes128 cipher"),
-        )
-    } else {
-        key = vec![0u8; 32];
-        iv = vec![0u8; 12];
-        log::info!("Use Chacha20 cipher");
-        cipher_type = 1;
-        rand::thread_rng().fill(key.as_mut_slice());
-        rand::thread_rng().fill(iv.as_mut_slice());
-        Box::new(
-            chacha20::ChaCha20::new_from_slices(key.as_slice(), iv.as_slice())
-                .expect("to create chacha20 cipher"),
-        )
-    };
+
+    key = vec![0u8; 32];
+    iv = vec![0u8; 12];
+    log::info!("Use Chacha20 cipher");
+    cipher_type = 1;
+    rand::thread_rng().fill(key.as_mut_slice());
+    rand::thread_rng().fill(iv.as_mut_slice());
+
+    let cipher: BoxedStreamCipher = Box::new(
+        chacha20::ChaCha20::new_from_slices(key.as_slice(), iv.as_slice())
+            .expect("to create chacha20 cipher"),
+    );
 
     (cipher_type, cipher, key, iv)
 }

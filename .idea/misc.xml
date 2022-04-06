@@ -14,16 +14,16 @@
           <option name="fileUrl" value="file://$PROJECT_DIR$/app/src/client.rs" />
         </OpenedFileInfo>
         <OpenedFileInfo>
-          <option name="caretOffset" value="1961" />
-          <option name="fileUrl" value="file://$PROJECT_DIR$/app/src/vpn/channel.rs" />
-        </OpenedFileInfo>
-        <OpenedFileInfo>
           <option name="caretOffset" value="140" />
           <option name="fileUrl" value="file://$PROJECT_DIR$/app/src/vpn/tun.rs" />
         </OpenedFileInfo>
         <OpenedFileInfo>
-          <option name="caretOffset" value="365" />
+          <option name="caretOffset" value="78" />
           <option name="fileUrl" value="file://$PROJECT_DIR$/app/src/vpn/mod.rs" />
+        </OpenedFileInfo>
+        <OpenedFileInfo>
+          <option name="caretOffset" value="1962" />
+          <option name="fileUrl" value="file://$PROJECT_DIR$/app/src/vpn/channel.rs" />
         </OpenedFileInfo>
       </list>
     </option>

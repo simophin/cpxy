@@ -1,16 +1,14 @@
-use super::suite::BoxedStreamCipher;
-use crate::cipher::suite::StreamCipherExt;
-use cipher::errors::LoopError;
-use cipher::StreamCipher;
+use super::suite::StreamCipherExt;
+use cipher::{StreamCipher, StreamCipherError};
 use std::cmp::{max, min};
 use std::num::NonZeroUsize;
 
-struct PartialStreamCipher {
-    inner: BoxedStreamCipher,
+struct PartialStreamCipher<T: StreamCipherExt + Send + Sync> {
+    inner: T,
     n: isize,
 }
 
-impl StreamCipherExt for PartialStreamCipher {
+impl<T: StreamCipherExt + Send + Sync> StreamCipherExt for PartialStreamCipher<T> {
     fn will_modify_data(&self) -> bool {
         self.n > 0
     }
@@ -24,19 +22,25 @@ impl StreamCipherExt for PartialStreamCipher {
     }
 }
 
-pub fn new_partial_stream_cipher(n: NonZeroUsize, inner: BoxedStreamCipher) -> BoxedStreamCipher {
-    Box::new(PartialStreamCipher {
+pub fn new_partial_stream_cipher(
+    n: NonZeroUsize,
+    inner: impl StreamCipherExt + Send + Sync,
+) -> impl StreamCipherExt + Send + Sync {
+    PartialStreamCipher {
         inner,
         n: n.get().try_into().unwrap(),
-    })
+    }
 }
 
-impl StreamCipher for PartialStreamCipher {
-    fn try_apply_keystream(&mut self, data: &mut [u8]) -> Result<(), LoopError> {
+impl<T: StreamCipherExt + Send + Sync> StreamCipher for PartialStreamCipher<T> {
+    fn try_apply_keystream_inout(
+        &mut self,
+        mut buf: cipher::inout::InOutBuf<'_, '_, u8>,
+    ) -> Result<(), StreamCipherError> {
         if self.n > 0 {
-            let len = min(self.n as usize, data.len());
-            self.inner.try_apply_keystream(&mut data[..len])?;
-            self.n = self.n.checked_sub(data.len().try_into().unwrap()).unwrap();
+            let len = min(self.n as usize, buf.len());
+            self.inner.try_apply_keystream(&mut buf.get_out()[..len])?;
+            self.n = self.n.checked_sub(buf.len().try_into().unwrap()).unwrap();
         }
 
         Ok(())
