@@ -1,6 +1,6 @@
 use super::noop::new_no_op;
 use super::partial::new_partial_stream_cipher;
-use super::suite::{BoxedStreamCipher, StreamCipherExt};
+use super::suite::BoxedStreamCipher;
 use crate::proxy::protocol::ProxyRequest;
 use anyhow::anyhow;
 use std::num::NonZeroUsize;

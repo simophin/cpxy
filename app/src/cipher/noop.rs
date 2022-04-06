@@ -6,7 +6,7 @@ struct NoOp;
 impl StreamCipher for NoOp {
     fn try_apply_keystream_inout(
         &mut self,
-        buf: cipher::inout::InOutBuf<'_, '_, u8>,
+        _: cipher::inout::InOutBuf<'_, '_, u8>,
     ) -> Result<(), StreamCipherError> {
         Ok(())
     }

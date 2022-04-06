@@ -1,5 +1,5 @@
 use anyhow::Context;
-use clap::{AppSettings, Parser, Subcommand};
+use clap::{Parser, Subcommand};
 use proxy::controller::run_controller;
 use proxy::io::TcpListener;
 use proxy::server::run_server;
@@ -16,7 +16,7 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Command {
-    #[clap(setting(AppSettings::ArgRequiredElseHelp))]
+    #[clap()]
     Server {
         /// The address to listen on
         #[clap(default_value = "0.0.0.0", long)]
@@ -26,7 +26,7 @@ enum Command {
         port: u16,
     },
 
-    #[clap(setting(AppSettings::ArgRequiredElseHelp))]
+    #[clap()]
     Client {
         #[clap(long)]
         /// Path to the configuration file

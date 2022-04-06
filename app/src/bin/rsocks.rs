@@ -1,7 +1,7 @@
 use std::net::{IpAddr, SocketAddr};
 
 use anyhow::Context;
-use clap::{AppSettings, Parser, Subcommand};
+use clap::{Parser, Subcommand};
 use proxy::{
     io::TcpListener,
     rsocks::{client::run_client, server::run_server},
@@ -18,7 +18,7 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Command {
-    #[clap(setting(AppSettings::ArgRequiredElseHelp))]
+    #[clap()]
     Server {
         /// The address to listen on
         #[clap(default_value = "0.0.0.0", long)]
@@ -36,7 +36,7 @@ enum Command {
         socks_port: u16,
     },
 
-    #[clap(setting(AppSettings::ArgRequiredElseHelp))]
+    #[clap()]
     Client {
         /// The URL of server, e.g. http://xxx or https://xxx
         #[clap()]
