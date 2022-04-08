@@ -1,116 +1,227 @@
-use crate::buf::RWBuffer;
-use crate::io::UdpSocket;
-use crate::proxy::protocol::ProxyResult;
-use crate::socks5::{Address, UdpPacket};
-use crate::utils::write_bincode_lengthed_async;
-use anyhow::anyhow;
-use futures_lite::future::race;
-use futures_lite::io::split;
-use futures_lite::{AsyncRead, AsyncReadExt, AsyncWrite};
-use smol::spawn;
-use smol_timeout::TimeoutExt;
-use std::fmt::Write;
-use std::sync::Arc;
-use std::time::Duration;
+use std::{
+    borrow::Cow,
+    collections::HashMap,
+    net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr},
+    sync::Arc,
+};
 
-async fn copy_stream_to_udp(
-    mut src: impl AsyncRead + Unpin + Send + Sync,
-    socket: &UdpSocket,
-) -> anyhow::Result<()> {
-    let mut buf = RWBuffer::new(66000, 66000);
-    let mut addr_buf = String::new();
-    loop {
-        match src.read(buf.write_buf()).await? {
-            0 => return Ok(()),
-            v => buf.advance_write(v),
-        };
+use crate::{buf::Buf as MutBuf, io::UdpSocket, utils::new_stream_task};
+use anyhow::{bail, Context};
+use bytes::Buf;
+use futures_lite::{
+    io::split, AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt, Stream, StreamExt,
+};
 
-        while let Some((offset, pkt)) = UdpPacket::parse_tcp(buf.read_buf())? {
-            log::debug!("UDP-Upstream: sending packet to {}", pkt.addr);
-            match &pkt.addr {
-                Address::IP(addr) => socket.send_to(pkt.data.as_ref(), addr).await?,
-                Address::Name { host, port } => {
-                    addr_buf.clear();
-                    addr_buf.write_fmt(format_args!("{host}:{port}"))?;
-                    socket.send_to(pkt.data.as_ref(), addr_buf.as_str()).await?
-                }
-            };
+use crate::socks5::Address;
 
-            drop(pkt);
-            buf.advance_read(offset);
+// Packet structure:
+// |packet_type(u8)|payload_len(u16)|address(variable)|payload|
+// Address structure:
+// |ipv4(u32)|port(u16)|,
+// |ipv6(u128)|port(u16)|,
+// |host_len(u16)|host(variable)|port(u16)|
+pub enum Packet<T> {
+    PayloadOnly(T),  // TYPE 1
+    WithIpv4Addr(T), // TYPE 2
+    WithIpv6Addr(T), // TYPE 3
+    WithDomainName {
+        address_and_payload: T,
+        address_len: usize, // name + port
+    }, // TYPE 4
+}
+
+impl<T: AsRef<[u8]>> Packet<T> {
+    pub fn addr<'a>(&'a self) -> Option<Address<'a>> {
+        match self {
+            Self::PayloadOnly(_) => None,
+            Self::WithIpv4Addr(buf) => {
+                let mut b = buf.as_ref();
+                let ip = Ipv4Addr::new(b.get_u8(), b.get_u8(), b.get_u8(), b.get_u8());
+                let port = b.get_u16();
+                Some(Address::IP(SocketAddr::new(IpAddr::V4(ip), port)))
+            }
+            Self::WithIpv6Addr(buf) => {
+                let mut b = buf.as_ref();
+                let mut ip = [0u8; 16];
+                ip.copy_from_slice(&b[..16]);
+                b.advance(ip.len());
+
+                let ip = Ipv6Addr::from(ip);
+                let port = b.get_u16();
+                Some(Address::IP(SocketAddr::new(IpAddr::V6(ip), port)))
+            }
+            Self::WithDomainName {
+                address_and_payload,
+                address_len,
+            } => {
+                let (name, mut port) = address_and_payload.as_ref().split_at(*address_len - 2);
+                let name = std::str::from_utf8(name).ok()?;
+                Some(Address::Name {
+                    host: Cow::Borrowed(name),
+                    port: port.get_u16(),
+                })
+            }
+        }
+    }
+
+    pub fn payload(&self) -> &[u8] {
+        match self {
+            Packet::PayloadOnly(buf) => buf.as_ref(),
+            Packet::WithIpv4Addr(buf) => &buf.as_ref()[6..],
+            Packet::WithIpv6Addr(buf) => &buf.as_ref()[18..],
+            Packet::WithDomainName {
+                address_and_payload,
+                address_len,
+            } => &address_and_payload.as_ref()[*address_len..],
         }
     }
 }
 
-async fn copy_udp_to_stream(
-    socket: &UdpSocket,
-    mut dst: impl AsyncWrite + Unpin + Send + Sync,
+pub async fn write_packet_async(
+    out: &mut (impl AsyncWrite + Unpin + Send + Sync),
+    addr: Option<&Address<'_>>,
+    payload: &[u8],
 ) -> anyhow::Result<()> {
-    let mut buf = vec![0u8; 65536];
+    let payload_len: u16 = payload
+        .len()
+        .try_into()
+        .context("Converting payload len to u16 int")?;
+    match addr {
+        None => {
+            out.write_all(&[1]).await?;
+            out.write_all(&payload_len.to_be_bytes()).await?;
+        }
+        Some(Address::IP(SocketAddr::V4(addr))) => {
+            out.write_all(&[2]).await?;
+            out.write_all(&payload_len.to_be_bytes()).await?;
+            out.write_all(addr.ip().octets().as_ref()).await?;
+            out.write_all(&addr.port().to_be_bytes()).await?;
+        }
+        Some(Address::IP(SocketAddr::V6(addr))) => {
+            out.write_all(&[3]).await?;
+            out.write_all(&payload_len.to_be_bytes()).await?;
+            out.write_all(addr.ip().octets().as_ref()).await?;
+            out.write_all(&addr.port().to_be_bytes()).await?;
+        }
+        Some(Address::Name { host, port }) => {
+            out.write_all(&[4]).await?;
+            out.write_all(&payload_len.to_be_bytes()).await?;
+            let host = host.as_bytes();
+            let domain_name_len: u16 = host
+                .len()
+                .try_into()
+                .context("Converting name len to u16 int")?;
+            out.write_all(&domain_name_len.to_be_bytes()).await?;
+            out.write_all(host).await?;
+            out.write_all(&port.to_be_bytes()).await?;
+        }
+    }
 
-    loop {
-        let (n, addr) = match socket
-            .recv_from(buf.as_mut_slice())
-            .timeout(Duration::from_secs(120))
-            .await
-        {
-            Some(Ok(v)) => v,
-            None => return Err(anyhow!("UDP socket's idle timeout")),
-            Some(Err(e)) => return Err(e.into()),
-        };
+    out.write_all(payload).await?;
+    Ok(())
+}
 
-        let buf = &buf.as_slice()[..n];
-        UdpPacket::write_tcp(&mut dst, &Address::IP(addr), buf).await?;
+impl Packet<MutBuf> {
+    pub async fn read_async(
+        input: &mut (impl AsyncRead + Unpin + Send + Sync),
+    ) -> anyhow::Result<Self> {
+        let mut hdrs = [0u8; 3];
+        input.read_exact(&mut hdrs).await.context("Read headers")?;
+
+        let mut hdrs = hdrs.as_ref();
+        let payload_type = hdrs.get_u8();
+        let payload_len = hdrs.get_u16() as usize;
+
+        match payload_type {
+            1 => {
+                let mut buf = MutBuf::new_with_len(payload_len, payload_len);
+                input
+                    .read_exact(&mut buf)
+                    .await
+                    .context("Reading payload")?;
+                Ok(Self::PayloadOnly(buf))
+            }
+
+            2 => {
+                let mut buf = MutBuf::new_with_len(payload_len + 6, payload_len + 6);
+                input
+                    .read_exact(&mut buf)
+                    .await
+                    .context("Reading payload")?;
+                Ok(Self::WithIpv4Addr(buf))
+            }
+
+            3 => {
+                let mut buf = MutBuf::new_with_len(payload_len + 18, payload_len + 18);
+                input
+                    .read_exact(&mut buf)
+                    .await
+                    .context("Reading payload")?;
+                Ok(Self::WithIpv6Addr(buf))
+            }
+
+            4 => {
+                let mut host_name_len = [0u8; 2];
+                input
+                    .read_exact(&mut host_name_len)
+                    .await
+                    .context("Reading host_name_len")?;
+
+                let host_name_len = u16::from_be_bytes(host_name_len) as usize;
+                let read_len = payload_len + host_name_len + 2;
+                let mut buf = MutBuf::new_with_len(read_len, read_len);
+                input
+                    .read_exact(&mut buf)
+                    .await
+                    .context("Reading payload")?;
+                Ok(Self::WithDomainName {
+                    address_and_payload: buf,
+                    address_len: host_name_len + 2,
+                })
+            }
+            v => bail!("Invalid payload type: {v}"),
+        }
     }
 }
 
-pub async fn serve_udp_proxy(
-    mut src: impl AsyncRead + AsyncWrite + Unpin + Send + Sync + 'static,
-    is_v4: bool,
-) -> anyhow::Result<()> {
-    log::info!("Proxying UDP upstream");
-    let socket = match UdpSocket::bind(is_v4).await {
-        Ok(v) => {
-            write_bincode_lengthed_async(
-                &mut src,
-                &ProxyResult::Granted {
-                    bound_address: Some(v.local_addr()?),
-                    solved_addresses: None,
-                },
-            )
-            .await?;
-            Arc::new(v)
+pub fn stream_packet<S: AsyncRead + Unpin + Send + Sync + 'static>(
+    mut stream: S,
+) -> impl Stream<Item = Packet<MutBuf>> + Unpin + Send + Sync {
+    new_stream_task(|tx| async move {
+        loop {
+            let pkt = Packet::read_async(&mut stream).await?;
+            tx.send(pkt).await?;
         }
-        Err(e) => {
-            write_bincode_lengthed_async(&mut src, &ProxyResult::ErrGeneric { msg: e.to_string() })
-                .await?;
-            return Err(e.into());
-        }
-    };
+    })
+}
 
-    let (r, w) = split(src);
+#[cfg(test)]
+mod tests {
+    use smol::block_on;
 
-    let task1 = {
-        let socket = socket.clone();
-        spawn(async move {
-            if let Err(e) = copy_stream_to_udp(r, &socket).await {
-                log::error!("Error serving UDP upstream: {e}")
+    use super::*;
+
+    #[test]
+    fn encoding_works() {
+        block_on(async move {
+            let payload = b"hello, world";
+
+            let addresses = ["www.google.com:3567", "1.2.3.4:80", "[::1]:80"];
+
+            for address in addresses {
+                let mut buf = vec![0u8; 0];
+
+                let addr: Address = address.parse().unwrap();
+                write_packet_async(&mut buf, Some(&addr), payload)
+                    .await
+                    .expect("To write to buffer");
+
+                let mut input = buf.as_slice();
+                let pkt = Packet::read_async(&mut input).await.unwrap();
+                assert_eq!(pkt.addr(), Some(addr));
+                assert_eq!(pkt.payload(), payload);
+                assert_eq!(input.len(), 0);
             }
-            log::info!("Finished serving UDP upstream");
-            Ok(())
-        })
-    };
-
-    let task2 = {
-        let socket = socket.clone();
-        spawn(async move {
-            if let Err(e) = copy_udp_to_stream(&socket, w).await {
-                log::error!("Error serving UDP downstream: {e}")
-            }
-            log::info!("Finished serving UDP upstream");
-            Ok(())
-        })
-    };
-
-    race(task1, task2).await
+        });
+    }
 }

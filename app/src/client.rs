@@ -256,16 +256,19 @@ async fn serve_proxy_client(
             }
         }
 
-        ProxyRequest::UDP => match udp_relay::Relay::new(config, stats).await {
-            Ok((r, a)) => {
-                handshaker.respond_ok(&mut socks, Some(a)).await?;
-                race(r.run(), drain_socks(socks)).await
-            }
-            Err(e) => {
-                handshaker.respond_err(&mut socks).await?;
-                Err(e.into())
-            }
-        },
+        ProxyRequest::UDP => {
+            // match udp_relay::Relay::new(config, stats).await {
+            //     Ok((r, a)) => {
+            //         handshaker.respond_ok(&mut socks, Some(a)).await?;
+            //         race(r.run(), drain_socks(socks)).await
+            //     }
+            //     Err(e) => {
+            //         handshaker.respond_err(&mut socks).await?;
+            //         Err(e.into())
+            //     }
+            // }
+            todo!()
+        }
         ProxyRequest::DNS { .. } => {
             handshaker.respond_err(&mut socks).await?;
             bail!("Unsupported DNS request")

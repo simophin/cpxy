@@ -44,6 +44,7 @@ num-traits = "0"
 either = "1"
 libc = "0"
 uuid = { version = "0", features = ["v4"] }
+derive_more = "0"
 
 
 [dev-dependencies]

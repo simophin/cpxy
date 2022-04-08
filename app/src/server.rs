@@ -5,7 +5,6 @@ use crate::io::{TcpListener, TcpStream};
 use crate::proxy::dns::resolve_domains;
 use crate::proxy::protocol::ProxyRequest;
 use crate::proxy::tcp::{serve_http_proxy, serve_tcp_proxy};
-use crate::proxy::udp::serve_udp_proxy;
 use crate::utils::read_bincode_lengthed_async;
 
 pub async fn serve_client(
@@ -18,7 +17,9 @@ pub async fn serve_client(
     match req {
         ProxyRequest::TCP { dst } => serve_tcp_proxy(&dst, stream).await,
         ProxyRequest::HTTP { dst, https, req } => serve_http_proxy(https, &dst, req, stream).await,
-        ProxyRequest::UDP => serve_udp_proxy(stream, true).await,
+        ProxyRequest::UDP => {
+            todo!()
+        }
         ProxyRequest::DNS { domains } => resolve_domains(domains, stream).await,
     }
 }

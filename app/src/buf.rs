@@ -49,6 +49,12 @@ impl Drop for Buf {
     }
 }
 
+impl AsRef<[u8]> for Buf {
+    fn as_ref(&self) -> &[u8] {
+        self.0.as_slice()
+    }
+}
+
 impl Deref for Buf {
     type Target = [u8];
 

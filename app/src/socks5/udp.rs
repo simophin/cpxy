@@ -1,163 +1,107 @@
 use super::Address;
-use crate::parse::ParseError;
-use byteorder::{BigEndian, WriteBytesExt};
-use bytes::Buf;
-use futures_lite::{AsyncWrite, AsyncWriteExt};
+use anyhow::{bail, Context};
+use byteorder::{BigEndian, ReadBytesExt, WriteBytesExt};
 use std::{borrow::Cow, io::Write};
 
-#[derive(Debug, Clone, Eq, PartialEq)]
-pub struct UdpPacket<'a> {
-    pub frag_no: u8,
-    pub addr: Address<'a>,
-    pub data: Cow<'a, [u8]>,
+pub struct UdpPacket<T> {
+    buf: T,
+    data_offset: usize,
 }
 
-impl<'a> UdpPacket<'a> {
-    pub fn parse_tcp<'buf>(mut b: &'buf [u8]) -> Result<Option<(usize, UdpPacket<'a>)>, ParseError>
-    where
-        'buf: 'a,
-    {
-        let mut total_offset = 0;
-        let addr = match Address::parse(b) {
-            Ok(Some((offset, v))) => {
-                b.advance(offset);
-                total_offset += offset;
-                v
-            }
-            Ok(None) => return Ok(None),
-            Err(e) => return Err(e),
-        };
-
-        if b.remaining() < 2 {
-            return Ok(None);
-        }
-        total_offset += 2;
-
-        let data_len = b.get_u16() as usize;
-        total_offset += data_len;
-        if b.remaining() < data_len {
-            return Ok(None);
-        }
-
-        let data = Cow::Borrowed(&b[..data_len]);
-        Ok(Some((
-            total_offset,
-            Self {
-                frag_no: 0,
-                addr,
-                data,
-            },
-        )))
+impl<T> UdpPacket<T> {
+    pub fn into_inner(self) -> T {
+        self.buf
     }
 
-    pub fn write_tcp_headers(
-        w: &mut impl Write,
-        addr: &Address<'_>,
-        data_len: usize,
-    ) -> anyhow::Result<()> {
-        let data_len: u16 = data_len.try_into()?;
-
-        addr.write_to(w)?;
-        w.write_u16::<BigEndian>(data_len)?;
-        Ok(())
+    pub fn inner(&self) -> &T {
+        &self.buf
     }
+}
 
-    pub async fn write_tcp(
-        w: &mut (impl AsyncWrite + Unpin + Send + Sync + ?Sized),
-        addr: &Address<'_>,
-        data: &[u8],
-    ) -> anyhow::Result<()> {
-        let data_len: u16 = data.len().try_into()?;
+impl<T: AsRef<[u8]>> UdpPacket<T> {
+    pub fn new_checked(buf: T) -> anyhow::Result<Self> {
+        let mut b = buf.as_ref();
+        let mut offset = 0;
 
-        addr.write(w).await?;
-        w.write_all(data_len.to_be_bytes().as_slice()).await?;
-        w.write_all(data).await?;
-        Ok(())
-    }
-
-    pub fn parse_udp<'buf>(mut b: &'buf [u8]) -> Result<UdpPacket<'a>, ParseError>
-    where
-        'buf: 'a,
-    {
-        if b.remaining() < 3 {
-            return Err(ParseError::unexpected(
-                "UDP packet length",
-                b.remaining(),
-                ">=3",
-            ));
+        if b.read_u16::<BigEndian>().context("Reading RSV")? != 0 {
+            bail!("RSV is not 0");
         }
 
-        match b.get_u16() {
-            0 => {}
-            v => return Err(ParseError::unexpected("UDP RSV", v, "0x0000")),
-        };
+        offset += 2;
+        let _ = b.read_u8().context("Reading frag_no")?;
+        offset += 1;
 
-        let frag_no = b.get_u8();
-
-        let addr = match Address::parse(b)? {
-            None => return Err(ParseError::unexpected("UDP address", "", "valid address")),
-            Some((offset, v)) => {
-                b.advance(offset);
-                v
-            }
-        };
-
+        offset += Address::parse(b)
+            .context("Parsing address")?
+            .context("Parsing address")?
+            .0;
         Ok(Self {
-            addr,
-            frag_no,
-            data: Cow::Borrowed(b),
+            buf,
+            data_offset: offset,
         })
     }
 
-    pub fn write_udp_sync(&self, b: &mut impl Write) -> anyhow::Result<()> {
-        b.write_all(&[0, 0, self.frag_no])?;
-        self.addr.write_to(b)?;
-        b.write_all(self.data.as_ref())?;
+    pub fn frag_no(&self) -> u8 {
+        self.buf.as_ref()[2]
+    }
+
+    pub fn addr<'a>(&'a self) -> Address<'a> {
+        Address::parse(&self.buf.as_ref()[3..self.data_offset])
+            .unwrap()
+            .unwrap()
+            .1
+    }
+
+    pub fn payload(&self) -> &[u8] {
+        &self.buf.as_ref()[self.data_offset..]
+    }
+}
+
+pub struct UdpRepr<'a> {
+    pub addr: Address<'a>,
+    pub payload: Cow<'a, [u8]>,
+    pub frag_no: u8,
+}
+
+impl<'a> UdpRepr<'a> {
+    pub fn header_write_len(&self) -> usize {
+        3 + self.addr.write_len()
+    }
+
+    pub fn write_len(&self) -> usize {
+        self.header_write_len() + self.payload.len()
+    }
+
+    pub fn write_to(&self, out: &mut impl Write) -> anyhow::Result<()> {
+        out.write_u16::<BigEndian>(0)?;
+        out.write_u8(self.frag_no)?;
+        self.addr.write_to(out)?;
+        out.write_all(self.payload.as_ref())?;
         Ok(())
-    }
-
-    pub fn write_udp_headers(addr: &Address<'_>, b: &mut impl Write) -> anyhow::Result<()> {
-        b.write_all(&[0, 0, 0])?;
-        addr.write_to(b)
-    }
-
-    pub fn udp_header_len<'b>(addr: &Address<'_>) -> usize {
-        3 + addr.write_len()
     }
 }
 
 #[cfg(test)]
-mod test {
+mod tests {
     use super::*;
-    use bytes::BufMut;
-    use smol::block_on;
 
     #[test]
     fn encoding_works() {
-        block_on(async move {
-            let mut buf = Vec::new();
+        let payload = Cow::Borrowed(b"hello, world".as_ref());
+        let addr: Address = "localhost:9090".try_into().unwrap();
 
-            let pkt = UdpPacket {
-                frag_no: 0,
-                addr: "localhost:123".parse().unwrap(),
-                data: Cow::Borrowed(b"hello, world"),
-            };
+        let mut buf = vec![0u8; 0];
+        UdpRepr {
+            addr: addr.clone(),
+            payload: payload.clone(),
+            frag_no: 1,
+        }
+        .write_to(&mut buf)
+        .expect("To write");
 
-            pkt.write_udp_sync(&mut buf).unwrap();
-
-            assert_eq!(pkt, UdpPacket::parse_udp(buf.as_slice()).unwrap());
-
-            buf.clear();
-            UdpPacket::write_tcp(&mut buf, &pkt.addr, pkt.data.as_ref())
-                .await
-                .unwrap();
-            buf.put_slice(b"remaining");
-
-            let (offset, parsed) = UdpPacket::parse_tcp(buf.as_slice()).unwrap().unwrap();
-            assert_eq!(pkt, parsed);
-            drop(parsed);
-
-            assert_eq!(b"remaining", &buf.as_slice()[offset..]);
-        });
+        let pkt = UdpPacket::new_checked(buf).expect("To have a packet");
+        assert_eq!(pkt.addr(), addr);
+        assert_eq!(pkt.frag_no(), 1);
+        assert_eq!(pkt.payload(), payload.as_ref());
     }
 }
