@@ -1,16 +1,12 @@
 use std::{
     borrow::Cow,
-    collections::HashMap,
     net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr},
-    sync::Arc,
 };
 
-use crate::{buf::Buf as MutBuf, io::UdpSocket, utils::new_stream_task};
+use crate::{buf::Buf as MutBuf, utils::new_stream_task};
 use anyhow::{bail, Context};
 use bytes::Buf;
-use futures_lite::{
-    io::split, AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt, Stream, StreamExt,
-};
+use futures_lite::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt, Stream};
 
 use crate::socks5::Address;
 

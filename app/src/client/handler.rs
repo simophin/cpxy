@@ -1,95 +1,24 @@
-use anyhow::{anyhow, bail, Context};
-use futures_util::{select, FutureExt};
-use smol_timeout::TimeoutExt;
-use std::collections::HashMap;
-use std::net::SocketAddr;
 use std::sync::Arc;
-use std::time::{Duration, UNIX_EPOCH};
 
-use crate::buf::RWBuffer;
-use crate::config::*;
-use crate::counter::Counter;
-use crate::fetch::send_http;
-use crate::handshake::Handshaker;
-use crate::io::{TcpListener, TcpStream};
-use crate::proxy::protocol::{ProxyRequest, ProxyResult};
-use crate::proxy::request_proxy_upstream;
-use crate::socks5::Address;
-use crate::stream::AsyncReadWrite;
-use crate::udp_relay;
-use crate::utils::copy_duplex;
-use futures_lite::future::race;
+use anyhow::{bail, Context};
 use futures_lite::{AsyncRead, AsyncReadExt, AsyncWrite, Stream, StreamExt};
-use serde::{Deserialize, Serialize};
-use smol::{spawn, Executor, Task};
+use smol::{spawn, Task};
 
-#[derive(Default, Serialize, Deserialize, Debug, Clone)]
-pub struct UpstreamStatistics {
-    pub tx: Arc<Counter>,
-    pub rx: Arc<Counter>,
-    pub last_activity: Arc<Counter>,
-    pub last_latency: Arc<Counter>,
-}
+use crate::{
+    buf::RWBuffer,
+    config::ClientConfig,
+    fetch::send_http,
+    handshake::Handshaker,
+    io::{TcpListener, TcpStream},
+    proxy::{
+        protocol::{ProxyRequest, ProxyResult},
+        request_proxy_upstream,
+    },
+    socks5::Address,
+    utils::copy_duplex,
+};
 
-#[derive(Default, Serialize, Deserialize, Debug, Clone)]
-pub struct ClientStatistics {
-    pub upstreams: HashMap<String, UpstreamStatistics>,
-}
-
-impl ClientStatistics {
-    pub fn new(c: &ClientConfig) -> Self {
-        Self {
-            upstreams: c
-                .upstreams
-                .iter()
-                .map(|(n, _)| (n.clone(), Default::default()))
-                .collect(),
-        }
-    }
-
-    pub fn update_upstream(&self, name: &str, latency: Duration) {
-        if let Some(stats) = self.upstreams.get(name) {
-            stats
-                .last_activity
-                .set(UNIX_EPOCH.elapsed().unwrap().as_secs() as usize);
-            stats.last_latency.set(latency.as_millis() as usize);
-        }
-    }
-}
-
-pub async fn run_tcp_client_with(
-    proxy_listener: TcpListener,
-    config: Arc<ClientConfig>,
-    stats: Arc<ClientStatistics>,
-) -> anyhow::Result<()> {
-    let executor = Executor::new();
-    loop {
-        let (sock, addr) = select! {
-            v1 = proxy_listener.accept().fuse() => v1.context("Listening for SOCKS5/SOCKS4/HTTP/TPROXY connection")?,
-            _ = executor.tick().fuse() => {
-                let mut tick_num = 10;
-                while executor.try_tick() && tick_num >= 0 {
-                    tick_num -= 1;
-                }
-                continue;
-            },
-        };
-
-        let config = config.clone();
-        let stats = stats.clone();
-        executor
-            .spawn(async move {
-                log::info!("Client {addr} connected");
-
-                if let Err(e) = serve_proxy_client(sock, config, stats).await {
-                    log::error!("Error serving client {addr}: {e:?}");
-                }
-
-                log::info!("Client {addr} disconnected");
-            })
-            .detach();
-    }
-}
+use super::ClientStatistics;
 
 pub async fn run_client(
     mut config_stream: impl Stream<Item = (Arc<ClientConfig>, Arc<ClientStatistics>)>
@@ -139,25 +68,12 @@ pub async fn run_client(
         {
             let config = config.clone();
             current_tasks.push(spawn(async move {
-                run_tcp_client_with(proxy_listener, config, stats).await
+                super::run_tcp_client_with(proxy_listener, config, stats).await
             }));
         }
 
         log::info!("Proxy server listening on {}", config.socks5_address);
     }
-}
-
-async fn prepare_direct_tcp(
-    dst: Address<'_>,
-) -> anyhow::Result<(
-    Option<SocketAddr>,
-    impl AsyncRead + AsyncWrite + Unpin + Send + Sync,
-)> {
-    let stream = TcpStream::connect(&dst)
-        .timeout(Duration::from_secs(2))
-        .await
-        .ok_or_else(|| anyhow!("Timeout connecting to {dst}"))??;
-    Ok((stream.local_addr().ok(), AsyncReadWrite::new(stream)))
 }
 
 async fn drain_socks(
@@ -168,7 +84,7 @@ async fn drain_socks(
     Ok(())
 }
 
-async fn serve_proxy_client(
+pub async fn serve_proxy_client(
     mut socks: TcpStream,
     config: Arc<ClientConfig>,
     stats: Arc<ClientStatistics>,
@@ -237,7 +153,7 @@ async fn serve_proxy_client(
                             }
                         }
                     }
-                    ProxyRequest::TCP { dst } => match prepare_direct_tcp(dst).await {
+                    ProxyRequest::TCP { dst } => match super::prepare_direct_tcp(dst).await {
                         Ok((bound_address, upstream)) => {
                             handshaker.respond_ok(&mut socks, bound_address).await?;
                             copy_duplex(upstream, socks, None, None).await
