@@ -2,20 +2,16 @@ use std::sync::Arc;
 
 use anyhow::{bail, Context};
 use futures_lite::{AsyncRead, AsyncReadExt, AsyncWrite, Stream, StreamExt};
-use smol::{spawn, Task};
+use futures_util::{select, FutureExt};
+use smol::{spawn, Executor, Task};
 
 use crate::{
     buf::RWBuffer,
     config::ClientConfig,
-    fetch::send_http,
     handshake::Handshaker,
     io::{TcpListener, TcpStream},
-    proxy::{
-        protocol::{ProxyRequest, ProxyResult},
-        request_proxy_upstream,
-    },
+    proxy::protocol::ProxyRequest,
     socks5::Address,
-    utils::copy_duplex,
 };
 
 use super::ClientStatistics;
@@ -67,9 +63,7 @@ pub async fn run_client(
 
         {
             let config = config.clone();
-            current_tasks.push(spawn(async move {
-                super::run_tcp_client_with(proxy_listener, config, stats).await
-            }));
+            current_tasks.push(spawn(run_proxy_with(proxy_listener, config, stats)));
         }
 
         log::info!("Proxy server listening on {}", config.socks5_address);
@@ -84,7 +78,41 @@ async fn drain_socks(
     Ok(())
 }
 
-pub async fn serve_proxy_client(
+async fn run_proxy_with(
+    proxy_listener: TcpListener,
+    config: Arc<ClientConfig>,
+    stats: Arc<ClientStatistics>,
+) -> anyhow::Result<()> {
+    let executor = Executor::new();
+    loop {
+        let (sock, addr) = select! {
+            v1 = proxy_listener.accept().fuse() => v1.context("Listening for SOCKS5/SOCKS4/HTTP/TPROXY connection")?,
+            _ = executor.tick().fuse() => {
+                let mut tick_num = 10;
+                while executor.try_tick() && tick_num >= 0 {
+                    tick_num -= 1;
+                }
+                continue;
+            },
+        };
+
+        let config = config.clone();
+        let stats = stats.clone();
+        executor
+            .spawn(async move {
+                log::info!("Client {addr} connected");
+
+                if let Err(e) = serve_proxy_conn(sock, config, stats).await {
+                    log::error!("Error serving client {addr}: {e:?}");
+                }
+
+                log::info!("Client {addr} disconnected");
+            })
+            .detach();
+    }
+}
+
+async fn serve_proxy_conn(
     mut socks: TcpStream,
     config: Arc<ClientConfig>,
     stats: Arc<ClientStatistics>,
@@ -97,79 +125,15 @@ pub async fn serve_proxy_client(
     log::info!("Requesting to proxy {req:?}");
 
     match &req {
-        ProxyRequest::TCP { dst } | ProxyRequest::HTTP { dst, .. } => {
-            let mut upstreams = config.find_best_upstream(stats.as_ref(), &dst);
-
-            if !upstreams.is_empty() {
-                let mut last_error = None;
-                while let Some((name, config)) = upstreams.pop() {
-                    log::info!("Trying upstream {name} for {dst}");
-                    match request_proxy_upstream(&config, &req).await {
-                        Ok((ProxyResult::Granted { bound_address, .. }, upstream, latency)) => {
-                            log::debug!("Upstream granted with address = {bound_address:?}, latency = {latency:?}");
-                            handshaker.respond_ok(&mut socks, bound_address).await?;
-                            stats.update_upstream(name, latency);
-                            let (upstream_tx_bytes, upstream_rx_bytes) =
-                                match stats.upstreams.get(name) {
-                                    Some(stats) => (Some(stats.tx.clone()), Some(stats.rx.clone())),
-                                    None => (None, None),
-                                };
-                            return copy_duplex(
-                                upstream,
-                                socks,
-                                upstream_rx_bytes,
-                                upstream_tx_bytes,
-                            )
-                            .await
-                            .context("Redirecting upstream traffic");
-                        }
-                        Ok((result, _, _)) => {
-                            log::debug!("Upstream deined with result = {result:?}");
-                            handshaker.respond_err(&mut socks).await?;
-                            return Err(result.into());
-                        }
-                        Err(e) => {
-                            log::debug!("Upstream error: {e}");
-                            last_error = Some(e);
-                        }
-                    };
-                }
-
-                log::info!("No usable upstreams for {dst}, last_error = {last_error:?}");
-                handshaker.respond_err(&mut socks).await?;
-                Err(last_error.unwrap())
-            } else if config.allow_direct(dst) {
-                log::info!("Connecting directly to {dst}");
-                match req {
-                    ProxyRequest::HTTP { dst, https, req } => {
-                        match send_http(https, &dst, req).await {
-                            Ok(upstream) => {
-                                handshaker.respond_ok(&mut socks, None).await?;
-                                copy_duplex(upstream, socks, None, None).await
-                            }
-                            Err(e) => {
-                                handshaker.respond_err(&mut socks).await?;
-                                Err(e.into())
-                            }
-                        }
-                    }
-                    ProxyRequest::TCP { dst } => match super::prepare_direct_tcp(dst).await {
-                        Ok((bound_address, upstream)) => {
-                            handshaker.respond_ok(&mut socks, bound_address).await?;
-                            copy_duplex(upstream, socks, None, None).await
-                        }
-                        Err(e) => {
-                            handshaker.respond_err(&mut socks).await?;
-                            Err(e.into())
-                        }
-                    },
-                    _ => bail!("Unknown proxy request {req:?}"),
-                }
-            } else {
-                log::info!("Blocking connection to {dst}");
-                handshaker.respond_err(&mut socks).await?;
-                Ok(())
-            }
+        ProxyRequest::TCP { .. } | ProxyRequest::HTTP { .. } => {
+            super::tcp::serve_tcp_proxy_conn(
+                req,
+                config.as_ref(),
+                stats.as_ref(),
+                socks,
+                handshaker,
+            )
+            .await
         }
 
         ProxyRequest::UDP => {

@@ -1,6 +1,5 @@
 use anyhow::{anyhow, Context};
 use bytes::{Buf, BufMut};
-use derive_more::Deref;
 use futures_lite::future::race;
 use futures_lite::io::{copy, split};
 use futures_lite::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt, Future, Stream};
@@ -40,6 +39,7 @@ pub async fn copy_duplex(
 ) -> anyhow::Result<()> {
     let (d1r, d1w) = split(d1);
     let (d2r, d2w) = split(d2);
+
     let task1 = spawn(async move {
         if let Some(count) = d1d2_count {
             let _ = copy_with_stats(d1r, d2w, count.as_ref()).await?;
@@ -48,6 +48,7 @@ pub async fn copy_duplex(
         }
         anyhow::Result::<()>::Ok(())
     });
+
     let task2 = spawn(async move {
         if let Some(count) = d2d1_count {
             let _ = copy_with_stats(d2r, d1w, count.as_ref()).await?;

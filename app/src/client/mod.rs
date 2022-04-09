@@ -4,4 +4,3 @@ mod tcp;
 
 pub use handler::*;
 pub use stats::*;
-pub use tcp::*;
