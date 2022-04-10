@@ -13,7 +13,7 @@ mod udp;
 
 use crate::{
     buf::RWBuffer,
-    client::{run_tcp_client_with, ClientStatistics},
+    client::{run_proxy_with, ClientStatistics},
     config::{ClientConfig, UpstreamConfig},
     fetch::fetch_http_with_proxy,
     io::{TcpListener, TcpStream, UdpSocket},
@@ -112,7 +112,7 @@ pub async fn run_test_client(upstream_address: SocketAddr) -> (Task<()>, SocketA
                 };
                 let stats = ClientStatistics::new(&config);
 
-                run_tcp_client_with(listener, Arc::new(config), Arc::new(stats))
+                run_proxy_with(listener, Arc::new(config), Arc::new(stats))
                     .await
                     .unwrap();
             })

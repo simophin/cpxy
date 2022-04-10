@@ -5,7 +5,11 @@ use std::{
 
 use serde::{Deserialize, Serialize};
 
-use crate::{http::HttpRequest, socks5::Address};
+use crate::{
+    buf::Buf,
+    http::HttpRequest,
+    socks5::{Address, UdpPacket},
+};
 
 #[derive(Serialize, Deserialize, Debug)]
 #[serde(tag = "type")]
@@ -13,7 +17,9 @@ pub enum ProxyRequest {
     TCP {
         dst: Address<'static>,
     },
-    UDP,
+    UDP {
+        initial_data: UdpPacket<Buf>,
+    },
     DNS {
         domains: Vec<String>,
     },

@@ -1,7 +1,6 @@
 use crate::buf::RWBuffer;
 use crate::http::HttpRequest;
 use crate::parse::ParseError;
-use crate::proxy::protocol::ProxyRequest;
 use crate::socks4::{
     self, parse_socks4_request, respond_socks4, SOCKS4_REPLY_FAILED, SOCKS4_REPLY_GRANTED,
     SOCKS4_REQUEST_TCP,
@@ -55,17 +54,32 @@ enum HandshakeType {
 
 pub struct Handshaker(HandshakeType);
 
+#[derive(Debug)]
+pub enum HandshakeRequest {
+    TCP {
+        dst: Address<'static>,
+    },
+    UDP {
+        dst: Option<Address<'static>>,
+    },
+    HTTP {
+        dst: Address<'static>,
+        https: bool,
+        req: HttpRequest<'static>,
+    },
+}
+
 impl Handshaker {
     pub async fn start(
         stream: &mut (impl AsyncRead + AsyncWrite + Unpin + Send + Sync),
         transparent_addr: Option<SocketAddr>,
         buf: &mut RWBuffer,
-    ) -> anyhow::Result<(Handshaker, ProxyRequest)> {
+    ) -> anyhow::Result<(Handshaker, HandshakeRequest)> {
         if let Some(orig) = transparent_addr {
             log::info!("Redirecting transparent proxy to: {orig}");
             return Ok((
                 Handshaker(HandshakeType::Transparent),
-                ProxyRequest::TCP {
+                HandshakeRequest::TCP {
                     dst: Address::IP(orig),
                 },
             ));
@@ -154,8 +168,8 @@ impl Handshaker {
             ProxyState::Http(s) => {
                 let req = handshake_http(s)?;
                 let handshaker = Self(match &req {
-                    ProxyRequest::TCP { .. } => HandshakeType::HttpTcpChannel,
-                    ProxyRequest::HTTP { .. } => HandshakeType::Http,
+                    HandshakeRequest::TCP { .. } => HandshakeType::HttpTcpChannel,
+                    HandshakeRequest::HTTP { .. } => HandshakeType::Http,
                     _ => unreachable!("Unknown proxy request type for http proxy"),
                 });
                 Ok((handshaker, req))
@@ -236,18 +250,18 @@ impl Handshaker {
 
 fn handshake_socks4(
     socks4::Request { addr, cmd }: socks4::Request<'static>,
-) -> anyhow::Result<ProxyRequest> {
+) -> anyhow::Result<HandshakeRequest> {
     if cmd != SOCKS4_REQUEST_TCP {
         bail!("Unsupported socks4 request: {cmd}");
     }
 
-    Ok(ProxyRequest::TCP { dst: addr })
+    Ok(HandshakeRequest::TCP { dst: addr })
 }
 
-fn handshake_http(r: HttpRequest<'static>) -> anyhow::Result<ProxyRequest> {
+fn handshake_http(r: HttpRequest<'static>) -> anyhow::Result<HandshakeRequest> {
     match r {
         HttpRequest { path, method, .. } if method.eq_ignore_ascii_case("connect") => {
-            Ok(ProxyRequest::TCP { dst: path.parse()? })
+            Ok(HandshakeRequest::TCP { dst: path.parse()? })
         }
         HttpRequest {
             path,
@@ -259,7 +273,7 @@ fn handshake_http(r: HttpRequest<'static>) -> anyhow::Result<ProxyRequest> {
                 address,
                 path,
             } = HttpUrl::try_from(path.as_ref()).context("Parsing HTTP request path")?;
-            Ok(ProxyRequest::HTTP {
+            Ok(HandshakeRequest::HTTP {
                 dst: address.into_owned(),
                 https: is_https,
                 req: HttpRequest {
@@ -276,7 +290,7 @@ async fn handshake_socks5(
     socket: &mut (impl AsyncRead + AsyncWrite + Send + Sync + Unpin),
     buf: &mut RWBuffer,
     state: SocksState,
-) -> anyhow::Result<ProxyRequest> {
+) -> anyhow::Result<HandshakeRequest> {
     if !state.auths.contains(&AUTH_NO_PASSWORD) {
         ClientGreeting::respond(AUTH_NOT_ACCEPTED, socket).await?;
         return Err(anyhow!("Invalid socks auth method"));
@@ -291,11 +305,16 @@ async fn handshake_socks5(
                 Command::CONNECT_TCP => {
                     let dst = address.into_owned();
                     buf.advance_read(offset);
-                    return Ok(ProxyRequest::TCP { dst });
+                    return Ok(HandshakeRequest::TCP { dst });
                 }
                 Command::BIND_UDP => {
+                    let dst = if address.is_unspecified() {
+                        None
+                    } else {
+                        Some(address.into_owned())
+                    };
                     buf.advance_read(offset);
-                    return Ok(ProxyRequest::UDP);
+                    return Ok(HandshakeRequest::UDP { dst });
                 }
                 _ => {
                     ClientConnRequest::respond(

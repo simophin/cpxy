@@ -1,20 +1,22 @@
 use std::sync::Arc;
 
-use anyhow::{bail, Context};
-use futures_lite::{AsyncRead, AsyncReadExt, AsyncWrite, Stream, StreamExt};
+use anyhow::Context;
+use futures_lite::{Stream, StreamExt};
 use futures_util::{select, FutureExt};
 use smol::{spawn, Executor, Task};
 
 use crate::{
     buf::RWBuffer,
     config::ClientConfig,
-    handshake::Handshaker,
+    handshake::{HandshakeRequest as HR, Handshaker},
     io::{TcpListener, TcpStream},
-    proxy::protocol::ProxyRequest,
     socks5::Address,
 };
 
-use super::ClientStatistics;
+use super::{
+    http::serve_http_proxy_conn, tcp::serve_tcp_proxy_conn, udp::serve_udp_proxy_conn,
+    ClientStatistics,
+};
 
 pub async fn run_client(
     mut config_stream: impl Stream<Item = (Arc<ClientConfig>, Arc<ClientStatistics>)>
@@ -70,15 +72,7 @@ pub async fn run_client(
     }
 }
 
-async fn drain_socks(
-    mut socks: impl AsyncRead + AsyncWrite + Unpin + Send + Sync,
-) -> anyhow::Result<()> {
-    let mut buf = vec![0u8; 24];
-    while socks.read(buf.as_mut_slice()).await? > 0 {}
-    Ok(())
-}
-
-async fn run_proxy_with(
+pub async fn run_proxy_with(
     proxy_listener: TcpListener,
     config: Arc<ClientConfig>,
     stats: Arc<ClientStatistics>,
@@ -119,39 +113,17 @@ async fn serve_proxy_conn(
 ) -> anyhow::Result<()> {
     let mut buf = RWBuffer::new(128, 65536);
     let transparent_addr = socks.get_original_dst();
-    let (handshaker, req) = Handshaker::start(&mut socks, transparent_addr, &mut buf)
+    let (hs, req) = Handshaker::start(&mut socks, transparent_addr, &mut buf)
         .await
         .context("Handshaking")?;
     log::info!("Requesting to proxy {req:?}");
 
-    match &req {
-        ProxyRequest::TCP { .. } | ProxyRequest::HTTP { .. } => {
-            super::tcp::serve_tcp_proxy_conn(
-                req,
-                config.as_ref(),
-                stats.as_ref(),
-                socks,
-                handshaker,
-            )
-            .await
+    match req {
+        HR::TCP { dst } => serve_tcp_proxy_conn(dst, &config, &stats, socks, hs).await,
+        HR::HTTP { dst, https, req } => {
+            serve_http_proxy_conn(dst, https, req, &config, &stats, socks, hs).await
         }
 
-        ProxyRequest::UDP => {
-            // match udp_relay::Relay::new(config, stats).await {
-            //     Ok((r, a)) => {
-            //         handshaker.respond_ok(&mut socks, Some(a)).await?;
-            //         race(r.run(), drain_socks(socks)).await
-            //     }
-            //     Err(e) => {
-            //         handshaker.respond_err(&mut socks).await?;
-            //         Err(e.into())
-            //     }
-            // }
-            todo!()
-        }
-        ProxyRequest::DNS { .. } => {
-            handshaker.respond_err(&mut socks).await?;
-            bail!("Unsupported DNS request")
-        }
+        HR::UDP { dst } => serve_udp_proxy_conn(&config, &stats, socks.is_v4(), socks, hs).await,
     }
 }

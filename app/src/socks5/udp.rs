@@ -1,7 +1,10 @@
+use crate::buf::Buf;
+
 use super::Address;
 use anyhow::{bail, Context};
 use byteorder::{BigEndian, ReadBytesExt, WriteBytesExt};
-use std::{borrow::Cow, io::Write};
+use serde::{Deserialize, Serialize};
+use std::io::Write;
 
 pub struct UdpPacket<T> {
     buf: T,
@@ -15,6 +18,26 @@ impl<T> UdpPacket<T> {
 
     pub fn inner(&self) -> &T {
         &self.buf
+    }
+}
+
+impl<T: AsRef<[u8]>> Serialize for UdpPacket<T> {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        self.buf.as_ref().serialize(serializer)
+    }
+}
+
+impl<'de> Deserialize<'de> for UdpPacket<Buf> {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        let buf = <Vec<u8> as Deserialize>::deserialize(deserializer)?;
+        UdpPacket::new_checked(Buf::new_with_vec(buf))
+            .map_err(|e| serde::de::Error::custom(format!("{e:?}")))
     }
 }
 
@@ -57,32 +80,37 @@ impl<T: AsRef<[u8]>> UdpPacket<T> {
     }
 }
 
-pub struct UdpRepr<'a> {
+pub struct UdpRepr<'a, T> {
     pub addr: Address<'a>,
-    pub payload: Cow<'a, [u8]>,
+    pub payload: T,
     pub frag_no: u8,
 }
 
-impl<'a> UdpRepr<'a> {
+impl<'a, T: AsRef<[u8]>> UdpRepr<'a, T> {
     pub fn header_write_len(&self) -> usize {
         3 + self.addr.write_len()
     }
 
     pub fn write_len(&self) -> usize {
-        self.header_write_len() + self.payload.len()
+        self.header_write_len() + self.payload.as_ref().len()
     }
 
-    pub fn write_to(&self, out: &mut impl Write) -> anyhow::Result<()> {
+    pub fn to_packet(&self) -> anyhow::Result<UdpPacket<Buf>> {
+        let out_len = self.write_len();
+        let mut out = Buf::new_with_len(out_len, out_len);
+        out.set_len(0);
         out.write_u16::<BigEndian>(0)?;
         out.write_u8(self.frag_no)?;
-        self.addr.write_to(out)?;
+        self.addr.write_to(&mut out)?;
         out.write_all(self.payload.as_ref())?;
-        Ok(())
+        UdpPacket::new_checked(out)
     }
 }
 
 #[cfg(test)]
 mod tests {
+    use std::borrow::Cow;
+
     use super::*;
 
     #[test]
@@ -90,16 +118,14 @@ mod tests {
         let payload = Cow::Borrowed(b"hello, world".as_ref());
         let addr: Address = "localhost:9090".try_into().unwrap();
 
-        let mut buf = vec![0u8; 0];
-        UdpRepr {
+        let pkt = UdpRepr {
             addr: addr.clone(),
             payload: payload.clone(),
             frag_no: 1,
         }
-        .write_to(&mut buf)
+        .to_packet()
         .expect("To write");
 
-        let pkt = UdpPacket::new_checked(buf).expect("To have a packet");
         assert_eq!(pkt.addr(), addr);
         assert_eq!(pkt.frag_no(), 1);
         assert_eq!(pkt.payload(), payload.as_ref());

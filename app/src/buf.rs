@@ -12,6 +12,10 @@ use lazy_static::lazy_static;
 pub struct Buf(Vec<u8>);
 
 impl Buf {
+    pub fn new_with_vec(u: Vec<u8>) -> Self {
+        Buf(u)
+    }
+
     pub fn new(min_capacity: usize) -> Self {
         Buf(Vec::from(new_buf(min_capacity)))
     }
