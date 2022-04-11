@@ -1,4 +1,4 @@
-use futures_lite::{AsyncRead, AsyncWrite};
+use futures_lite::{AsyncRead, AsyncWrite, Stream};
 
 use crate::socks5::Address;
 use std::io::{IoSlice, IoSliceMut};

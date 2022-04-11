@@ -2,6 +2,7 @@ use std::{net::SocketAddr, time::Duration};
 
 use anyhow::{anyhow, bail, Context};
 use futures_lite::{AsyncRead, AsyncWrite};
+use smol::Executor;
 use smol_timeout::TimeoutExt;
 
 use crate::{
@@ -15,7 +16,7 @@ pub async fn serve_tcp_proxy_conn(
     dst: Address<'static>,
     config: &ClientConfig,
     stats: &ClientStatistics,
-    mut stream: impl AsyncRead + AsyncWrite + Unpin + Send + Sync + 'static,
+    mut stream: impl AsyncRead + AsyncWrite + Unpin + Send + Sync,
     handshaker: Handshaker,
 ) -> anyhow::Result<()> {
     let proxy_request = ProxyRequest::TCP { dst: dst.clone() };

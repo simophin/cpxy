@@ -4,11 +4,17 @@ use super::Address;
 use anyhow::{bail, Context};
 use byteorder::{BigEndian, ReadBytesExt, WriteBytesExt};
 use serde::{Deserialize, Serialize};
-use std::io::Write;
+use std::{fmt::Debug, io::Write};
 
 pub struct UdpPacket<T> {
     buf: T,
     data_offset: usize,
+}
+
+impl<T: AsRef<[u8]>> Debug for UdpPacket<T> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_fmt(format_args!("UdpPacket(len={})", self.buf.as_ref().len()))
+    }
 }
 
 impl<T> UdpPacket<T> {

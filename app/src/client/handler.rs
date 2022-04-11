@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
 use anyhow::Context;
-use futures_lite::{Stream, StreamExt};
+use futures_lite::{Future, Stream, StreamExt};
 use futures_util::{select, FutureExt};
 use smol::{spawn, Executor, Task};
 
@@ -81,11 +81,7 @@ pub async fn run_proxy_with(
     loop {
         let (sock, addr) = select! {
             v1 = proxy_listener.accept().fuse() => v1.context("Listening for SOCKS5/SOCKS4/HTTP/TPROXY connection")?,
-            _ = executor.tick().fuse() => {
-                let mut tick_num = 10;
-                while executor.try_tick() && tick_num >= 0 {
-                    tick_num -= 1;
-                }
+            _ = executor.run(std::future::pending::<()>()).fuse() => {
                 continue;
             },
         };
@@ -93,15 +89,7 @@ pub async fn run_proxy_with(
         let config = config.clone();
         let stats = stats.clone();
         executor
-            .spawn(async move {
-                log::info!("Client {addr} connected");
-
-                if let Err(e) = serve_proxy_conn(sock, config, stats).await {
-                    log::error!("Error serving client {addr}: {e:?}");
-                }
-
-                log::info!("Client {addr} disconnected");
-            })
+            .spawn(serve_proxy_conn(sock, config, stats))
             .detach();
     }
 }

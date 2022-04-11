@@ -5,7 +5,7 @@ use futures_lite::io::{copy, split};
 use futures_lite::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt, Future, Stream};
 use serde::{de::DeserializeOwned, Serialize};
 use smol::channel::{bounded, Sender};
-use smol::{spawn, Task};
+use smol::{spawn, Executor, Task};
 use std::pin::Pin;
 use std::sync::Arc;
 use std::task::Poll;
@@ -32,31 +32,31 @@ async fn copy_with_stats(
 }
 
 pub async fn copy_duplex(
-    d1: impl AsyncRead + AsyncWrite + Unpin + Send + Sync + 'static,
-    d2: impl AsyncRead + AsyncWrite + Unpin + Send + Sync + 'static,
+    d1: impl AsyncRead + AsyncWrite + Unpin + Send + Sync,
+    d2: impl AsyncRead + AsyncWrite + Unpin + Send + Sync,
     d1d2_count: Option<Arc<Counter>>,
     d2d1_count: Option<Arc<Counter>>,
 ) -> anyhow::Result<()> {
     let (d1r, d1w) = split(d1);
     let (d2r, d2w) = split(d2);
 
-    let task1 = spawn(async move {
+    let task1 = async move {
         if let Some(count) = d1d2_count {
             let _ = copy_with_stats(d1r, d2w, count.as_ref()).await?;
         } else {
             let _ = copy(d1r, d2w).await?;
         }
         anyhow::Result::<()>::Ok(())
-    });
+    };
 
-    let task2 = spawn(async move {
+    let task2 = async move {
         if let Some(count) = d2d1_count {
             let _ = copy_with_stats(d2r, d1w, count.as_ref()).await?;
         } else {
             let _ = copy(d2r, d1w).await?;
         }
         anyhow::Result::<()>::Ok(())
-    });
+    };
 
     race(task1, task2).await
 }

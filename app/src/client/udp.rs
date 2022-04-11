@@ -14,9 +14,9 @@ use crate::{
     udp_relay::new_udp_relay,
 };
 
-use super::{utils::request_best_upstream, ClientStatistics};
+use super::{utils::request_best_upstream, ClientStatistics, UpstreamStatistics};
 
-struct UdpPacketPayloadRef
+struct UdpPacketPayloadRef;
 
 pub async fn serve_udp_proxy_conn(
     c: &ClientConfig,
@@ -38,31 +38,22 @@ pub async fn serve_udp_proxy_conn(
 
     // Wait for first packet to decide where to go
     let pkt = rx.recv().await?;
-    let addr = pkt.addr();
+    let addr = pkt.addr().into_owned();
 
-    request_best_upstream(c, stats, &addr, ProxyRequest::UDP);
-
-    let upstreams = c.find_best_upstream(stats, &addr);
-    if !upstreams.is_empty() {
-        for (name, config) in upstreams {
-            log::debug!("Trying upstream {name} for UDP://{addr}");
-            match request_proxy_upstream(config, &ProxyRequest::UDP).await {
-                Ok((ProxyResult::Granted { .. }, upstream, _)) => {
-                    return race(
-                        copy_between_relay_and_stream(tx, rx, upstream, stats),
-                        drain_socks(stream),
-                    )
-                    .await;
-                }
-                Ok((r, _, _)) => {
-                    log::warn!("Error requesting proxy: {name}: {r:?}");
-                }
-                Err(e) => {
-                    log::warn!("Error requesting proxy: {name}: {e:?}");
-                }
-            }
+    match request_best_upstream(c, stats, &addr, &ProxyRequest::UDP { initial_data: pkt }).await {
+        Ok((_, upstream, stat)) => {
+            return race(
+                copy_between_relay_and_stream(tx, rx, upstream, stat),
+                drain_socks(stream),
+            )
+            .await;
         }
-    } else if c.allow_direct(&addr) {
+        Err(e) => {
+            log::warn!("Error requesting best upstream for UDP://{addr}: {e:?}");
+        }
+    };
+
+    if c.allow_direct(&addr) {
         return serve_udp_relay_directly(tx, rx).await;
     }
 
@@ -80,7 +71,7 @@ async fn copy_between_relay_and_stream(
     tx: Sender<UdpPacket<Buf>>,
     rx: Receiver<UdpPacket<Buf>>,
     mut stream: impl AsyncRead + AsyncWrite + Unpin + Send + Sync,
-    stats: &ClientStatistics,
+    stats: Option<&UpstreamStatistics>,
 ) -> anyhow::Result<()> {
     Ok(())
 }

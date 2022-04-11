@@ -8,7 +8,7 @@ use smol_timeout::TimeoutExt;
 use crate::{
     buf::RWBuffer,
     fetch::send_http,
-    handshake::Handshaker,
+    handshake::{HandshakeRequest, Handshaker},
     io::TcpStream,
     proxy::protocol::ProxyRequest,
     utils::{copy_duplex, read_bincode_lengthed_async, write_bincode_lengthed_async},
@@ -37,7 +37,7 @@ async fn serve_new_conn(id: String, url: String) -> anyhow::Result<()> {
         Handshaker::start(&mut conn_stream, None, &mut RWBuffer::new(512, 2048)).await?;
 
     match req {
-        ProxyRequest::TCP { dst } => {
+        HandshakeRequest::TCP { dst } => {
             let upstream = match TcpStream::connect(&dst).await {
                 Ok(v) => {
                     handshaker
@@ -54,7 +54,7 @@ async fn serve_new_conn(id: String, url: String) -> anyhow::Result<()> {
 
             copy_duplex(upstream, conn_stream, None, None).await
         }
-        ProxyRequest::HTTP { dst, https, req } => {
+        HandshakeRequest::HTTP { dst, https, req } => {
             let upstream = match send_http(https, &dst, req).await {
                 Ok(v) => {
                     handshaker.respond_ok(&mut conn_stream, None).await?;

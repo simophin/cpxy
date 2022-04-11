@@ -1,5 +1,6 @@
 use anyhow::{anyhow, Context};
 use futures_lite::{AsyncRead, AsyncWrite};
+use smol::Executor;
 
 use crate::{
     config::ClientConfig, fetch::send_http, handshake::Handshaker, http::HttpRequest,
@@ -14,7 +15,7 @@ pub async fn serve_http_proxy_conn(
     req: HttpRequest<'static>,
     config: &ClientConfig,
     stats: &ClientStatistics,
-    mut stream: impl AsyncRead + AsyncWrite + Unpin + Send + Sync + 'static,
+    mut stream: impl AsyncRead + AsyncWrite + Unpin + Send + Sync,
     handshaker: Handshaker,
 ) -> anyhow::Result<()> {
     let proxy_request = ProxyRequest::HTTP {
