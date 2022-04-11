@@ -362,4 +362,78 @@ mod tests {
             }
         });
     }
+
+    #[test]
+    fn serve_directly_works() {
+        block_on(async move {
+            let server = UdpSocket::bind(true).await.unwrap();
+            let dst = server.local_addr().unwrap();
+            let (relay_in_tx, relay_in_rx) = bounded(2);
+            let (relay_out_tx, relay_out_rx) = bounded(2);
+
+            let _task = spawn(serve_udp_relay_directly(true, relay_out_tx, relay_in_rx));
+
+            struct PacketData<'a> {
+                payload: &'a [u8],
+                reply_payload: &'a [u8],
+            }
+
+            let packets = [
+                PacketData {
+                    payload: b"payload1",
+                    reply_payload: b"reply1",
+                },
+                PacketData {
+                    payload: b"payload2",
+                    reply_payload: b"reply2",
+                },
+                PacketData {
+                    payload: b"payload3",
+                    reply_payload: b"reply3",
+                },
+            ];
+
+            for PacketData {
+                payload,
+                reply_payload,
+            } in packets
+            {
+                relay_in_tx
+                    .send(
+                        Socks5UdpRepr {
+                            addr: dst.clone().into(),
+                            payload,
+                            frag_no: 0,
+                        }
+                        .to_packet()
+                        .unwrap(),
+                    )
+                    .await
+                    .unwrap();
+
+                let mut buf = Buf::new_for_udp();
+                let (len, addr) = server.recv_from(&mut buf).await.unwrap();
+                buf.set_len(len);
+
+                assert_eq!(buf.as_slice(), payload);
+
+                // Reply
+                server.send_to(reply_payload, addr).await.unwrap();
+
+                // Check reply
+                let pkt = relay_out_rx
+                    .recv()
+                    .timeout(Duration::from_secs(1))
+                    .await
+                    .unwrap()
+                    .unwrap();
+
+                assert_eq!(
+                    pkt.addr().get_port(),
+                    Address::try_from(dst).unwrap().get_port()
+                );
+                assert_eq!(pkt.payload(), reply_payload);
+            }
+        });
+    }
 }
