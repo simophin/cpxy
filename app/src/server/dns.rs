@@ -1,11 +1,10 @@
 use std::collections::{HashMap, HashSet};
 
-use super::ProxyResult;
 use anyhow::Context;
 use futures_lite::{AsyncRead, AsyncWrite};
 use smol::{net::resolve, spawn};
 
-use crate::utils::write_bincode_lengthed_async;
+use crate::{proxy::protocol::ProxyResult, utils::write_bincode_lengthed_async};
 
 pub async fn resolve_domains(
     domains: Vec<String>,

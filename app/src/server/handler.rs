@@ -1,9 +1,8 @@
 use futures_lite::{AsyncRead, AsyncWrite};
 use smol::spawn;
 
-use super::{tcp::serve_http_proxy, tcp::serve_tcp_proxy};
+use super::{dns::resolve_domains, tcp::serve_http_proxy, tcp::serve_tcp_proxy};
 use crate::io::TcpListener;
-use crate::proxy::dns::resolve_domains;
 use crate::proxy::protocol::ProxyRequest;
 use crate::utils::read_bincode_lengthed_async;
 

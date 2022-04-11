@@ -1,3 +1,4 @@
+mod dns;
 mod handler;
 mod tcp;
 mod udp;

@@ -5,9 +5,7 @@ use futures_lite::{AsyncRead, AsyncWrite};
 use protocol::{ProxyRequest, ProxyResult};
 use std::time::{Duration, Instant};
 
-pub mod dns;
 pub mod protocol;
-pub mod tcp;
 pub mod udp;
 
 pub async fn request_proxy_upstream(
