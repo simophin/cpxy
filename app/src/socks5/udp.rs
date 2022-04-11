@@ -3,7 +3,6 @@ use crate::buf::Buf;
 use super::Address;
 use anyhow::{bail, Context};
 use byteorder::{BigEndian, ReadBytesExt, WriteBytesExt};
-use serde::{Deserialize, Serialize};
 use std::{fmt::Debug, io::Write};
 
 pub struct UdpPacket<T> {
@@ -24,26 +23,6 @@ impl<T> UdpPacket<T> {
 
     pub fn inner(&self) -> &T {
         &self.buf
-    }
-}
-
-impl<T: AsRef<[u8]>> Serialize for UdpPacket<T> {
-    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-    where
-        S: serde::Serializer,
-    {
-        self.buf.as_ref().serialize(serializer)
-    }
-}
-
-impl<'de> Deserialize<'de> for UdpPacket<Buf> {
-    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
-    where
-        D: serde::Deserializer<'de>,
-    {
-        let buf = <Vec<u8> as Deserialize>::deserialize(deserializer)?;
-        UdpPacket::new_checked(Buf::new_with_vec(buf))
-            .map_err(|e| serde::de::Error::custom(format!("{e:?}")))
     }
 }
 

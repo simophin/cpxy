@@ -10,7 +10,7 @@ pub mod udp;
 
 pub async fn request_proxy_upstream(
     c: &UpstreamConfig,
-    req: &ProxyRequest,
+    req: &ProxyRequest<'_>,
 ) -> anyhow::Result<(
     ProxyResult,
     impl AsyncRead + AsyncWrite + Unpin + Send + Sync,

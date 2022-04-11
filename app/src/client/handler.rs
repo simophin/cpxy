@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
 use anyhow::Context;
-use futures_lite::{Future, Stream, StreamExt};
+use futures_lite::{Stream, StreamExt};
 use futures_util::{select, FutureExt};
 use smol::{spawn, Executor, Task};
 
@@ -89,7 +89,13 @@ pub async fn run_proxy_with(
         let config = config.clone();
         let stats = stats.clone();
         executor
-            .spawn(serve_proxy_conn(sock, config, stats))
+            .spawn(async move {
+                log::info!("Client {addr} connected");
+                if let Err(e) = serve_proxy_conn(sock, config, stats).await {
+                    log::error!("Erorr serving client {addr}: {e:?}");
+                }
+                log::info!("Client {addr} disconnected");
+            })
             .detach();
     }
 }
@@ -112,6 +118,6 @@ async fn serve_proxy_conn(
             serve_http_proxy_conn(dst, https, req, &config, &stats, socks, hs).await
         }
 
-        HR::UDP { dst } => serve_udp_proxy_conn(&config, &stats, socks.is_v4(), socks, hs).await,
+        HR::UDP { .. } => serve_udp_proxy_conn(&config, &stats, socks.is_v4(), socks, hs).await,
     }
 }

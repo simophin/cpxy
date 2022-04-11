@@ -55,17 +55,17 @@ enum HandshakeType {
 pub struct Handshaker(HandshakeType);
 
 #[derive(Debug)]
-pub enum HandshakeRequest {
+pub enum HandshakeRequest<'a> {
     TCP {
-        dst: Address<'static>,
+        dst: Address<'a>,
     },
     UDP {
-        dst: Option<Address<'static>>,
+        dst: Option<Address<'a>>,
     },
     HTTP {
-        dst: Address<'static>,
+        dst: Address<'a>,
         https: bool,
-        req: HttpRequest<'static>,
+        req: HttpRequest<'a>,
     },
 }
 
@@ -74,7 +74,7 @@ impl Handshaker {
         stream: &mut (impl AsyncRead + AsyncWrite + Unpin + Send + Sync),
         transparent_addr: Option<SocketAddr>,
         buf: &mut RWBuffer,
-    ) -> anyhow::Result<(Handshaker, HandshakeRequest)> {
+    ) -> anyhow::Result<(Handshaker, HandshakeRequest<'static>)> {
         if let Some(orig) = transparent_addr {
             log::info!("Redirecting transparent proxy to: {orig}");
             return Ok((
@@ -290,7 +290,7 @@ async fn handshake_socks5(
     socket: &mut (impl AsyncRead + AsyncWrite + Send + Sync + Unpin),
     buf: &mut RWBuffer,
     state: SocksState,
-) -> anyhow::Result<HandshakeRequest> {
+) -> anyhow::Result<HandshakeRequest<'static>> {
     if !state.auths.contains(&AUTH_NO_PASSWORD) {
         ClientGreeting::respond(AUTH_NOT_ACCEPTED, socket).await?;
         return Err(anyhow!("Invalid socks auth method"));

@@ -27,6 +27,18 @@ pub enum Packet<T> {
 }
 
 impl<T: AsRef<[u8]>> Packet<T> {
+    pub fn inner(&self) -> &T {
+        match self {
+            Packet::PayloadOnly(v) => v,
+            Packet::WithIpv4Addr(v) => v,
+            Packet::WithIpv6Addr(v) => v,
+            Packet::WithDomainName {
+                address_and_payload,
+                ..
+            } => address_and_payload,
+        }
+    }
+
     pub fn addr<'a>(&'a self) -> Option<Address<'a>> {
         match self {
             Self::PayloadOnly(_) => None,
@@ -77,27 +89,31 @@ pub async fn write_packet_async(
     out: &mut (impl AsyncWrite + Unpin + Send + Sync),
     addr: Option<&Address<'_>>,
     payload: &[u8],
-) -> anyhow::Result<()> {
+) -> anyhow::Result<usize> {
     let payload_len: u16 = payload
         .len()
         .try_into()
         .context("Converting payload len to u16 int")?;
+    let mut written = 0usize;
     match addr {
         None => {
             out.write_all(&[1]).await?;
             out.write_all(&payload_len.to_be_bytes()).await?;
+            written += 3;
         }
         Some(Address::IP(SocketAddr::V4(addr))) => {
             out.write_all(&[2]).await?;
             out.write_all(&payload_len.to_be_bytes()).await?;
             out.write_all(addr.ip().octets().as_ref()).await?;
             out.write_all(&addr.port().to_be_bytes()).await?;
+            written += 9;
         }
         Some(Address::IP(SocketAddr::V6(addr))) => {
             out.write_all(&[3]).await?;
             out.write_all(&payload_len.to_be_bytes()).await?;
             out.write_all(addr.ip().octets().as_ref()).await?;
             out.write_all(&addr.port().to_be_bytes()).await?;
+            written += 21;
         }
         Some(Address::Name { host, port }) => {
             out.write_all(&[4]).await?;
@@ -110,11 +126,13 @@ pub async fn write_packet_async(
             out.write_all(&domain_name_len.to_be_bytes()).await?;
             out.write_all(host).await?;
             out.write_all(&port.to_be_bytes()).await?;
+            written += 3 + domain_name_len as usize + 4
         }
     }
 
     out.write_all(payload).await?;
-    Ok(())
+    written += payload.len();
+    Ok(written)
 }
 
 impl Packet<MutBuf> {
@@ -182,7 +200,7 @@ impl Packet<MutBuf> {
 
 pub fn stream_packet<S: AsyncRead + Unpin + Send + Sync + 'static>(
     mut stream: S,
-) -> impl Stream<Item = Packet<MutBuf>> + Unpin + Send + Sync {
+) -> impl Stream<Item = Packet<MutBuf>> + Unpin + Send + Sync + 'static {
     new_stream_task(|tx| async move {
         loop {
             let pkt = Packet::read_async(&mut stream).await?;

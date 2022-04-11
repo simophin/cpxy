@@ -18,7 +18,7 @@ pub async fn request_best_upstream<'a>(
     c: &ClientConfig,
     stats: &'a ClientStatistics,
     dst: &Address<'_>,
-    req: &ProxyRequest,
+    req: &ProxyRequest<'_>,
 ) -> anyhow::Result<(
     Option<SocketAddr>,
     impl AsyncRead + AsyncWrite + Unpin + Send + Sync + 'static,

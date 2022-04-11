@@ -1,14 +1,17 @@
 use std::{
     collections::VecDeque,
+    fmt::Debug,
     io::{Read, Write},
     mem::MaybeUninit,
-    ops::{Deref, DerefMut},
     sync::Mutex,
 };
 
 use bytes::BufMut;
+use derive_more::{AsMut, AsRef, Deref, DerefMut};
 use lazy_static::lazy_static;
 
+#[derive(AsRef, Deref, DerefMut, AsMut, Debug)]
+#[as_ref(forward)]
 pub struct Buf(Vec<u8>);
 
 impl Buf {
@@ -50,26 +53,6 @@ impl Drop for Buf {
             v if v.capacity() > 0 => recycle_buf(v.into_boxed_slice()),
             _ => {}
         }
-    }
-}
-
-impl AsRef<[u8]> for Buf {
-    fn as_ref(&self) -> &[u8] {
-        self.0.as_slice()
-    }
-}
-
-impl Deref for Buf {
-    type Target = [u8];
-
-    fn deref(&self) -> &Self::Target {
-        &self.0
-    }
-}
-
-impl DerefMut for Buf {
-    fn deref_mut(&mut self) -> &mut Self::Target {
-        &mut self.0
     }
 }
 

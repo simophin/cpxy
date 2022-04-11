@@ -2,7 +2,6 @@ use std::{net::SocketAddr, time::Duration};
 
 use anyhow::{anyhow, bail, Context};
 use futures_lite::{AsyncRead, AsyncWrite};
-use smol::Executor;
 use smol_timeout::TimeoutExt;
 
 use crate::{
@@ -13,7 +12,7 @@ use crate::{
 use super::{utils::request_best_upstream, ClientStatistics};
 
 pub async fn serve_tcp_proxy_conn(
-    dst: Address<'static>,
+    dst: Address<'_>,
     config: &ClientConfig,
     stats: &ClientStatistics,
     mut stream: impl AsyncRead + AsyncWrite + Unpin + Send + Sync,

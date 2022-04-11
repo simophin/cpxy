@@ -1,32 +1,30 @@
 use std::{
+    borrow::Cow,
     collections::HashMap,
     net::{IpAddr, SocketAddr},
 };
 
 use serde::{Deserialize, Serialize};
 
-use crate::{
-    buf::Buf,
-    http::HttpRequest,
-    socks5::{Address, UdpPacket},
-};
+use crate::{http::HttpRequest, socks5::Address};
 
 #[derive(Serialize, Deserialize, Debug)]
 #[serde(tag = "type")]
-pub enum ProxyRequest {
+pub enum ProxyRequest<'a> {
     TCP {
-        dst: Address<'static>,
+        dst: Address<'a>,
     },
     UDP {
-        initial_data: UdpPacket<Buf>,
+        initial_dst: Address<'a>,
+        initial_data: Cow<'a, [u8]>,
     },
     DNS {
         domains: Vec<String>,
     },
     HTTP {
-        dst: Address<'static>,
+        dst: Address<'a>,
         https: bool,
-        req: HttpRequest<'static>,
+        req: HttpRequest<'a>,
     },
 }
 
