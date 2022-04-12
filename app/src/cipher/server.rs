@@ -7,11 +7,17 @@ use crate::stream::VecStream;
 use crate::ws::serve_websocket;
 
 use super::stream::CipherStream;
-use super::suite::{create_cipher, BoxedStreamCipher};
+use super::suite::{create_cipher, StreamCipherExt};
 
 fn check_request(
     path: &str,
-) -> Result<(BoxedStreamCipher, BoxedStreamCipher), (&'static str, &'static str)> {
+) -> Result<
+    (
+        impl StreamCipherExt + Send + Sync + 'static,
+        impl StreamCipherExt + Send + Sync + 'static,
+    ),
+    (&'static str, &'static str),
+> {
     let CipherParams {
         key,
         iv,

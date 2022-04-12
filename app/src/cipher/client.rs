@@ -5,6 +5,7 @@ use super::stream::CipherStream;
 use crate::{http::HeaderValue, ws::negotiate_websocket};
 use anyhow::{anyhow, Context};
 use base64::{display::Base64Display, URL_SAFE_NO_PAD};
+use cipher::StreamCipher;
 use futures_lite::{io::split, AsyncRead, AsyncWrite};
 use std::fmt::Write;
 
@@ -60,8 +61,8 @@ pub async fn connect(
     recv_strategy: EncryptionStrategy,
     mut initial_data: impl AsMut<[u8]> + Send,
 ) -> anyhow::Result<impl AsyncRead + AsyncWrite + Unpin> {
-    let (cipher_type, mut wr_cipher, key, iv) = super::suite::pick_cipher();
-    wr_cipher = send_strategy.wrap_cipher(wr_cipher);
+    let (cipher_type, wr_cipher, key, iv) = super::suite::pick_cipher();
+    let mut wr_cipher = send_strategy.wrap_cipher(wr_cipher);
 
     let params = CipherParams {
         key: Cow::Borrowed(key.as_slice()),

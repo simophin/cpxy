@@ -7,6 +7,7 @@ configs=(
   aarch64-unknown-linux-gnu
   armv7-unknown-linux-gnueabihf
   mips-unknown-linux-musl 
+  mipsel-unknown-linux-musl 
 )
 
 for ((i=0; i<${#configs[@]}; )); do

@@ -1,8 +1,8 @@
-use super::noop::new_no_op;
-use super::partial::new_partial_stream_cipher;
-use super::suite::BoxedStreamCipher;
+use super::partial::PartialStreamCipher;
+use super::suite::StreamCipherExt;
 use crate::proxy::protocol::ProxyRequest;
 use anyhow::anyhow;
+use cipher::StreamCipher;
 use std::num::NonZeroUsize;
 use std::str::FromStr;
 
@@ -41,11 +41,16 @@ impl EncryptionStrategy {
         }
     }
 
-    pub fn wrap_cipher(&self, c: BoxedStreamCipher) -> BoxedStreamCipher {
+    pub fn wrap_cipher(
+        &self,
+        c: impl StreamCipherExt + Send + Sync,
+    ) -> impl StreamCipherExt + Send + Sync {
         match self {
-            EncryptionStrategy::FirstN(n) => Box::new(new_partial_stream_cipher(*n, c)),
-            EncryptionStrategy::Always => c,
-            EncryptionStrategy::Never => Box::new(new_no_op()),
+            EncryptionStrategy::FirstN(n) => {
+                StrategyCipher::FirstN(PartialStreamCipher::new(*n, c))
+            }
+            EncryptionStrategy::Always => StrategyCipher::Always(c),
+            EncryptionStrategy::Never => StrategyCipher::Never,
         }
     }
 }
@@ -64,6 +69,43 @@ impl FromStr for EncryptionStrategy {
             "n" => Ok(Self::Never),
             "a" => Ok(Self::Always),
             _ => return Err(anyhow!("Invalid enc strategy {v}")),
+        }
+    }
+}
+
+enum StrategyCipher<T> {
+    FirstN(PartialStreamCipher<T>),
+    Always(T),
+    Never,
+}
+
+impl<T: StreamCipherExt + Send + Sync> StreamCipher for StrategyCipher<T> {
+    fn try_apply_keystream_inout(
+        &mut self,
+        buf: cipher::inout::InOutBuf<'_, '_, u8>,
+    ) -> Result<(), cipher::StreamCipherError> {
+        match self {
+            StrategyCipher::FirstN(stream) => stream.try_apply_keystream_inout(buf),
+            StrategyCipher::Always(stream) => stream.try_apply_keystream_inout(buf),
+            StrategyCipher::Never => Ok(()),
+        }
+    }
+}
+
+impl<T: StreamCipherExt + Send + Sync> StreamCipherExt for StrategyCipher<T> {
+    fn will_modify_data(&self) -> bool {
+        match self {
+            StrategyCipher::FirstN(stream) => stream.will_modify_data(),
+            StrategyCipher::Always(stream) => stream.will_modify_data(),
+            StrategyCipher::Never => false,
+        }
+    }
+
+    fn rewind(&mut self, cnt: usize) {
+        match self {
+            StrategyCipher::FirstN(stream) => stream.rewind(cnt),
+            StrategyCipher::Always(stream) => stream.rewind(cnt),
+            StrategyCipher::Never => {}
         }
     }
 }

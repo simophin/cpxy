@@ -18,27 +18,6 @@ impl StreamCipherExt for chacha20::ChaCha20 {
     }
 }
 
-pub type BoxedStreamCipher = Box<dyn StreamCipherExt + Send + Sync>;
-
-impl StreamCipher for BoxedStreamCipher {
-    fn try_apply_keystream_inout(
-        &mut self,
-        buf: cipher::inout::InOutBuf<'_, '_, u8>,
-    ) -> Result<(), cipher::StreamCipherError> {
-        Box::as_mut(self).try_apply_keystream_inout(buf)
-    }
-}
-
-impl StreamCipherExt for BoxedStreamCipher {
-    fn will_modify_data(&self) -> bool {
-        Box::as_ref(self).will_modify_data()
-    }
-
-    fn rewind(&mut self, cnt: usize) {
-        Box::as_mut(self).rewind(cnt)
-    }
-}
-
 pub type CipherType = u8;
 pub type CipherKey = Vec<u8>;
 pub type CipherIv = Vec<u8>;
@@ -47,17 +26,20 @@ pub fn create_cipher(
     cipher_type: CipherType,
     key: &[u8],
     iv: &[u8],
-) -> anyhow::Result<BoxedStreamCipher> {
+) -> anyhow::Result<impl StreamCipherExt + Send + Sync + 'static> {
     match cipher_type {
-        1 => Ok(Box::new(
-            chacha20::ChaCha20::new_from_slices(key, iv)
-                .map_err(|_| anyhow!("Invalid key/iv lengths for Chacha20 cipher"))?,
-        )),
+        1 => Ok(chacha20::ChaCha20::new_from_slices(key, iv)
+            .map_err(|_| anyhow!("Invalid key/iv lengths for Chacha20 cipher"))?),
         _ => Err(anyhow!("Unknown cipher_type {cipher_type}")),
     }
 }
 
-pub fn pick_cipher() -> (CipherType, BoxedStreamCipher, CipherKey, CipherIv) {
+pub fn pick_cipher() -> (
+    CipherType,
+    impl StreamCipherExt + Send + Sync + 'static,
+    CipherKey,
+    CipherIv,
+) {
     let mut key;
     let mut iv;
     let cipher_type;
@@ -69,10 +51,8 @@ pub fn pick_cipher() -> (CipherType, BoxedStreamCipher, CipherKey, CipherIv) {
     rand::thread_rng().fill(key.as_mut_slice());
     rand::thread_rng().fill(iv.as_mut_slice());
 
-    let cipher: BoxedStreamCipher = Box::new(
-        chacha20::ChaCha20::new_from_slices(key.as_slice(), iv.as_slice())
-            .expect("to create chacha20 cipher"),
-    );
+    let cipher = chacha20::ChaCha20::new_from_slices(key.as_slice(), iv.as_slice())
+        .expect("to create chacha20 cipher");
 
     (cipher_type, cipher, key, iv)
 }

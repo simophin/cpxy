@@ -1,4 +1,3 @@
-use super::suite::BoxedStreamCipher;
 use futures_lite::{AsyncRead, AsyncWrite};
 use pin_project_lite::pin_project;
 use std::cmp::{max, min};
@@ -6,28 +5,24 @@ use std::io::Error;
 use std::pin::Pin;
 use std::task::{Context, Poll};
 
+use super::suite::StreamCipherExt;
+
 pin_project! {
-    pub struct CipherStream<R, W> {
+    pub struct CipherStream<R, W, RC, WC> {
         #[pin]
         pub(super) r: R,
         #[pin]
         pub(super) w: W,
         pub(super) name: String,
-        pub(super) rd_cipher: Option<BoxedStreamCipher>,
-        pub(super) wr_cipher: Option<BoxedStreamCipher>,
+        pub(super) rd_cipher: Option<RC>,
+        pub(super) wr_cipher: Option<WC>,
         pub(super) last_written_size: Option<usize>,
         pub(super) wr_buf: Vec<u8>,
     }
 }
 
-impl<R, W> CipherStream<R, W> {
-    pub fn new(
-        name: String,
-        r: R,
-        w: W,
-        rd_cipher: BoxedStreamCipher,
-        wr_cipher: BoxedStreamCipher,
-    ) -> Self {
+impl<R, W, RC, WC> CipherStream<R, W, RC, WC> {
+    pub fn new(name: String, r: R, w: W, rd_cipher: RC, wr_cipher: WC) -> Self {
         Self {
             r,
             w,
@@ -40,7 +35,9 @@ impl<R, W> CipherStream<R, W> {
     }
 }
 
-impl<T: AsyncRead, W> AsyncRead for CipherStream<T, W> {
+impl<T: AsyncRead, W, RC: StreamCipherExt + Send + Sync, WC> AsyncRead
+    for CipherStream<T, W, RC, WC>
+{
     fn poll_read(
         self: Pin<&mut Self>,
         cx: &mut Context<'_>,
@@ -73,7 +70,9 @@ impl<T: AsyncRead, W> AsyncRead for CipherStream<T, W> {
     }
 }
 
-impl<R, T: AsyncWrite> AsyncWrite for CipherStream<R, T> {
+impl<R, T: AsyncWrite, RC, WC: StreamCipherExt + Send + Sync> AsyncWrite
+    for CipherStream<R, T, RC, WC>
+{
     fn poll_write(
         self: Pin<&mut Self>,
         cx: &mut Context<'_>,

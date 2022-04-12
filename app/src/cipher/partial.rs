@@ -3,7 +3,7 @@ use cipher::{StreamCipher, StreamCipherError};
 use std::cmp::{max, min};
 use std::num::NonZeroUsize;
 
-struct PartialStreamCipher<T: StreamCipherExt + Send + Sync> {
+pub struct PartialStreamCipher<T> {
     inner: T,
     n: isize,
 }
@@ -22,13 +22,12 @@ impl<T: StreamCipherExt + Send + Sync> StreamCipherExt for PartialStreamCipher<T
     }
 }
 
-pub fn new_partial_stream_cipher(
-    n: NonZeroUsize,
-    inner: impl StreamCipherExt + Send + Sync,
-) -> impl StreamCipherExt + Send + Sync {
-    PartialStreamCipher {
-        inner,
-        n: n.get().try_into().unwrap(),
+impl<T: StreamCipherExt + Send + Sync> PartialStreamCipher<T> {
+    pub fn new(n: NonZeroUsize, inner: T) -> Self {
+        PartialStreamCipher {
+            inner,
+            n: n.get().try_into().unwrap(),
+        }
     }
 }
 
