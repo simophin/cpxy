@@ -25,7 +25,6 @@ pub async fn run_client(
         + Unpin,
 ) -> anyhow::Result<()> {
     let mut current_tasks = Vec::<Task<_>>::with_capacity(2);
-
     loop {
         log::debug!("Listening for next config");
         let (config, stats) = match config_stream.next().await {
@@ -92,7 +91,7 @@ pub async fn run_proxy_with(
             .spawn(async move {
                 log::info!("Client {addr} connected");
                 if let Err(e) = serve_proxy_conn(sock, config, stats).await {
-                    log::error!("Erorr serving client {addr}: {e:?}");
+                    log::error!("Error serving client {addr}: {e:?}");
                 }
                 log::info!("Client {addr} disconnected");
             })

@@ -1,4 +1,9 @@
-use std::{net::SocketAddr, sync::Arc, time::Duration, vec};
+use std::{
+    net::{IpAddr, Ipv4Addr, SocketAddr},
+    sync::Arc,
+    time::Duration,
+    vec,
+};
 
 use anyhow::bail;
 use futures_lite::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
@@ -73,7 +78,8 @@ pub async fn echo_tcp_server() -> (Task<()>, SocketAddr) {
 
 pub async fn echo_udp_server() -> (Task<()>, SocketAddr) {
     let socket = UdpSocket::bind(true).await.unwrap();
-    let addr = socket.local_addr().unwrap();
+    let mut addr = socket.local_addr().unwrap();
+    addr.set_ip(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)));
     (
         spawn(async move {
             let mut buf = vec![0; 65536];
@@ -192,4 +198,4 @@ async fn send_socks5_request(
     Ok(bound)
 }
 
-const TIMEOUT: Duration = Duration::from_secs(3);
+const TIMEOUT: Duration = Duration::from_secs(2);

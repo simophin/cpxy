@@ -1,12 +1,15 @@
 use futures_lite::{AsyncRead, AsyncWrite};
 use smol::spawn;
 
-use super::{dns::resolve_domains, tcp::serve_http_proxy, tcp::serve_tcp_proxy};
+use super::{
+    dns::resolve_domains, tcp::serve_http_proxy, tcp::serve_tcp_proxy, udp::serve_udp_proxy_conn,
+};
 use crate::io::TcpListener;
 use crate::proxy::protocol::ProxyRequest;
 use crate::utils::read_bincode_lengthed_async;
 
 pub async fn serve_client(
+    v4: bool,
     stream: impl AsyncRead + AsyncWrite + Unpin + Send + Sync + 'static,
 ) -> anyhow::Result<()> {
     let mut stream = crate::cipher::server::listen(stream).await?;
@@ -19,9 +22,7 @@ pub async fn serve_client(
         ProxyRequest::UDP {
             initial_data,
             initial_dst,
-        } => {
-            todo!()
-        }
+        } => serve_udp_proxy_conn(v4, stream, initial_data, initial_dst).await,
         ProxyRequest::DNS { domains } => resolve_domains(domains, stream).await,
     }
 }
@@ -31,7 +32,7 @@ pub async fn run_server(listener: TcpListener) -> anyhow::Result<()> {
         let (stream, addr) = listener.accept().await?;
         log::info!("Accepted client {addr}");
         spawn(async move {
-            if let Err(e) = serve_client(stream).await {
+            if let Err(e) = serve_client(stream.is_v4(), stream).await {
                 log::error!("Error serving client {addr}: {e:?}");
             }
             log::info!("Client {addr} disconnected");

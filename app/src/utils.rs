@@ -2,13 +2,9 @@ use anyhow::{anyhow, Context};
 use bytes::{Buf, BufMut};
 use futures_lite::future::race;
 use futures_lite::io::{copy, split};
-use futures_lite::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt, Future, Stream};
+use futures_lite::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
 use serde::{de::DeserializeOwned, Serialize};
-use smol::channel::{bounded, Sender};
-use smol::{spawn, Executor, Task};
-use std::pin::Pin;
 use std::sync::Arc;
-use std::task::Poll;
 
 use crate::counter::Counter;
 
@@ -110,35 +106,6 @@ impl<T: Serialize> JsonSerializable for T {
     fn to_json(&self) -> Vec<u8> {
         serde_json::to_vec(self).expect("Encode json")
     }
-}
-
-struct StreamTask<R, S> {
-    task: Task<R>,
-    stream: S,
-}
-
-impl<R, S: Stream + Unpin> Stream for StreamTask<R, S> {
-    type Item = S::Item;
-
-    fn poll_next(
-        mut self: Pin<&mut Self>,
-        cx: &mut std::task::Context<'_>,
-    ) -> Poll<Option<Self::Item>> {
-        Stream::poll_next(Pin::new(&mut self.stream), cx)
-    }
-}
-
-pub fn new_stream_task<Item, F, FO>(run: F) -> impl Stream<Item = Item> + Unpin + Send + Sync
-where
-    FO: Future<Output = anyhow::Result<()>> + Send + Sync + 'static,
-    F: FnOnce(Sender<Item>) -> FO,
-    Item: Send + Sync + 'static,
-{
-    let (tx, rx) = bounded::<Item>(5);
-
-    let task = spawn(run(tx));
-
-    StreamTask { task, stream: rx }
 }
 
 #[cfg(test)]

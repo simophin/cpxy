@@ -62,3 +62,72 @@ pub async fn new_udp_relay(
 
     Ok((bound_addr, outgoing_tx, incoming_rx))
 }
+
+#[cfg(test)]
+mod tests {
+    use std::time::Duration;
+
+    use smol::block_on;
+    use smol_timeout::TimeoutExt;
+
+    use crate::socks5::{Address, UdpRepr};
+
+    use super::*;
+
+    #[test]
+    fn udp_relay_works() -> anyhow::Result<()> {
+        block_on(async move {
+            let (relay_addr, tx, rx) = new_udp_relay(true).await?;
+
+            let client = UdpSocket::bind(true).await?;
+
+            let target_addr: Address = "google.com:600".parse()?;
+            let payload = b"hello, world";
+
+            // Sending
+            client
+                .send_to(
+                    UdpRepr {
+                        addr: target_addr.clone(),
+                        payload,
+                        frag_no: 0,
+                    }
+                    .to_packet()?
+                    .into_inner()
+                    .as_ref(),
+                    relay_addr,
+                )
+                .await?;
+
+            let pkt = rx.recv().timeout(Duration::from_secs(1)).await.unwrap()?;
+            assert_eq!(pkt.addr(), target_addr);
+            assert_eq!(pkt.payload(), payload);
+
+            // Receiving
+            let reply = b"hello, again!".as_ref();
+            tx.send(
+                UdpRepr {
+                    addr: target_addr.clone(),
+                    payload: reply,
+                    frag_no: 0,
+                }
+                .to_packet()?,
+            )
+            .await?;
+
+            let mut buf = Buf::new_for_udp();
+            let (len, _) = client
+                .recv_from(&mut buf)
+                .timeout(Duration::from_secs(1))
+                .await
+                .unwrap()?;
+            buf.set_len(len);
+
+            let pkt = UdpPacket::new_checked(buf)?;
+            assert_eq!(pkt.addr(), target_addr);
+            assert_eq!(pkt.payload(), reply);
+
+            Ok(())
+        })
+    }
+}

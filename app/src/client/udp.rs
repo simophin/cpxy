@@ -20,8 +20,9 @@ use crate::{
     config::ClientConfig,
     handshake::Handshaker,
     io::UdpSocket,
+    proxy::protocol::ProxyRequest,
     proxy::udp::write_packet_async as write_proxy_udp_packet_async,
-    proxy::{protocol::ProxyRequest, udp::stream_packet as stream_proxy_udp_packet},
+    proxy::udp::Packet as ProxyUdpPacket,
     socks5::UdpPacket as Socks5UdpPacket,
     socks5::{Address, UdpRepr as Socks5UdpRepr},
     udp_relay::new_udp_relay,
@@ -106,6 +107,10 @@ async fn serve_udp_relay_directly(
                     should_close_on_receive.store(true, Ordering::SeqCst);
                 }
 
+                log::debug!(
+                    "Relay -> UDP: Packet(len={}, dst={pkt_addr})",
+                    pkt.payload().len()
+                );
                 socket.send_to_addr(pkt.payload(), &pkt_addr).await?;
             }
 
@@ -118,6 +123,8 @@ async fn serve_udp_relay_directly(
             let mut buf = Buf::new_for_udp();
             let (len, from) = socket.recv_from(&mut buf).await?;
             buf.set_len(len);
+
+            log::debug!("UDP -> relay: Packet(len={len}, from={from})",);
 
             tx.send(
                 Socks5UdpRepr {
@@ -135,7 +142,9 @@ async fn serve_udp_relay_directly(
         }
     });
 
-    race(task1, task2).await
+    let result = race(task1, task2).await;
+    log::debug!("Ended serving UDP relay directly, result: {result:?}");
+    result
 }
 
 async fn copy_between_relay_and_stream(
@@ -144,15 +153,15 @@ async fn copy_between_relay_and_stream(
     stream: impl AsyncRead + AsyncWrite + Unpin + Send + Sync + 'static,
     stats: Option<&UpstreamStatistics>,
 ) -> anyhow::Result<()> {
-    let (stream_r, mut stream_w) = split(stream);
-    let mut proxy_rx = stream_proxy_udp_packet(stream_r);
+    let (mut stream_r, mut stream_w) = split(stream);
 
     // Proxy -> Relay
     let rx_count = stats.map(|s| s.rx.clone()).unwrap_or_default();
     let task1: Task<anyhow::Result<()>> = spawn(async move {
         let mut last_addr = None;
 
-        while let Some(pkt) = proxy_rx.next().await {
+        loop {
+            let pkt = ProxyUdpPacket::read_async(&mut stream_r).await?;
             let addr = match pkt
                 .addr()
                 .map(|a| a.into_owned())
@@ -176,8 +185,6 @@ async fn copy_between_relay_and_stream(
             tx.send(repr.to_packet()?).await?;
             last_addr.replace(repr.addr);
         }
-
-        Ok(())
     });
 
     // Relay -> Proxy
@@ -204,7 +211,9 @@ async fn copy_between_relay_and_stream(
         Ok(())
     });
 
-    race(task1, task2).await
+    let result = race(task1, task2).await;
+    log::debug!("Ended serving UDP relay through TCP, result: {result:?}");
+    result
 }
 
 async fn drain_socks(
@@ -234,8 +243,7 @@ mod tests {
 
             let (near_stream, far_stream) = duplex(10).await;
 
-            let (far_stream_r, mut far_stream_w) = split(far_stream);
-            let mut far_stream = stream_proxy_udp_packet(far_stream_r);
+            let (mut far_stream_r, mut far_stream_w) = split(far_stream);
 
             let _task = spawn(copy_between_relay_and_stream(
                 relay_out_tx,
@@ -319,8 +327,7 @@ mod tests {
                     .await
                     .unwrap();
 
-                let received = far_stream
-                    .next()
+                let received = ProxyUdpPacket::read_async(&mut far_stream_r)
                     .timeout(Duration::from_secs(1))
                     .await
                     .unwrap()

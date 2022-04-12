@@ -10,7 +10,6 @@ use crate::{
     fetch::send_http,
     handshake::{HandshakeRequest, Handshaker},
     io::TcpStream,
-    proxy::protocol::ProxyRequest,
     utils::{copy_duplex, read_bincode_lengthed_async, write_bincode_lengthed_async},
     ws::negotiate_websocket,
 };

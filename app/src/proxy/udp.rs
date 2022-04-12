@@ -3,10 +3,10 @@ use std::{
     net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr},
 };
 
-use crate::{buf::Buf as MutBuf, utils::new_stream_task};
+use crate::buf::Buf as MutBuf;
 use anyhow::{bail, Context};
 use bytes::Buf;
-use futures_lite::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt, Stream};
+use futures_lite::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
 
 use crate::socks5::Address;
 
@@ -196,17 +196,6 @@ impl Packet<MutBuf> {
             v => bail!("Invalid payload type: {v}"),
         }
     }
-}
-
-pub fn stream_packet<S: AsyncRead + Unpin + Send + Sync + 'static>(
-    mut stream: S,
-) -> impl Stream<Item = Packet<MutBuf>> + Unpin + Send + Sync + 'static {
-    new_stream_task(|tx| async move {
-        loop {
-            let pkt = Packet::read_async(&mut stream).await?;
-            tx.send(pkt).await?;
-        }
-    })
 }
 
 #[cfg(test)]

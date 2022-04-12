@@ -10,20 +10,20 @@
     <option name="openedFilesInfos">
       <list>
         <OpenedFileInfo>
-          <option name="caretOffset" value="1269" />
-          <option name="fileUrl" value="file://$PROJECT_DIR$/app/src/client.rs" />
+          <option name="caretOffset" value="3394" />
+          <option name="fileUrl" value="file://$PROJECT_DIR$/app/src/client/handler.rs" />
         </OpenedFileInfo>
         <OpenedFileInfo>
-          <option name="caretOffset" value="140" />
-          <option name="fileUrl" value="file://$PROJECT_DIR$/app/src/vpn/tun.rs" />
+          <option name="caretOffset" value="1295" />
+          <option name="fileUrl" value="file://$PROJECT_DIR$/app/src/test/udp.rs" />
         </OpenedFileInfo>
         <OpenedFileInfo>
-          <option name="caretOffset" value="78" />
-          <option name="fileUrl" value="file://$PROJECT_DIR$/app/src/vpn/mod.rs" />
+          <option name="caretOffset" value="0" />
+          <option name="fileUrl" value="file://$PROJECT_DIR$/app/src/client/udp.rs" />
         </OpenedFileInfo>
         <OpenedFileInfo>
-          <option name="caretOffset" value="1962" />
-          <option name="fileUrl" value="file://$PROJECT_DIR$/app/src/vpn/channel.rs" />
+          <option name="caretOffset" value="5003" />
+          <option name="fileUrl" value="file://$PROJECT_DIR$/app/src/buf.rs" />
         </OpenedFileInfo>
       </list>
     </option>
