@@ -4,6 +4,7 @@ use std::{
         atomic::{AtomicBool, Ordering},
         Arc,
     },
+    time::Duration,
 };
 
 use anyhow::bail;
@@ -14,6 +15,7 @@ use smol::{
     channel::{Receiver, Sender},
     spawn, Task,
 };
+use smol_timeout::TimeoutExt;
 
 use crate::{
     buf::Buf,
@@ -29,6 +31,8 @@ use crate::{
 };
 
 use super::{utils::request_best_upstream, ClientStatistics, UpstreamStatistics};
+
+const UDP_IDLING_TIMEOUT: Duration = Duration::from_secs(60);
 
 pub async fn serve_udp_proxy_conn(
     c: &ClientConfig,
@@ -76,7 +80,7 @@ pub async fn serve_udp_proxy_conn(
     };
 
     if c.allow_direct(&addr) {
-        return serve_udp_relay_directly(is_v4, tx, rx).await;
+        return race(serve_udp_relay_directly(is_v4, tx, rx), drain_socks(stream)).await;
     }
 
     bail!("There's no where for UDP packet to go")
@@ -94,7 +98,7 @@ async fn serve_udp_relay_directly(
         let socket = socket.clone();
         let should_close_on_receive = should_close_on_receive.clone();
         spawn(async move {
-            while let Ok(pkt) = rx.recv().await {
+            while let Some(Ok(pkt)) = rx.recv().timeout(UDP_IDLING_TIMEOUT).await {
                 if pkt.frag_no() != 0 {
                     log::warn!("Dropping fragmented packet");
                     continue;
@@ -192,7 +196,7 @@ async fn copy_between_relay_and_stream(
     let tx_count = stats.map(|s| s.tx.clone()).unwrap_or_default();
     let task2: Task<anyhow::Result<()>> = spawn(async move {
         let mut last_sent_addr: Option<Address<'static>> = None;
-        while let Some(pkt) = rx.next().await {
+        while let Some(Some(pkt)) = rx.next().timeout(UDP_IDLING_TIMEOUT).await {
             if pkt.frag_no() != 0 {
                 log::warn!("Dropping fragmented socks5 packet");
                 continue;
