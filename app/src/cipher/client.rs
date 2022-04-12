@@ -81,7 +81,7 @@ pub async fn connect(
             &HttpUrl {
                 is_https: url.is_https,
                 address: url.address.clone(),
-                path: Cow::Owned(format!("{}/{params}", url.path)),
+                path: Cow::Owned(params.to_string()),
             },
             stream,
             vec![(
