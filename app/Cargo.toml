@@ -69,3 +69,9 @@ name = "proxy"
 [target.'cfg(not(target_arch = "mips"))'.dependencies]
 futures-rustls = "0"
 webpki-roots = "0"
+
+[profile.dev]
+incremental = true
+
+[profile.release]
+strip = "symbols"

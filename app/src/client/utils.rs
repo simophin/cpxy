@@ -30,7 +30,7 @@ pub async fn request_best_upstream<'a>(
         let mut last_error = None;
         while let Some((name, config)) = upstreams.pop() {
             log::info!("Trying upstream {name} for {dst}");
-            match request_proxy_upstream(config, req).await {
+            match request_proxy_upstream(config.tls, &config.address, req).await {
                 Ok((ProxyResult::Granted { bound_address, .. }, upstream, latency)) => {
                     log::debug!(
                         "Upstream granted with address = {bound_address:?}, latency = {latency:?}"

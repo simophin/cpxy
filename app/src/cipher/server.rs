@@ -82,7 +82,7 @@ mod test {
     use super::super::client::connect;
     use super::super::strategy::EncryptionStrategy;
     use super::*;
-    use crate::test::create_http_server;
+    use crate::{fetch::connect_http, test::create_http_server};
     use futures_lite::{io::copy, AsyncReadExt, AsyncWriteExt};
     use rand::RngCore;
     use smol::spawn;
@@ -102,7 +102,7 @@ mod test {
 
             let data = b"hello, world";
             let mut client = connect(
-                url,
+                connect_http(url).await.unwrap(),
                 EncryptionStrategy::FirstN(5.try_into().unwrap()),
                 EncryptionStrategy::Always,
                 data.to_vec(),

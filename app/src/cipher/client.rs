@@ -2,7 +2,7 @@ use std::{borrow::Cow, fmt::Display, str::FromStr};
 
 use super::strategy::EncryptionStrategy;
 use super::stream::CipherStream;
-use crate::{http::HeaderValue, ws::negotiate_websocket};
+use crate::{fetch::HttpStream, http::HeaderValue, ws::negotiate_websocket};
 use anyhow::{anyhow, Context};
 use base64::{display::Base64Display, URL_SAFE_NO_PAD};
 use cipher::StreamCipher;
@@ -56,7 +56,7 @@ pub const INITIAL_DATA_CONFIG: base64::Config = base64::URL_SAFE_NO_PAD;
 pub const INITIAL_DATA_HEADER: &'static str = "X-Cache-Key";
 
 pub async fn connect(
-    mut url: String,
+    stream: HttpStream<impl AsyncRead + AsyncWrite + Unpin + Send + Sync + 'static>,
     send_strategy: EncryptionStrategy,
     recv_strategy: EncryptionStrategy,
     mut initial_data: impl AsMut<[u8]> + Send,
@@ -76,11 +76,10 @@ pub async fn connect(
         wr_cipher.apply_keystream(initial_data.as_mut());
     }
 
-    let _ = write!(&mut url, "{}", params);
-
     let (r, w) = split(
         negotiate_websocket(
-            &url,
+            params.to_string().as_str(),
+            stream,
             vec![(
                 Cow::Borrowed(INITIAL_DATA_HEADER),
                 HeaderValue::from_display(Base64Display::with_config(

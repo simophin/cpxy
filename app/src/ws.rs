@@ -5,17 +5,15 @@ use futures_lite::{AsyncRead, AsyncWrite, AsyncWriteExt};
 
 use crate::{
     buf::RWBuffer,
-    fetch::send_http,
+    fetch::{send_http, send_http_stream, HttpStream},
     http::{parse_request, parse_response, AsyncHttpStream, HeaderValue, HttpCommon, HttpRequest},
 };
 
 pub async fn negotiate_websocket<'a>(
-    url: &str,
+    path: &str,
+    stream: HttpStream<impl AsyncRead + AsyncWrite + Unpin + Send + Sync + 'static>,
     extra_headers: Vec<(Cow<'a, str>, HeaderValue<'a>)>,
 ) -> anyhow::Result<impl AsyncRead + AsyncWrite + Unpin + Send + Sync> {
-    let u = crate::url::HttpUrl::try_from(url).context("Parsing server URL")?;
-    let host = u.address.get_host();
-
     let mut req = HttpRequest {
         common: HttpCommon {
             headers: vec![
@@ -26,17 +24,20 @@ pub async fn negotiate_websocket<'a>(
                     Cow::Borrowed("Sec-WebSocket-Key"),
                     "dGhlIHNhbXBsZSBub25jZQ==".into(),
                 ),
-                (Cow::Borrowed("Host"), host.as_ref().into()),
+                (
+                    Cow::Borrowed("Host"),
+                    stream.address().get_host().as_ref().into(),
+                ),
             ],
         },
         method: Cow::Borrowed("GET"),
-        path: u.path,
+        path: Cow::Borrowed(path),
     };
 
     req.common.headers.extend(extra_headers);
 
     let http_stream = parse_response(
-        send_http(u.is_https, &u.address, &req)
+        send_http_stream(stream, &req)
             .await
             .context("Sending initial request")?,
         RWBuffer::new(512, 65536),
