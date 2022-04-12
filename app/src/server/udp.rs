@@ -7,16 +7,19 @@ use smol::{spawn, Task};
 use crate::{
     buf::Buf,
     io::UdpSocket,
-    proxy::udp::{write_packet_async, Packet},
+    proxy::{
+        protocol::ProxyResult,
+        udp::{write_packet_async, Packet},
+    },
     socks5::Address,
+    utils::write_bincode_lengthed_async,
 };
 
-pub async fn serve_udp_proxy_conn(
+async fn prepare_socket(
     v4: bool,
-    stream: impl AsyncRead + AsyncWrite + Unpin + Send + Sync + 'static,
     initial_data: impl AsRef<[u8]> + Send,
-    initial_dst: Address<'static>,
-) -> anyhow::Result<()> {
+    initial_dst: &Address<'static>,
+) -> anyhow::Result<Arc<UdpSocket>> {
     let socket = Arc::new(UdpSocket::bind(v4).await?);
 
     socket
@@ -28,6 +31,36 @@ pub async fn serve_udp_proxy_conn(
         "Sending initial data(len={}) to {initial_dst}",
         initial_data.as_ref().len()
     );
+    Ok(socket)
+}
+
+pub async fn serve_udp_proxy_conn(
+    v4: bool,
+    mut stream: impl AsyncRead + AsyncWrite + Unpin + Send + Sync + 'static,
+    initial_data: impl AsRef<[u8]> + Send,
+    initial_dst: Address<'static>,
+) -> anyhow::Result<()> {
+    let socket = match prepare_socket(v4, initial_data, &initial_dst).await {
+        Ok(v) => {
+            write_bincode_lengthed_async(
+                &mut stream,
+                &ProxyResult::Granted {
+                    bound_address: None,
+                    solved_addresses: None,
+                },
+            )
+            .await?;
+            v
+        }
+        Err(e) => {
+            write_bincode_lengthed_async(
+                &mut stream,
+                &ProxyResult::ErrGeneric { msg: e.to_string() },
+            )
+            .await?;
+            return Err(e);
+        }
+    };
 
     let close_on_receive = initial_dst.get_port() == 53;
 
@@ -90,7 +123,10 @@ mod tests {
     use smol::block_on;
     use smol_timeout::TimeoutExt;
 
-    use crate::test::{duplex, echo_udp_server};
+    use crate::{
+        test::{duplex, echo_udp_server},
+        utils::read_bincode_lengthed_async,
+    };
 
     use super::*;
 
@@ -116,6 +152,16 @@ mod tests {
                 far,
                 initial_data,
                 server_addr.into(),
+            ));
+
+            // Must have received ProxyGranted
+            let result: ProxyResult = read_bincode_lengthed_async(&mut near).await?;
+            assert!(matches!(
+                result,
+                ProxyResult::Granted {
+                    bound_address: None,
+                    solved_addresses: None
+                }
             ));
 
             // Must have received echo-ed data

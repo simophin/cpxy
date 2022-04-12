@@ -58,7 +58,7 @@ pub async fn connect(
     mut url: String,
     send_strategy: EncryptionStrategy,
     recv_strategy: EncryptionStrategy,
-    mut initial_data: Vec<u8>,
+    mut initial_data: impl AsMut<[u8]> + Send,
 ) -> anyhow::Result<impl AsyncRead + AsyncWrite + Unpin> {
     let (cipher_type, mut wr_cipher, key, iv) = super::suite::pick_cipher();
     wr_cipher = send_strategy.wrap_cipher(wr_cipher);
@@ -71,8 +71,8 @@ pub async fn connect(
         cipher_type,
     };
 
-    if initial_data.len() > 0 {
-        wr_cipher.apply_keystream(&mut initial_data);
+    if initial_data.as_mut().len() > 0 {
+        wr_cipher.apply_keystream(initial_data.as_mut());
     }
 
     let _ = write!(&mut url, "{}", params);
@@ -83,7 +83,7 @@ pub async fn connect(
             vec![(
                 Cow::Borrowed(INITIAL_DATA_HEADER),
                 HeaderValue::from_display(Base64Display::with_config(
-                    &initial_data,
+                    initial_data.as_mut(),
                     INITIAL_DATA_CONFIG,
                 )),
             )],

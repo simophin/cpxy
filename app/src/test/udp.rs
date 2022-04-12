@@ -9,19 +9,15 @@ use super::*;
 
 #[test]
 fn test_udp() {
-    std::env::set_var("RUST_LOG", "debug");
     let _ = env_logger::try_init();
     block_on(async move {
         let (_server, server_addr) = run_test_server().await;
         let (_client, client_addr) = run_test_client(server_addr).await;
         let (_echo_server, echo_server_addr) = echo_udp_server().await;
-        let echo_server_addr = format!("127.0.0.1:{}", echo_server_addr.port())
-            .parse()
-            .unwrap();
 
         let mut socks5_client = TcpStream::connect_raw(client_addr).await.unwrap();
 
-        let relay_addr = send_socks5_request(&mut socks5_client, &echo_server_addr, true)
+        let relay_addr = send_socks5_request(&mut socks5_client, &echo_server_addr.into(), true)
             .timeout(TIMEOUT)
             .await
             .unwrap()
@@ -32,7 +28,7 @@ fn test_udp() {
         let payload = b"hello, world";
 
         let pkt = Socks5UdpRepr {
-            addr: echo_server_addr.clone(),
+            addr: echo_server_addr.into(),
             payload,
             frag_no: 0,
         }

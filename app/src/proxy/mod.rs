@@ -25,7 +25,6 @@ pub async fn request_proxy_upstream(
     write_bincode_lengthed(&mut header, req)?;
 
     let start = Instant::now();
-    let latency = start.elapsed();
 
     let url = format!("{}://{}", if c.tls { "https" } else { "http" }, c.address);
 
@@ -34,6 +33,6 @@ pub async fn request_proxy_upstream(
     Ok((
         read_bincode_lengthed_async(&mut upstream).await?,
         upstream,
-        latency,
+        start.elapsed(),
     ))
 }

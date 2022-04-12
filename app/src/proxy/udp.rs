@@ -16,6 +16,7 @@ use crate::socks5::Address;
 // |ipv4(u32)|port(u16)|,
 // |ipv6(u128)|port(u16)|,
 // |host_len(u16)|host(variable)|port(u16)|
+#[derive(Debug)]
 pub enum Packet<T> {
     PayloadOnly(T),  // TYPE 1
     WithIpv4Addr(T), // TYPE 2

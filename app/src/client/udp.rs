@@ -162,6 +162,7 @@ async fn copy_between_relay_and_stream(
 
         loop {
             let pkt = ProxyUdpPacket::read_async(&mut stream_r).await?;
+            log::debug!("Received {pkt:?} from upstream");
             let addr = match pkt
                 .addr()
                 .map(|a| a.into_owned())
@@ -207,6 +208,8 @@ async fn copy_between_relay_and_stream(
 
             tx_count
                 .inc(write_proxy_udp_packet_async(&mut stream_w, send_addr, pkt.payload()).await?);
+
+            log::debug!("Sent {pkt:?} to upstream");
         }
         Ok(())
     });
