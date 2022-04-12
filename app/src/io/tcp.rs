@@ -1,9 +1,9 @@
+use derive_more::{Deref, DerefMut};
 use futures_lite::{AsyncRead, AsyncWrite};
 
 use crate::socks5::Address;
 use std::io::{IoSlice, IoSliceMut};
 use std::net::SocketAddr;
-use std::ops::{Deref, DerefMut};
 use std::pin::Pin;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::task::{Context, Poll};
@@ -12,6 +12,7 @@ type AsyncTcpStream = smol::net::TcpStream;
 
 static TCP_SOCKET_COUNT: AtomicUsize = AtomicUsize::new(0);
 
+#[derive(Deref, DerefMut)]
 pub struct TcpStream(AsyncTcpStream);
 
 impl TcpStream {
@@ -63,20 +64,6 @@ impl From<AsyncTcpStream> for TcpStream {
     fn from(s: AsyncTcpStream) -> Self {
         TCP_SOCKET_COUNT.fetch_add(1, Ordering::Acquire);
         Self(s)
-    }
-}
-
-impl Deref for TcpStream {
-    type Target = AsyncTcpStream;
-
-    fn deref(&self) -> &Self::Target {
-        &self.0
-    }
-}
-
-impl DerefMut for TcpStream {
-    fn deref_mut(&mut self) -> &mut Self::Target {
-        &mut self.0
     }
 }
 

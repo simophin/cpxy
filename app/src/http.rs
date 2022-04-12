@@ -7,6 +7,7 @@ use std::{
 };
 
 use anyhow::{anyhow, bail, Context};
+use derive_more::Deref;
 use futures_lite::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
 use pin_project_lite::pin_project;
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
@@ -89,16 +90,18 @@ pub struct HttpCommon<'a> {
     pub headers: Vec<(Cow<'a, str>, HeaderValue<'a>)>,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, Deref)]
 pub struct HttpRequest<'a> {
     #[serde(flatten)]
+    #[deref]
     pub common: HttpCommon<'a>,
     pub method: Cow<'a, str>,
     pub path: Cow<'a, str>,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Deref)]
 pub struct HttpResponse<'a> {
+    #[deref]
     common: HttpCommon<'a>,
     pub status_code: u16,
 }
@@ -154,22 +157,6 @@ impl<'a> HttpRequest<'a> {
 
         w.write_all(b"\r\n").await?;
         Ok(())
-    }
-}
-
-impl<'a> Deref for HttpRequest<'a> {
-    type Target = HttpCommon<'a>;
-
-    fn deref(&self) -> &Self::Target {
-        &self.common
-    }
-}
-
-impl<'a> Deref for HttpResponse<'a> {
-    type Target = HttpCommon<'a>;
-
-    fn deref(&self) -> &Self::Target {
-        &self.common
     }
 }
 
