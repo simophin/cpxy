@@ -36,7 +36,7 @@ pub async fn negotiate_websocket<'a>(
     req.common.headers.extend(extra_headers);
 
     let http_stream = parse_response(
-        send_http(u.is_https, &u.address, req)
+        send_http(u.is_https, &u.address, &req)
             .await
             .context("Sending initial request")?,
         RWBuffer::new(512, 65536),

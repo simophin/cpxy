@@ -1,14 +1,14 @@
-use std::borrow::Cow;
+use std::{borrow::Cow, pin::Pin};
 
 use anyhow::Context;
 use futures_lite::{AsyncRead, AsyncWrite, AsyncWriteExt};
+use futures_rustls::client::TlsStream;
 
 use crate::{
     buf::RWBuffer,
     http::{AsyncHttpStream, HeaderValue, HttpCommon, HttpRequest, HttpResponse},
     io::TcpStream,
     socks5::Address,
-    stream::AsyncReadWrite,
     tls::connect_tls,
     url::HttpUrl,
 };
@@ -32,11 +32,84 @@ pub async fn send_http_with_proxy(
     Ok(client)
 }
 
-pub async fn send_http<'a>(
+enum HttpStream<T> {
+    Plain(T),
+    SSL(TlsStream<T>),
+}
+
+impl<T: AsyncRead + AsyncWrite + Unpin> AsyncRead for HttpStream<T> {
+    fn poll_read(
+        self: std::pin::Pin<&mut Self>,
+        cx: &mut std::task::Context<'_>,
+        buf: &mut [u8],
+    ) -> std::task::Poll<std::io::Result<usize>> {
+        match self.get_mut() {
+            HttpStream::Plain(s) => AsyncRead::poll_read(Pin::new(s), cx, buf),
+            HttpStream::SSL(s) => AsyncRead::poll_read(Pin::new(s), cx, buf),
+        }
+    }
+
+    fn poll_read_vectored(
+        self: Pin<&mut Self>,
+        cx: &mut std::task::Context<'_>,
+        bufs: &mut [std::io::IoSliceMut<'_>],
+    ) -> std::task::Poll<std::io::Result<usize>> {
+        match self.get_mut() {
+            HttpStream::Plain(s) => AsyncRead::poll_read_vectored(Pin::new(s), cx, bufs),
+            HttpStream::SSL(s) => AsyncRead::poll_read_vectored(Pin::new(s), cx, bufs),
+        }
+    }
+}
+
+impl<T: AsyncRead + AsyncWrite + Unpin> AsyncWrite for HttpStream<T> {
+    fn poll_write_vectored(
+        self: Pin<&mut Self>,
+        cx: &mut std::task::Context<'_>,
+        bufs: &[std::io::IoSlice<'_>],
+    ) -> std::task::Poll<std::io::Result<usize>> {
+        match self.get_mut() {
+            HttpStream::Plain(s) => AsyncWrite::poll_write_vectored(Pin::new(s), cx, bufs),
+            HttpStream::SSL(s) => AsyncWrite::poll_write_vectored(Pin::new(s), cx, bufs),
+        }
+    }
+
+    fn poll_write(
+        self: Pin<&mut Self>,
+        cx: &mut std::task::Context<'_>,
+        buf: &[u8],
+    ) -> std::task::Poll<std::io::Result<usize>> {
+        match self.get_mut() {
+            HttpStream::Plain(s) => AsyncWrite::poll_write(Pin::new(s), cx, buf),
+            HttpStream::SSL(s) => AsyncWrite::poll_write(Pin::new(s), cx, buf),
+        }
+    }
+
+    fn poll_flush(
+        self: Pin<&mut Self>,
+        cx: &mut std::task::Context<'_>,
+    ) -> std::task::Poll<std::io::Result<()>> {
+        match self.get_mut() {
+            HttpStream::Plain(s) => AsyncWrite::poll_flush(Pin::new(s), cx),
+            HttpStream::SSL(s) => AsyncWrite::poll_flush(Pin::new(s), cx),
+        }
+    }
+
+    fn poll_close(
+        self: Pin<&mut Self>,
+        cx: &mut std::task::Context<'_>,
+    ) -> std::task::Poll<std::io::Result<()>> {
+        match self.get_mut() {
+            HttpStream::Plain(s) => AsyncWrite::poll_flush(Pin::new(s), cx),
+            HttpStream::SSL(s) => AsyncWrite::poll_flush(Pin::new(s), cx),
+        }
+    }
+}
+
+pub async fn send_http(
     https: bool,
     address: &Address<'_>,
-    req: HttpRequest<'_>,
-) -> anyhow::Result<impl AsyncRead + AsyncWrite + Unpin + Send + Sync + 'a> {
+    req: &HttpRequest<'_>,
+) -> anyhow::Result<impl AsyncRead + AsyncWrite + Unpin + Send + Sync + 'static> {
     let client = TcpStream::connect(&address)
         .await
         .with_context(|| format!("Connecting to {address}"))?;
@@ -44,13 +117,13 @@ pub async fn send_http<'a>(
     client.set_nodelay(true).context("Enabling NO_DELAY")?;
 
     let mut client = if https {
-        AsyncReadWrite::new(
+        HttpStream::SSL(
             connect_tls(address.get_host().as_ref(), client)
                 .await
                 .context("TLS handshake")?,
         )
     } else {
-        AsyncReadWrite::new(client)
+        HttpStream::Plain(client)
     };
 
     req.to_async_writer(&mut client)

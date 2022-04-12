@@ -19,6 +19,7 @@ mod f {
     use std::sync::Arc;
 
     use futures_rustls::{
+        client::TlsStream,
         rustls::{self, OwnedTrustAnchor, RootCertStore},
         TlsConnector,
     };
@@ -39,10 +40,10 @@ mod f {
             .with_no_client_auth()
     }
 
-    pub async fn connect_tls(
+    pub async fn connect_tls<T: AsyncRead + AsyncWrite + Unpin + Send + Sync>(
         host: &str,
-        stream: impl AsyncRead + AsyncWrite + Unpin + Send + Sync,
-    ) -> anyhow::Result<impl AsyncRead + AsyncWrite + Unpin + Send + Sync> {
+        stream: T,
+    ) -> anyhow::Result<TlsStream<T>> {
         lazy_static! {
             static ref CONFIG: Arc<rustls::ClientConfig> = Arc::new(create_config());
         }

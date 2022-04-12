@@ -36,7 +36,7 @@ pub async fn serve_http_proxy_conn(
         .context("Redirecting upstream traffic")
     } else if config.allow_direct(&dst) {
         if let ProxyRequest::HTTP { req, .. } = proxy_request {
-            match send_http(https, &dst, req).await {
+            match send_http(https, &dst, &req).await {
                 Ok(upstream) => {
                     handshaker.respond_ok(&mut stream, None).await?;
                     copy_duplex(upstream, stream, None, None)

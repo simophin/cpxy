@@ -54,7 +54,7 @@ async fn serve_new_conn(id: String, url: String) -> anyhow::Result<()> {
             copy_duplex(upstream, conn_stream, None, None).await
         }
         HandshakeRequest::HTTP { dst, https, req } => {
-            let upstream = match send_http(https, &dst, req).await {
+            let upstream = match send_http(https, &dst, &req).await {
                 Ok(v) => {
                     handshaker.respond_ok(&mut conn_stream, None).await?;
                     v

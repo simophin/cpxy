@@ -68,7 +68,7 @@ pub async fn serve_http_proxy(
 ) -> anyhow::Result<()> {
     log::info!("Proxying upstream: http(s)://{dst}");
     serve_tcp_proxy_common(
-        send_http(https, dst, req)
+        send_http(https, dst, &req)
             .map(|r| r.map(|socket| (None, socket)))
             .timeout(Duration::from_secs(3))
             .await,
