@@ -11,7 +11,7 @@ use crate::{
     handshake::{HandshakeRequest, Handshaker},
     io::TcpStream,
     utils::{copy_duplex, read_bincode_lengthed_async, write_bincode_lengthed_async},
-    ws::negotiate_websocket,
+    ws::negotiate_websocket_url,
 };
 
 use super::{server::ConnectionType, ConnectionId};
@@ -22,7 +22,7 @@ pub enum ClientCommand {
 }
 
 async fn serve_new_conn(id: String, url: String) -> anyhow::Result<()> {
-    let mut conn_stream = negotiate_websocket(&url, vec![])
+    let mut conn_stream = negotiate_websocket_url(&url, vec![])
         .timeout(Duration::from_secs(5))
         .await
         .context("Timeout waiting for connection {id}")?
@@ -76,7 +76,7 @@ async fn serve_new_conn(id: String, url: String) -> anyhow::Result<()> {
 }
 
 pub async fn run_client(url: String) -> anyhow::Result<()> {
-    let mut control_stream = negotiate_websocket(&url, vec![])
+    let mut control_stream = negotiate_websocket_url(&url, vec![])
         .timeout(Duration::from_secs(5))
         .await
         .context("Timeout waiting for control connection")?

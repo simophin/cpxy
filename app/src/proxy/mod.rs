@@ -1,6 +1,7 @@
 use crate::cipher::strategy::EncryptionStrategy;
-use crate::fetch::HttpStream;
-use crate::socks5::Address;
+use crate::config::UpstreamConfig;
+use crate::fetch::connect_http;
+use crate::url::HttpUrl;
 use crate::utils::{read_bincode_lengthed_async, write_bincode_lengthed};
 use futures_lite::{AsyncRead, AsyncWrite};
 use protocol::{ProxyRequest, ProxyResult};
@@ -10,14 +11,15 @@ pub mod protocol;
 pub mod udp;
 
 pub async fn request_proxy_upstream_http(
-    stream: HttpStream<impl AsyncRead + AsyncWrite + Unpin + Send + Sync>,
+    upstream_url: &HttpUrl<'_>,
+    stream: impl AsyncRead + AsyncWrite + Unpin + Send + Sync + 'static,
     req: &ProxyRequest<'_>,
 ) -> anyhow::Result<(
     ProxyResult,
-    impl AsyncRead + AsyncWrite + Unpin + Send + Sync,
+    impl AsyncRead + AsyncWrite + Unpin + Send + Sync + 'static,
     Duration,
 )> {
-    let send_enc = EncryptionStrategy::pick_send(req, matches!(stream, HttpStream::SSL(_, _)));
+    let send_enc = EncryptionStrategy::pick_send(req, upstream_url.is_https);
     let receive_enc = EncryptionStrategy::pick_receive(req);
 
     log::debug!("EncryptionStrategy(send = {send_enc:?}, receive = {receive_enc})");
@@ -27,7 +29,8 @@ pub async fn request_proxy_upstream_http(
 
     let start = Instant::now();
 
-    let mut upstream = super::cipher::client::connect(url, send_enc, receive_enc, header).await?;
+    let mut upstream =
+        super::cipher::client::connect(upstream_url, stream, send_enc, receive_enc, header).await?;
 
     Ok((
         read_bincode_lengthed_async(&mut upstream).await?,
@@ -36,16 +39,33 @@ pub async fn request_proxy_upstream_http(
     ))
 }
 
-pub async fn request_proxy_upstream(
-    upstream_tls: bool,
-    upstream_address: &Address<'_>,
+pub async fn request_proxy_upstream_with_config(
+    c: &UpstreamConfig,
     req: &ProxyRequest<'_>,
 ) -> anyhow::Result<(
     ProxyResult,
     impl AsyncRead + AsyncWrite + Unpin + Send + Sync,
     Duration,
 )> {
-    let send_enc = EncryptionStrategy::pick_send(&req, upstream_tls);
+    let stream = connect_http(c.tls, &c.address).await?;
+    let url = HttpUrl {
+        is_https: c.tls,
+        address: c.address.clone(),
+        path: Default::default(),
+    };
+    request_proxy_upstream(&url, stream, req).await
+}
+
+pub async fn request_proxy_upstream(
+    upstream_url: &HttpUrl<'_>,
+    upstream: impl AsyncRead + AsyncWrite + Unpin + Send + Sync + 'static,
+    req: &ProxyRequest<'_>,
+) -> anyhow::Result<(
+    ProxyResult,
+    impl AsyncRead + AsyncWrite + Unpin + Send + Sync,
+    Duration,
+)> {
+    let send_enc = EncryptionStrategy::pick_send(&req, upstream_url.is_https);
     let receive_enc = EncryptionStrategy::pick_receive(&req);
 
     log::debug!("EncryptionStrategy(send = {send_enc:?}, receive = {receive_enc})");
@@ -55,12 +75,9 @@ pub async fn request_proxy_upstream(
 
     let start = Instant::now();
 
-    let url = format!(
-        "{}://{upstream_address}",
-        if upstream_tls { "https" } else { "http" }
-    );
-
-    let mut upstream = super::cipher::client::connect(url, send_enc, receive_enc, header).await?;
+    let mut upstream =
+        super::cipher::client::connect(upstream_url, upstream, send_enc, receive_enc, header)
+            .await?;
 
     Ok((
         read_bincode_lengthed_async(&mut upstream).await?,

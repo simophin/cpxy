@@ -7,7 +7,7 @@ use crate::{
     config::ClientConfig,
     proxy::{
         protocol::{ProxyRequest, ProxyResult},
-        request_proxy_upstream,
+       request_proxy_upstream_with_config,
     },
     socks5::Address,
 };
@@ -30,7 +30,7 @@ pub async fn request_best_upstream<'a>(
         let mut last_error = None;
         while let Some((name, config)) = upstreams.pop() {
             log::info!("Trying upstream {name} for {dst}");
-            match request_proxy_upstream(config.tls, &config.address, req).await {
+            match request_proxy_upstream_with_config(config, req).await {
                 Ok((ProxyResult::Granted { bound_address, .. }, upstream, latency)) => {
                     log::debug!(
                         "Upstream granted with address = {bound_address:?}, latency = {latency:?}"

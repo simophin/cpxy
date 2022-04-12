@@ -1,15 +1,9 @@
 use anyhow::{anyhow, Context};
 use futures_lite::{AsyncRead, AsyncWrite};
-use futures_util::FutureExt;
 
 use crate::{
-    config::ClientConfig,
-    fetch::{connect_http, send_http},
-    handshake::Handshaker,
-    http::HttpRequest,
-    proxy::protocol::ProxyRequest,
-    socks5::Address,
-    utils::copy_duplex,
+    config::ClientConfig, fetch::send_http, handshake::Handshaker, http::HttpRequest,
+    proxy::protocol::ProxyRequest, socks5::Address, utils::copy_duplex,
 };
 
 use super::{utils::request_best_upstream, ClientStatistics};

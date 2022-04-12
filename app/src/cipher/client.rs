@@ -2,12 +2,11 @@ use std::{borrow::Cow, fmt::Display, str::FromStr};
 
 use super::strategy::EncryptionStrategy;
 use super::stream::CipherStream;
-use crate::{fetch::HttpStream, http::HeaderValue, ws::negotiate_websocket};
+use crate::{http::HeaderValue, url::HttpUrl, ws::negotiate_websocket};
 use anyhow::{anyhow, Context};
 use base64::{display::Base64Display, URL_SAFE_NO_PAD};
 use cipher::StreamCipher;
 use futures_lite::{io::split, AsyncRead, AsyncWrite};
-use std::fmt::Write;
 
 pub struct CipherParams<'a> {
     pub key: Cow<'a, [u8]>,
@@ -56,7 +55,8 @@ pub const INITIAL_DATA_CONFIG: base64::Config = base64::URL_SAFE_NO_PAD;
 pub const INITIAL_DATA_HEADER: &'static str = "X-Cache-Key";
 
 pub async fn connect(
-    stream: HttpStream<impl AsyncRead + AsyncWrite + Unpin + Send + Sync + 'static>,
+    url: &HttpUrl<'_>,
+    stream: impl AsyncRead + AsyncWrite + Unpin + Send + Sync + 'static,
     send_strategy: EncryptionStrategy,
     recv_strategy: EncryptionStrategy,
     mut initial_data: impl AsMut<[u8]> + Send,
@@ -78,7 +78,11 @@ pub async fn connect(
 
     let (r, w) = split(
         negotiate_websocket(
-            params.to_string().as_str(),
+            &HttpUrl {
+                is_https: url.is_https,
+                address: url.address.clone(),
+                path: Cow::Owned(format!("{}/{params}", url.path)),
+            },
             stream,
             vec![(
                 Cow::Borrowed(INITIAL_DATA_HEADER),

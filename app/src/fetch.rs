@@ -33,21 +33,8 @@ pub async fn send_http_with_proxy(
 }
 
 pub enum HttpStream<T> {
-    Plain(T, Address<'static>),
-    SSL(TlsStream<T>, Address<'static>),
-}
-
-impl<T> HttpStream<T> {
-    pub fn address(&self) -> &Address<'static> {
-        match self {
-            HttpStream::Plain(_, addr) => addr,
-            HttpStream::SSL(_, addr) => addr,
-        }
-    }
-}
-
-pub async fn connect_url(url: &str) -> anyhow::Result<HttpStream<TcpStream>> {
-    todo!()
+    Plain(T),
+    SSL(TlsStream<T>),
 }
 
 pub async fn connect_http(
@@ -65,10 +52,9 @@ pub async fn connect_http(
             connect_tls(address.get_host().as_ref(), client)
                 .await
                 .context("TLS handshake")?,
-            address.clone().into_owned(),
         )
     } else {
-        HttpStream::Plain(client, address.clone().into_owned())
+        HttpStream::Plain(client)
     };
     Ok(client)
 }
@@ -80,8 +66,8 @@ impl<T: AsyncRead + AsyncWrite + Unpin> AsyncRead for HttpStream<T> {
         buf: &mut [u8],
     ) -> std::task::Poll<std::io::Result<usize>> {
         match self.get_mut() {
-            HttpStream::Plain(s, _) => AsyncRead::poll_read(Pin::new(s), cx, buf),
-            HttpStream::SSL(s, _) => AsyncRead::poll_read(Pin::new(s), cx, buf),
+            HttpStream::Plain(s) => AsyncRead::poll_read(Pin::new(s), cx, buf),
+            HttpStream::SSL(s) => AsyncRead::poll_read(Pin::new(s), cx, buf),
         }
     }
 
@@ -91,8 +77,8 @@ impl<T: AsyncRead + AsyncWrite + Unpin> AsyncRead for HttpStream<T> {
         bufs: &mut [std::io::IoSliceMut<'_>],
     ) -> std::task::Poll<std::io::Result<usize>> {
         match self.get_mut() {
-            HttpStream::Plain(s, _) => AsyncRead::poll_read_vectored(Pin::new(s), cx, bufs),
-            HttpStream::SSL(s, _) => AsyncRead::poll_read_vectored(Pin::new(s), cx, bufs),
+            HttpStream::Plain(s) => AsyncRead::poll_read_vectored(Pin::new(s), cx, bufs),
+            HttpStream::SSL(s) => AsyncRead::poll_read_vectored(Pin::new(s), cx, bufs),
         }
     }
 }
@@ -104,8 +90,8 @@ impl<T: AsyncRead + AsyncWrite + Unpin> AsyncWrite for HttpStream<T> {
         bufs: &[std::io::IoSlice<'_>],
     ) -> std::task::Poll<std::io::Result<usize>> {
         match self.get_mut() {
-            HttpStream::Plain(s, _) => AsyncWrite::poll_write_vectored(Pin::new(s), cx, bufs),
-            HttpStream::SSL(s, _) => AsyncWrite::poll_write_vectored(Pin::new(s), cx, bufs),
+            HttpStream::Plain(s) => AsyncWrite::poll_write_vectored(Pin::new(s), cx, bufs),
+            HttpStream::SSL(s) => AsyncWrite::poll_write_vectored(Pin::new(s), cx, bufs),
         }
     }
 
@@ -115,8 +101,8 @@ impl<T: AsyncRead + AsyncWrite + Unpin> AsyncWrite for HttpStream<T> {
         buf: &[u8],
     ) -> std::task::Poll<std::io::Result<usize>> {
         match self.get_mut() {
-            HttpStream::Plain(s, _) => AsyncWrite::poll_write(Pin::new(s), cx, buf),
-            HttpStream::SSL(s, _) => AsyncWrite::poll_write(Pin::new(s), cx, buf),
+            HttpStream::Plain(s) => AsyncWrite::poll_write(Pin::new(s), cx, buf),
+            HttpStream::SSL(s) => AsyncWrite::poll_write(Pin::new(s), cx, buf),
         }
     }
 
@@ -125,8 +111,8 @@ impl<T: AsyncRead + AsyncWrite + Unpin> AsyncWrite for HttpStream<T> {
         cx: &mut std::task::Context<'_>,
     ) -> std::task::Poll<std::io::Result<()>> {
         match self.get_mut() {
-            HttpStream::Plain(s, _) => AsyncWrite::poll_flush(Pin::new(s), cx),
-            HttpStream::SSL(s, _) => AsyncWrite::poll_flush(Pin::new(s), cx),
+            HttpStream::Plain(s) => AsyncWrite::poll_flush(Pin::new(s), cx),
+            HttpStream::SSL(s) => AsyncWrite::poll_flush(Pin::new(s), cx),
         }
     }
 
@@ -135,8 +121,8 @@ impl<T: AsyncRead + AsyncWrite + Unpin> AsyncWrite for HttpStream<T> {
         cx: &mut std::task::Context<'_>,
     ) -> std::task::Poll<std::io::Result<()>> {
         match self.get_mut() {
-            HttpStream::Plain(s, _) => AsyncWrite::poll_flush(Pin::new(s), cx),
-            HttpStream::SSL(s, _) => AsyncWrite::poll_flush(Pin::new(s), cx),
+            HttpStream::Plain(s) => AsyncWrite::poll_flush(Pin::new(s), cx),
+            HttpStream::SSL(s) => AsyncWrite::poll_flush(Pin::new(s), cx),
         }
     }
 }
@@ -146,17 +132,8 @@ pub async fn send_http(
     address: &Address<'_>,
     req: &HttpRequest<'_>,
 ) -> anyhow::Result<impl AsyncRead + AsyncWrite + Unpin + Send + Sync + 'static> {
-    send_http_stream(connect_http(https, address).await?, req).await
-}
-
-pub async fn send_http_stream(
-    mut stream: HttpStream<impl AsyncRead + AsyncWrite + Unpin + Send + Sync + 'static>,
-    req: &HttpRequest<'_>,
-) -> anyhow::Result<impl AsyncRead + AsyncWrite + Unpin + Send + Sync + 'static> {
-    req.to_async_writer(&mut stream)
-        .await
-        .context("Writing request headers")?;
-
+    let mut stream = connect_http(https, address).await?;
+    req.to_async_writer(&mut stream).await?;
     Ok(stream)
 }
 

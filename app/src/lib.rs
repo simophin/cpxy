@@ -1,5 +1,3 @@
-extern crate core;
-
 mod broadcast;
 mod buf;
 mod cipher;
@@ -34,3 +32,6 @@ pub mod config;
 pub mod controller;
 mod geoip;
 mod udp_relay;
+
+pub use futures_lite;
+pub use futures_util;

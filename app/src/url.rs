@@ -11,10 +11,21 @@ pub struct Url<'a> {
     pub path: Cow<'a, str>,
 }
 
+#[derive(Clone, Debug)]
 pub struct HttpUrl<'a> {
     pub is_https: bool,
     pub address: Address<'a>,
     pub path: Cow<'a, str>,
+}
+
+impl<'a> HttpUrl<'a> {
+    pub fn to_owned(&self) -> HttpUrl<'static> {
+        HttpUrl {
+            is_https: self.is_https,
+            address: self.address.clone().into_owned(),
+            path: Cow::Owned(self.path.to_string()),
+        }
+    }
 }
 
 impl<'a> TryFrom<&'a str> for HttpUrl<'a> {

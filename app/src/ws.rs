@@ -5,15 +5,26 @@ use futures_lite::{AsyncRead, AsyncWrite, AsyncWriteExt};
 
 use crate::{
     buf::RWBuffer,
-    fetch::{send_http, send_http_stream, HttpStream},
+    fetch::connect_http,
     http::{parse_request, parse_response, AsyncHttpStream, HeaderValue, HttpCommon, HttpRequest},
+    url::HttpUrl,
 };
 
-pub async fn negotiate_websocket<'a>(
-    path: &str,
-    stream: HttpStream<impl AsyncRead + AsyncWrite + Unpin + Send + Sync + 'static>,
+pub async fn negotiate_websocket_url<'a>(
+    url: &str,
     extra_headers: Vec<(Cow<'a, str>, HeaderValue<'a>)>,
 ) -> anyhow::Result<impl AsyncRead + AsyncWrite + Unpin + Send + Sync> {
+    let url = HttpUrl::try_from(url)?;
+    let stream = connect_http(url.is_https, &url.address).await?;
+    negotiate_websocket(&url, stream, extra_headers).await
+}
+
+pub async fn negotiate_websocket<'a>(
+    url: &HttpUrl<'_>,
+    mut stream: impl AsyncRead + AsyncWrite + Unpin + Send + Sync + 'static,
+    extra_headers: Vec<(Cow<'a, str>, HeaderValue<'a>)>,
+) -> anyhow::Result<impl AsyncRead + AsyncWrite + Unpin + Send + Sync> {
+    let host = url.address.get_host();
     let mut req = HttpRequest {
         common: HttpCommon {
             headers: vec![
@@ -24,26 +35,21 @@ pub async fn negotiate_websocket<'a>(
                     Cow::Borrowed("Sec-WebSocket-Key"),
                     "dGhlIHNhbXBsZSBub25jZQ==".into(),
                 ),
-                (
-                    Cow::Borrowed("Host"),
-                    stream.address().get_host().as_ref().into(),
-                ),
+                (Cow::Borrowed("Host"), host.as_ref().into()),
             ],
         },
         method: Cow::Borrowed("GET"),
-        path: Cow::Borrowed(path),
+        path: Cow::Borrowed(url.path.as_ref()),
     };
 
     req.common.headers.extend(extra_headers);
+    req.to_async_writer(&mut stream)
+        .await
+        .context("Sending request")?;
 
-    let http_stream = parse_response(
-        send_http_stream(stream, &req)
-            .await
-            .context("Sending initial request")?,
-        RWBuffer::new(512, 65536),
-    )
-    .await
-    .context("Parsing initial response")?;
+    let http_stream = parse_response(stream, RWBuffer::new(512, 65536))
+        .await
+        .context("Parsing initial response")?;
 
     if http_stream.status_code != 101 {
         bail!("Expecting 101 response but got {}", http_stream.status_code);
