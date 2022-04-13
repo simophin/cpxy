@@ -12,6 +12,7 @@ pub mod proxy;
 pub mod rsocks;
 pub mod server;
 // mod shared_udp;
+pub mod rt;
 mod socks4;
 pub mod socks5;
 mod stream;
@@ -33,5 +34,6 @@ pub mod controller;
 mod geoip;
 mod udp_relay;
 
+pub use env_logger;
 pub use futures_lite;
 pub use futures_util;

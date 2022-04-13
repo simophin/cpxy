@@ -201,7 +201,7 @@ impl Packet<MutBuf> {
 
 #[cfg(test)]
 mod tests {
-    use smol::block_on;
+    use crate::rt::block_on;
 
     use super::*;
 

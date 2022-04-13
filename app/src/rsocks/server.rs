@@ -5,13 +5,13 @@ use std::{
     time::Duration,
 };
 
+use crate::rt::{
+    mpmc::{bounded, Receiver, Sender},
+    spawn, Task,
+};
 use anyhow::{anyhow, Context};
 use futures_util::{select, FutureExt};
 use serde::{Deserialize, Serialize};
-use smol::{
-    channel::{bounded, Receiver, Sender},
-    spawn, Task,
-};
 use smol_timeout::TimeoutExt;
 
 use crate::{

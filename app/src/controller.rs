@@ -5,6 +5,8 @@ use crate::client::{run_client, ClientStatistics};
 use crate::config::{ClientConfig, UpstreamConfig};
 use crate::http::{parse_request, write_http_response};
 use crate::io::TcpListener;
+use crate::rt::fs::File;
+use crate::rt::spawn;
 use crate::socks5::Address;
 use anyhow::{anyhow, Context};
 use async_broadcast::Sender;
@@ -13,8 +15,6 @@ use futures_lite::io::split;
 use futures_lite::{AsyncRead, AsyncWrite, AsyncWriteExt};
 use rust_embed::RustEmbed;
 use serde::{Deserialize, Serialize};
-use smol::fs::File;
-use smol::spawn;
 use std::path::PathBuf;
 use std::sync::Arc;
 

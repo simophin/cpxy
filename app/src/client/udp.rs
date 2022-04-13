@@ -7,15 +7,14 @@ use std::{
     time::Duration,
 };
 
+use crate::rt::{
+    mpmc::{Receiver, Sender},
+    spawn, Task, TimeoutExt,
+};
 use anyhow::bail;
 use futures_lite::{
     future::race, io::split, AsyncRead, AsyncReadExt, AsyncWrite, Stream, StreamExt,
 };
-use smol::{
-    channel::{Receiver, Sender},
-    spawn, Task,
-};
-use smol_timeout::TimeoutExt;
 
 use crate::{
     buf::Buf,
@@ -235,8 +234,7 @@ async fn drain_socks(
 mod tests {
     use std::time::Duration;
 
-    use smol::{block_on, channel::bounded};
-    use smol_timeout::TimeoutExt;
+    use crate::rt::{block_on, mpmc::bounded, TimeoutExt};
 
     use crate::test::duplex;
 

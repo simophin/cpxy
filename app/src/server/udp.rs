@@ -1,8 +1,8 @@
 use std::{net::SocketAddr, sync::Arc};
 
+use crate::rt::{spawn, Task};
 use anyhow::Context;
 use futures_lite::{future::race, io::split, AsyncRead, AsyncWrite};
-use smol::{spawn, Task};
 
 use crate::{
     buf::Buf,
@@ -120,8 +120,7 @@ pub async fn serve_udp_proxy_conn(
 mod tests {
     use std::time::Duration;
 
-    use smol::block_on;
-    use smol_timeout::TimeoutExt;
+    use crate::rt::{block_on, TimeoutExt};
 
     use crate::{
         test::{duplex, echo_udp_server},

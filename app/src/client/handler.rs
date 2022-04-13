@@ -3,7 +3,7 @@ use std::sync::Arc;
 use anyhow::Context;
 use futures_lite::{Stream, StreamExt};
 use futures_util::{select, FutureExt};
-use smol::{spawn, Executor, Task};
+use crate::rt::{spawn, Executor, Task};
 
 use crate::{
     buf::RWBuffer,

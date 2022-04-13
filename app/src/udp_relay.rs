@@ -4,12 +4,14 @@ use std::{
 };
 
 use anyhow::{anyhow, Context};
-use smol::{
-    channel::{bounded, Receiver, Sender},
-    spawn, Task,
-};
 
-use crate::{buf::Buf, io::UdpSocket, socks5::UdpPacket};
+use crate::{
+    buf::Buf,
+    io::UdpSocket,
+    rt::mpmc::{bounded, Receiver, Sender},
+    rt::{spawn, Task},
+    socks5::UdpPacket,
+};
 
 pub async fn new_udp_relay(
     v4: bool,
@@ -67,7 +69,7 @@ pub async fn new_udp_relay(
 mod tests {
     use std::time::Duration;
 
-    use smol::block_on;
+    use crate::rt::block_on;
     use smol_timeout::TimeoutExt;
 
     use crate::socks5::{Address, UdpRepr};

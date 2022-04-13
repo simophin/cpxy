@@ -1,6 +1,7 @@
 use derive_more::{Deref, DerefMut};
 use futures_lite::{AsyncRead, AsyncWrite};
 
+use crate::rt::net::AsyncToSocketAddrs;
 use crate::socks5::Address;
 use std::io::{IoSlice, IoSliceMut};
 use std::net::SocketAddr;
@@ -8,7 +9,7 @@ use std::pin::Pin;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::task::{Context, Poll};
 
-type AsyncTcpStream = smol::net::TcpStream;
+type AsyncTcpStream = crate::rt::net::TcpStream;
 
 static TCP_SOCKET_COUNT: AtomicUsize = AtomicUsize::new(0);
 
@@ -16,7 +17,7 @@ static TCP_SOCKET_COUNT: AtomicUsize = AtomicUsize::new(0);
 pub struct TcpStream(AsyncTcpStream);
 
 impl TcpStream {
-    pub async fn connect_raw(a: impl smol::net::AsyncToSocketAddrs) -> anyhow::Result<Self> {
+    pub async fn connect_raw(a: impl AsyncToSocketAddrs) -> anyhow::Result<Self> {
         Ok(Self::from(AsyncTcpStream::connect(a).await?))
     }
 
@@ -118,7 +119,7 @@ impl AsyncWrite for TcpStream {
     }
 }
 
-type AsyncTcpListener = smol::net::TcpListener;
+type AsyncTcpListener = crate::rt::net::TcpListener;
 
 pub struct TcpListener(AsyncTcpListener);
 
@@ -127,11 +128,11 @@ impl TcpListener {
         Self(v)
     }
 
-    pub fn local_addr(&self) -> smol::io::Result<SocketAddr> {
+    pub fn local_addr(&self) -> std::io::Result<SocketAddr> {
         self.0.local_addr()
     }
 
-    pub async fn bind(addr: &Address<'_>) -> smol::io::Result<Self> {
+    pub async fn bind(addr: &Address<'_>) -> std::io::Result<Self> {
         let inner = match addr {
             Address::IP(addr) => AsyncTcpListener::bind(addr).await?,
             Address::Name { host, port } => AsyncTcpListener::bind((host.as_ref(), *port)).await?,
@@ -139,7 +140,7 @@ impl TcpListener {
         Ok(Self(inner))
     }
 
-    pub async fn accept(&self) -> smol::io::Result<(TcpStream, SocketAddr)> {
+    pub async fn accept(&self) -> std::io::Result<(TcpStream, SocketAddr)> {
         let (stream, addr) = self.0.accept().await?;
         Ok((TcpStream::from(stream), addr))
     }

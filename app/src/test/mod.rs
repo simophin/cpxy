@@ -5,11 +5,11 @@ use std::{
     vec,
 };
 
+use crate::rt::{block_on, spawn, Task};
 use anyhow::bail;
 use futures_lite::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
 use futures_util::join;
 use maplit::hashmap;
-use smol::{block_on, spawn, Task};
 
 mod http;
 mod tcp_socks4;

@@ -5,9 +5,9 @@ use clap::{Parser, Subcommand};
 use proxy::{
     io::TcpListener,
     rsocks::{client::run_client, server::run_server},
+    rt::block_on,
     socks5::Address,
 };
-use smol::block_on;
 
 /// SOCKS5 over HTTPs
 #[derive(Parser)]

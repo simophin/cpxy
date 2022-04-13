@@ -1,8 +1,8 @@
 use std::time::Duration;
 
+use crate::rt::spawn;
 use anyhow::{bail, Context};
 use serde::{Deserialize, Serialize};
-use smol::spawn;
 use smol_timeout::TimeoutExt;
 
 use crate::{

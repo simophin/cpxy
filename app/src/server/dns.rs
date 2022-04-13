@@ -1,8 +1,8 @@
 use std::collections::{HashMap, HashSet};
 
+use crate::rt::{net::resolve, spawn};
 use anyhow::Context;
 use futures_lite::{AsyncRead, AsyncWrite};
-use smol::{net::resolve, spawn};
 
 use crate::{proxy::protocol::ProxyResult, utils::write_bincode_lengthed_async};
 
@@ -54,7 +54,7 @@ mod test {
     #[test]
     fn test_resolve_works() {
         let _ = env_logger::try_init();
-        smol::block_on(async move {
+        crate::rt::block_on(async move {
             let (mut near, far) = duplex(1).await;
             resolve_domains(
                 vec![

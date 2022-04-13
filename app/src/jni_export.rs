@@ -2,7 +2,7 @@ use crate::controller::run_controller;
 use jni::objects::{JClass, JString};
 use jni::sys::{jint, jlong};
 use jni::JNIEnv;
-use smol::{spawn, Async, Task};
+use crate::rt::{spawn, Task};
 use std::path::Path;
 
 struct Instance(u16, Task<anyhow::Result<()>>);

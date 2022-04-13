@@ -82,16 +82,15 @@ mod test {
     use super::super::client::connect;
     use super::super::strategy::EncryptionStrategy;
     use super::*;
-    use crate::{fetch::connect_http, test::create_http_server, url::HttpUrl};
+    use crate::{fetch::connect_http, rt, test::create_http_server, url::HttpUrl};
     use futures_lite::{io::copy, AsyncReadExt, AsyncWriteExt};
     use rand::RngCore;
-    use smol::spawn;
 
     #[test]
     fn test_cipher_server() {
-        smol::block_on(async move {
+        rt::block_on(async move {
             let (http_server, url) = create_http_server().await;
-            let server_task = spawn(async move {
+            let server_task = rt::spawn(async move {
                 loop {
                     let (stream, _) = http_server.accept().await.unwrap();
                     let stream = listen(stream).await.unwrap();

@@ -6,10 +6,6 @@ use std::{
 };
 
 use futures_lite::Stream;
-use smol::{
-    channel::{bounded, SendError, Sender},
-    spawn, Task,
-};
 
 use crate::{buf::Buf, io::UdpSocket};
 

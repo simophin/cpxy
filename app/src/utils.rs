@@ -111,10 +111,11 @@ impl<T: Serialize> JsonSerializable for T {
 #[cfg(test)]
 mod test {
     use super::*;
+    use crate::rt::block_on;
 
     #[test]
     fn test_lengthed_encoding() {
-        smol::block_on(async move {
+        block_on(async move {
             let data = "hello, world";
             let mut buf = Vec::<u8>::new();
             write_bincode_lengthed(&mut buf, &data).unwrap();

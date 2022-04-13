@@ -2,6 +2,7 @@ use anyhow::Context;
 use clap::{Parser, Subcommand};
 use proxy::controller::run_controller;
 use proxy::io::TcpListener;
+use proxy::rt;
 use proxy::server::run_server;
 use proxy::socks5::Address;
 use std::net::{IpAddr, SocketAddr};
@@ -41,7 +42,7 @@ enum Command {
 }
 
 fn main() -> anyhow::Result<()> {
-    smol::block_on(async move {
+    rt::block_on(async move {
         if std::env::var_os("RUST_LOG").is_none() {
             std::env::set_var("RUST_LOG", "info");
         }
