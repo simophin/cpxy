@@ -1,8 +1,9 @@
 use crate::controller::run_controller;
+use crate::io::TcpListener;
+use crate::rt::{block_on, spawn, Task};
 use jni::objects::{JClass, JString};
 use jni::sys::{jint, jlong};
 use jni::JNIEnv;
-use crate::rt::{spawn, Task};
 use std::path::Path;
 
 struct Instance(u16, Task<anyhow::Result<()>>);
@@ -25,7 +26,7 @@ pub extern "system" fn Java_dev_fanchao_CJKProxy_start(
         .expect("To get config string")
         .into();
 
-    let listener = match std::net::TcpListener::bind("127.0.0.1:0") {
+    let listener = match block_on(TcpListener::bind(&"127.0.0.1:0".try_into().unwrap())) {
         Ok(v) => v,
         Err(e) => {
             let _ = env.throw_new(
@@ -42,17 +43,6 @@ pub extern "system" fn Java_dev_fanchao_CJKProxy_start(
             let _ = env.throw_new(
                 "java/lang/Exception",
                 format!("Unable to get bound port: {e}"),
-            );
-            return 0;
-        }
-    };
-
-    let listener = match Async::new(listener) {
-        Ok(v) => crate::io::TcpListener::from(smol::net::TcpListener::from(v)),
-        Err(e) => {
-            let _ = env.throw_new(
-                "java/lang/Exception",
-                format!("Unable to create async listener socket: {e}"),
             );
             return 0;
         }
