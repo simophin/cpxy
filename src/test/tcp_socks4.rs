@@ -1,7 +1,7 @@
 use std::net::{IpAddr, Ipv4Addr};
 
+use crate::rt::TimeoutExt;
 use bytes::Buf;
-use smol_timeout::TimeoutExt;
 
 use super::*;
 

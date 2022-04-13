@@ -30,8 +30,8 @@ rust-embed = '6'
 serde = {version = "1", features = ["derive"]}
 serde_json = "1"
 serde_yaml = "0"
-smol = "1"
-smol-timeout = "0"
+# smol = "1"
+# smol-timeout = "0"
 # url = "2"
 chrono = {version = "0", features = ["serde"]}
 dirs = "4" 
@@ -45,6 +45,7 @@ either = "1"
 libc = "0"
 uuid = { version = "0", features = ["v4"] }
 derive_more = "0"
+tokio = { version = "1", features = ["full"] }
 
 
 [dev-dependencies]

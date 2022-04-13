@@ -7,7 +7,8 @@ use futures_rustls::client::TlsStream;
 use crate::{
     buf::RWBuffer,
     http::{AsyncHttpStream, HeaderValue, HttpCommon, HttpRequest, HttpResponse},
-    io::TcpStream,
+    io::connect_tcp,
+    rt::net::TcpStream,
     socks5::Address,
     tls::connect_tls,
     url::HttpUrl,
@@ -19,7 +20,7 @@ pub async fn send_http_with_proxy(
     mut req: HttpRequest<'_>,
     http_proxy: &Address<'_>,
 ) -> anyhow::Result<impl AsyncRead + AsyncWrite + Unpin + Send + Sync + 'static> {
-    let mut client = TcpStream::connect(http_proxy)
+    let mut client = connect_tcp(http_proxy)
         .await
         .with_context(|| format!("Connecting to proxy server: {http_proxy}"))?;
 
@@ -41,7 +42,7 @@ pub async fn connect_http(
     tls: bool,
     address: &Address<'_>,
 ) -> anyhow::Result<HttpStream<TcpStream>> {
-    let client = TcpStream::connect(&address)
+    let client = connect_tcp(&address)
         .await
         .with_context(|| format!("Connecting to {address}"))?;
 

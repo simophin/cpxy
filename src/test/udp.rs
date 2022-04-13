@@ -1,7 +1,8 @@
-use smol_timeout::TimeoutExt;
+use crate::rt::TimeoutExt;
 
 use crate::{
     buf::Buf,
+    io::bind_udp,
     socks5::{UdpPacket as Socks5UdpPacket, UdpRepr as Socks5UdpRepr},
 };
 
@@ -15,7 +16,7 @@ fn test_udp() {
         let (_client, client_addr) = run_test_client(server_addr).await;
         let (_echo_server, echo_server_addr) = echo_udp_server().await;
 
-        let mut socks5_client = TcpStream::connect_raw(client_addr).await.unwrap();
+        let mut socks5_client = TcpStream::connect(client_addr).await.unwrap();
 
         let relay_addr = send_socks5_request(&mut socks5_client, &echo_server_addr.into(), true)
             .timeout(TIMEOUT)
@@ -23,7 +24,7 @@ fn test_udp() {
             .unwrap()
             .unwrap();
 
-        let socket = UdpSocket::bind(true).await.unwrap();
+        let socket = bind_udp(true).await.unwrap();
 
         let payload = b"hello, world";
 

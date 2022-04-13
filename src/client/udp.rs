@@ -7,9 +7,12 @@ use std::{
     time::Duration,
 };
 
-use crate::rt::{
-    mpmc::{Receiver, Sender},
-    spawn, Task, TimeoutExt,
+use crate::{
+    io::bind_udp,
+    rt::{
+        mpmc::{Receiver, Sender},
+        spawn, Task, TimeoutExt,
+    },
 };
 use anyhow::bail;
 use futures_lite::{
@@ -20,7 +23,6 @@ use crate::{
     buf::Buf,
     config::ClientConfig,
     handshake::Handshaker,
-    io::UdpSocket,
     proxy::protocol::ProxyRequest,
     proxy::udp::write_packet_async as write_proxy_udp_packet_async,
     proxy::udp::Packet as ProxyUdpPacket,
@@ -90,7 +92,7 @@ async fn serve_udp_relay_directly(
     tx: Sender<Socks5UdpPacket<Buf>>,
     rx: Receiver<Socks5UdpPacket<Buf>>,
 ) -> anyhow::Result<()> {
-    let socket = Arc::new(UdpSocket::bind(v4).await?);
+    let socket = Arc::new(bind_udp(v4).await?);
     let should_close_on_receive = Arc::new(AtomicBool::new(false));
 
     let task1: Task<anyhow::Result<()>> = {
@@ -378,7 +380,7 @@ mod tests {
     #[test]
     fn serve_directly_works() {
         block_on(async move {
-            let server = UdpSocket::bind(true).await.unwrap();
+            let server = bind_udp(true).await.unwrap();
             let dst = server.local_addr().unwrap();
             let (relay_in_tx, relay_in_rx) = bounded(2);
             let (relay_out_tx, relay_out_rx) = bounded(2);

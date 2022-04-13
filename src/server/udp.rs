@@ -1,16 +1,19 @@
 use std::{net::SocketAddr, sync::Arc};
 
-use crate::rt::{spawn, Task};
+use crate::{
+    io::bind_udp,
+    rt::{spawn, Task},
+};
 use anyhow::Context;
 use futures_lite::{future::race, io::split, AsyncRead, AsyncWrite};
 
 use crate::{
     buf::Buf,
-    io::UdpSocket,
     proxy::{
         protocol::ProxyResult,
         udp::{write_packet_async, Packet},
     },
+    rt::net::UdpSocket,
     socks5::Address,
     utils::write_bincode_lengthed_async,
 };
@@ -20,7 +23,7 @@ async fn prepare_socket(
     initial_data: impl AsRef<[u8]> + Send,
     initial_dst: &Address<'static>,
 ) -> anyhow::Result<Arc<UdpSocket>> {
-    let socket = Arc::new(UdpSocket::bind(v4).await?);
+    let socket = Arc::new(bind_udp(v4).await?);
 
     socket
         .send_to_addr(initial_data.as_ref(), &initial_dst)

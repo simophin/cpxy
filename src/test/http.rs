@@ -1,6 +1,4 @@
-use smol_timeout::TimeoutExt;
-
-use crate::http::parse_response;
+use crate::{http::parse_response, rt::TimeoutExt};
 
 use super::*;
 
@@ -51,7 +49,7 @@ fn test_http_tunnel() {
         let (_client, client_addr) = run_test_client(server_addr).await;
         let (_echo_server, echo_server_addr) = echo_tcp_server().await;
 
-        let mut proxy_client = TcpStream::connect_raw(client_addr).await.unwrap();
+        let mut proxy_client = TcpStream::connect(client_addr).await.unwrap();
         proxy_client
             .write_all(format!("CONNECT {echo_server_addr} HTTP/1.1\r\n\r\n").as_bytes())
             .await

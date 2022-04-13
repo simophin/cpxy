@@ -1,15 +1,14 @@
 use std::time::Duration;
 
-use crate::rt::spawn;
+use crate::{io::connect_tcp, rt::spawn};
 use anyhow::{bail, Context};
 use serde::{Deserialize, Serialize};
-use smol_timeout::TimeoutExt;
 
 use crate::{
     buf::RWBuffer,
     fetch::send_http,
     handshake::{HandshakeRequest, Handshaker},
-    io::TcpStream,
+    rt::TimeoutExt,
     utils::{copy_duplex, read_bincode_lengthed_async, write_bincode_lengthed_async},
     ws::negotiate_websocket_url,
 };
@@ -37,7 +36,7 @@ async fn serve_new_conn(id: String, url: String) -> anyhow::Result<()> {
 
     match req {
         HandshakeRequest::TCP { dst } => {
-            let upstream = match TcpStream::connect(&dst).await {
+            let upstream = match connect_tcp(&dst).await {
                 Ok(v) => {
                     handshaker
                         .respond_ok(&mut conn_stream, v.local_addr().ok())

@@ -1,4 +1,4 @@
-use smol_timeout::TimeoutExt;
+use crate::rt::TimeoutExt;
 
 use super::*;
 

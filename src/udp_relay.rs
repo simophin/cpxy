@@ -7,7 +7,7 @@ use anyhow::{anyhow, Context};
 
 use crate::{
     buf::Buf,
-    io::UdpSocket,
+    io::bind_udp,
     rt::mpmc::{bounded, Receiver, Sender},
     rt::{spawn, Task},
     socks5::UdpPacket,
@@ -16,7 +16,7 @@ use crate::{
 pub async fn new_udp_relay(
     v4: bool,
 ) -> anyhow::Result<(SocketAddr, Sender<UdpPacket<Buf>>, Receiver<UdpPacket<Buf>>)> {
-    let udp = Arc::new(UdpSocket::bind(v4).await?);
+    let udp = Arc::new(bind_udp(v4).await?);
     let bound_addr = udp.local_addr().context("Getting local_addr")?;
 
     let (incoming_tx, incoming_rx) = bounded::<UdpPacket<Buf>>(1);
@@ -69,8 +69,7 @@ pub async fn new_udp_relay(
 mod tests {
     use std::time::Duration;
 
-    use crate::rt::block_on;
-    use smol_timeout::TimeoutExt;
+    use crate::rt::{block_on, TimepitExt};
 
     use crate::socks5::{Address, UdpRepr};
 
@@ -81,7 +80,7 @@ mod tests {
         block_on(async move {
             let (relay_addr, tx, rx) = new_udp_relay(true).await?;
 
-            let client = UdpSocket::bind(true).await?;
+            let client = bind_udp(true).await?;
 
             let target_addr: Address = "google.com:600".parse()?;
             let payload = b"hello, world";

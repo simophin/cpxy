@@ -1,11 +1,12 @@
+use crate::io::TcpStreamExt;
 use crate::rt::spawn;
 use futures_lite::{AsyncRead, AsyncWrite};
 
 use super::{
     dns::resolve_domains, tcp::serve_http_proxy, tcp::serve_tcp_proxy, udp::serve_udp_proxy_conn,
 };
-use crate::io::TcpListener;
 use crate::proxy::protocol::ProxyRequest;
+use crate::rt::net::TcpListener;
 use crate::utils::read_bincode_lengthed_async;
 
 pub async fn serve_client(

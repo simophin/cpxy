@@ -1,14 +1,12 @@
 use std::{borrow::Cow, net::SocketAddr, sync::Arc};
 
+use crate::rt::{net::UdpSocket, spawn};
 use futures_lite::{future::race, io::split, AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
-use crate::rt::spawn;
 
 use crate::{
     buf::{Buf, RWBuffer},
     socks5::Address,
 };
-
-use super::UdpSocket;
 
 pub async fn copy_udp_and_udp(
     src: UdpSocket,

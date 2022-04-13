@@ -1,15 +1,17 @@
 use std::sync::Arc;
 
+use crate::{
+    io::{bind_tcp, TcpStreamExt},
+    rt::{spawn, Task},
+};
 use anyhow::Context;
 use futures_lite::{Stream, StreamExt};
-use futures_util::{select, FutureExt};
-use crate::rt::{spawn, Executor, Task};
 
 use crate::{
     buf::RWBuffer,
     config::ClientConfig,
     handshake::{HandshakeRequest as HR, Handshaker},
-    io::{TcpListener, TcpStream},
+    rt::net::{TcpListener, TcpStream},
     socks5::Address,
 };
 
@@ -38,7 +40,7 @@ pub async fn run_client(
         log::debug!("Using configuration {config:?}");
         current_tasks.clear();
 
-        let proxy_listener = match TcpListener::bind(&Address::IP(config.socks5_address)).await {
+        let proxy_listener = match bind_tcp(&Address::IP(config.socks5_address)).await {
             Ok(v) => v,
             Err(e) => {
                 log::error!("Error listening for TCP proxy: {e:?}");
@@ -76,26 +78,22 @@ pub async fn run_proxy_with(
     config: Arc<ClientConfig>,
     stats: Arc<ClientStatistics>,
 ) -> anyhow::Result<()> {
-    let executor = Executor::new();
     loop {
-        let (sock, addr) = select! {
-            v1 = proxy_listener.accept().fuse() => v1.context("Listening for SOCKS5/SOCKS4/HTTP/TPROXY connection")?,
-            _ = executor.run(std::future::pending::<()>()).fuse() => {
-                continue;
-            },
-        };
+        let (sock, addr) = proxy_listener
+            .accept()
+            .await
+            .context("Listening for SOCKS5/SOCKS4/HTTP/TPROXY connection")?;
 
         let config = config.clone();
         let stats = stats.clone();
-        executor
-            .spawn(async move {
-                log::info!("Client {addr} connected");
-                if let Err(e) = serve_proxy_conn(sock, config, stats).await {
-                    log::error!("Error serving client {addr}: {e:?}");
-                }
-                log::info!("Client {addr} disconnected");
-            })
-            .detach();
+        spawn(async move {
+            log::info!("Client {addr} connected");
+            if let Err(e) = serve_proxy_conn(sock, config, stats).await {
+                log::error!("Error serving client {addr}: {e:?}");
+            }
+            log::info!("Client {addr} disconnected");
+        })
+        .detach();
     }
 }
 

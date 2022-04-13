@@ -1,18 +1,19 @@
 use crate::fetch::send_http;
 use crate::http::HttpRequest;
-use crate::io::TcpStream;
+use crate::io::connect_tcp;
 use crate::proxy::protocol::ProxyResult;
+use crate::rt::net::TcpStream;
+use crate::rt::TimeoutExt;
 use crate::socks5::Address;
 use crate::utils::{copy_duplex, write_bincode_lengthed_async};
 use anyhow::anyhow;
 use futures_lite::{AsyncRead, AsyncWrite};
 use futures_util::FutureExt;
-use smol_timeout::TimeoutExt;
 use std::net::SocketAddr;
 use std::time::Duration;
 
 async fn prepare(target: &Address<'_>) -> anyhow::Result<(Option<SocketAddr>, TcpStream)> {
-    let socket = TcpStream::connect(target).await?;
+    let socket = connect_tcp(target).await?;
     Ok((socket.local_addr().ok(), socket))
 }
 

@@ -2,11 +2,10 @@ use std::{net::SocketAddr, time::Duration};
 
 use anyhow::{anyhow, bail, Context};
 use futures_lite::{AsyncRead, AsyncWrite};
-use smol_timeout::TimeoutExt;
 
 use crate::{
-    config::ClientConfig, handshake::Handshaker, io::TcpStream, proxy::protocol::ProxyRequest,
-    socks5::Address, utils::copy_duplex,
+    config::ClientConfig, handshake::Handshaker, io::connect_tcp, proxy::protocol::ProxyRequest,
+    rt::TimeoutExt, socks5::Address, utils::copy_duplex,
 };
 
 use super::{utils::request_best_upstream, ClientStatistics};
@@ -55,7 +54,7 @@ async fn prepare_direct_tcp(
     Option<SocketAddr>,
     impl AsyncRead + AsyncWrite + Unpin + Send + Sync,
 )> {
-    let stream = TcpStream::connect(dst)
+    let stream = connect_tcp(dst)
         .timeout(Duration::from_secs(2))
         .await
         .ok_or_else(|| anyhow!("Timeout connecting to {dst}"))??;

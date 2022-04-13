@@ -5,7 +5,10 @@ use std::{
     vec,
 };
 
-use crate::rt::{block_on, spawn, Task};
+use crate::{
+    io::{bind_tcp, bind_udp, connect_tcp},
+    rt::{block_on, spawn, Task},
+};
 use anyhow::bail;
 use futures_lite::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
 use futures_util::join;
@@ -21,7 +24,7 @@ use crate::{
     client::{run_proxy_with, ClientStatistics},
     config::{ClientConfig, UpstreamConfig},
     fetch::fetch_http_with_proxy,
-    io::{TcpListener, TcpStream, UdpSocket},
+    rt::net::{TcpListener, TcpStream},
     server::run_server,
     socks5::Address,
 };
@@ -32,12 +35,12 @@ pub async fn duplex(
     impl AsyncRead + AsyncWrite + Unpin + Send + Sync + 'static,
     impl AsyncRead + AsyncWrite + Unpin + Send + Sync + 'static,
 ) {
-    let listener = TcpListener::bind(&"127.0.0.1:0".parse().unwrap())
+    let listener = bind_tcp(&"127.0.0.1:0".parse().unwrap())
         .await
         .expect("To listen");
     let addr = Address::IP(listener.local_addr().expect("To have local addr"));
 
-    let (client, server) = join!(TcpStream::connect(&addr), listener.accept());
+    let (client, server) = join!(connect_tcp(&addr), listener.accept());
     let client = client.expect("To connect");
     let (server, _) = server.expect("To accept");
 
@@ -45,16 +48,14 @@ pub async fn duplex(
 }
 
 pub async fn create_http_server() -> (TcpListener, String) {
-    let listener = TcpListener::bind(&"127.0.0.1:0".parse().unwrap())
-        .await
-        .unwrap();
+    let listener = bind_tcp(&"127.0.0.1:0".parse().unwrap()).await.unwrap();
 
     let addr = listener.local_addr().unwrap();
     (listener, format!("http://{addr}"))
 }
 
 pub async fn echo_tcp_server() -> (Task<()>, SocketAddr) {
-    let socket = TcpListener::bind(&Default::default()).await.unwrap();
+    let socket = bind_tcp(&Default::default()).await.unwrap();
     let addr = socket.local_addr().unwrap();
     (
         spawn(async move {
@@ -77,7 +78,7 @@ pub async fn echo_tcp_server() -> (Task<()>, SocketAddr) {
 }
 
 pub async fn echo_udp_server() -> (Task<()>, SocketAddr) {
-    let socket = UdpSocket::bind(true).await.unwrap();
+    let socket = bind_udp(true).await.unwrap();
     let mut addr = socket.local_addr().unwrap();
     addr.set_ip(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)));
     (
@@ -128,7 +129,7 @@ pub async fn run_test_client(upstream_address: SocketAddr) -> (Task<()>, SocketA
 }
 
 pub async fn run_test_server() -> (Task<()>, SocketAddr) {
-    let listener = TcpListener::bind(&Default::default()).await.unwrap();
+    let listener = bind_tcp(&Default::default()).await.unwrap();
     let addr = listener.local_addr().unwrap();
     (
         spawn(async move { run_server(listener).await.unwrap() }),

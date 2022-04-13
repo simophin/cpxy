@@ -7,16 +7,15 @@ use std::{
 
 use crate::rt::{
     mpmc::{bounded, Receiver, Sender},
-    spawn, Task,
+    spawn, Task, TimeoutExt,
 };
 use anyhow::{anyhow, Context};
 use futures_util::{select, FutureExt};
 use serde::{Deserialize, Serialize};
-use smol_timeout::TimeoutExt;
 
 use crate::{
     http::{AsyncHttpStream, HttpRequest},
-    io::{TcpListener, TcpStream},
+    rt::net::{TcpListener, TcpStream},
     utils::{copy_duplex, read_bincode_lengthed_async, write_bincode_lengthed_async},
     ws::serve_websocket,
 };
