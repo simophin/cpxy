@@ -10,7 +10,7 @@ fn test_tcp_socks5_proxy() {
         let (_client, client_addr) = run_test_client(server_addr).await;
         let (_echo_server, echo_server_addr) = echo_tcp_server().await;
 
-        let mut socks5_client = TcpStream::connect_raw(client_addr).await.unwrap();
+        let mut socks5_client = TcpStream::connect(client_addr).await.unwrap();
 
         send_socks5_request(&mut socks5_client, &Address::IP(echo_server_addr), false)
             .timeout(TIMEOUT)

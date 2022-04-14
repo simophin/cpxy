@@ -15,7 +15,7 @@ impl File {
 
 impl AsyncRead for File {
     fn poll_read(
-        self: std::pin::Pin<&mut Self>,
+        mut self: std::pin::Pin<&mut Self>,
         cx: &mut std::task::Context<'_>,
         buf: &mut [u8],
     ) -> std::task::Poll<std::io::Result<usize>> {
@@ -30,7 +30,7 @@ impl AsyncRead for File {
 
 impl AsyncWrite for File {
     fn poll_write(
-        self: Pin<&mut Self>,
+        mut self: Pin<&mut Self>,
         cx: &mut std::task::Context<'_>,
         buf: &[u8],
     ) -> Poll<std::io::Result<usize>> {
@@ -38,14 +38,14 @@ impl AsyncWrite for File {
     }
 
     fn poll_flush(
-        self: Pin<&mut Self>,
+        mut self: Pin<&mut Self>,
         cx: &mut std::task::Context<'_>,
     ) -> Poll<std::io::Result<()>> {
         tokio::io::AsyncWrite::poll_flush(Pin::new(&mut self.0), cx)
     }
 
     fn poll_close(
-        self: Pin<&mut Self>,
+        mut self: Pin<&mut Self>,
         cx: &mut std::task::Context<'_>,
     ) -> Poll<std::io::Result<()>> {
         tokio::io::AsyncWrite::poll_shutdown(Pin::new(&mut self.0), cx)

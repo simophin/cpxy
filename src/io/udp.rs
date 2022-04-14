@@ -1,10 +1,6 @@
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
-use std::pin::Pin;
-use std::task::Poll;
-
 
 use crate::rt::net::UdpSocket;
-
 
 pub async fn bind_udp(v4: bool) -> std::io::Result<UdpSocket> {
     UdpSocket::bind((

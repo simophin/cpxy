@@ -10,14 +10,12 @@ use std::{
 use crate::{
     io::bind_udp,
     rt::{
-        mpmc::{Receiver, Sender},
+        mpsc::{Receiver, Sender},
         spawn, Task, TimeoutExt,
     },
 };
-use anyhow::bail;
-use futures_lite::{
-    future::race, io::split, AsyncRead, AsyncReadExt, AsyncWrite, Stream, StreamExt,
-};
+use anyhow::{bail, Context};
+use futures_lite::{future::race, io::split, AsyncRead, AsyncReadExt, AsyncWrite, StreamExt};
 
 use crate::{
     buf::Buf,
@@ -42,7 +40,7 @@ pub async fn serve_udp_proxy_conn(
     mut stream: impl AsyncRead + AsyncWrite + Unpin + Send + Sync + 'static,
     handshaker: Handshaker,
 ) -> anyhow::Result<()> {
-    let (relay_addr, tx, rx) = match new_udp_relay(is_v4).await {
+    let (relay_addr, tx, mut rx) = match new_udp_relay(is_v4).await {
         Ok(v) => v,
         Err(e) => {
             log::error!("Error creating UDP relay: {e:?}");
@@ -54,7 +52,7 @@ pub async fn serve_udp_proxy_conn(
     handshaker.respond_ok(&mut stream, Some(relay_addr)).await?;
 
     // Wait for first packet to decide where to go
-    let pkt = rx.recv().await?;
+    let pkt = rx.next().await.context("Waiting for first packet")?;
     let addr = pkt.addr().into_owned();
 
     match request_best_upstream(
@@ -90,7 +88,7 @@ pub async fn serve_udp_proxy_conn(
 async fn serve_udp_relay_directly(
     v4: bool,
     tx: Sender<Socks5UdpPacket<Buf>>,
-    rx: Receiver<Socks5UdpPacket<Buf>>,
+    mut rx: Receiver<Socks5UdpPacket<Buf>>,
 ) -> anyhow::Result<()> {
     let socket = Arc::new(bind_udp(v4).await?);
     let should_close_on_receive = Arc::new(AtomicBool::new(false));
@@ -99,7 +97,7 @@ async fn serve_udp_relay_directly(
         let socket = socket.clone();
         let should_close_on_receive = should_close_on_receive.clone();
         spawn(async move {
-            while let Some(Ok(pkt)) = rx.recv().timeout(UDP_IDLING_TIMEOUT).await {
+            while let Some(Some(pkt)) = rx.next().timeout(UDP_IDLING_TIMEOUT).await {
                 if pkt.frag_no() != 0 {
                     log::warn!("Dropping fragmented packet");
                     continue;
@@ -154,7 +152,7 @@ async fn serve_udp_relay_directly(
 
 async fn copy_between_relay_and_stream(
     tx: Sender<Socks5UdpPacket<Buf>>,
-    mut rx: impl Stream<Item = Socks5UdpPacket<Buf>> + Unpin + Send + Sync + 'static,
+    mut rx: Receiver<Socks5UdpPacket<Buf>>,
     stream: impl AsyncRead + AsyncWrite + Unpin + Send + Sync + 'static,
     stats: Option<&UpstreamStatistics>,
 ) -> anyhow::Result<()> {
@@ -236,7 +234,7 @@ async fn drain_socks(
 mod tests {
     use std::time::Duration;
 
-    use crate::rt::{block_on, mpmc::bounded, TimeoutExt};
+    use crate::rt::{block_on, mpsc::bounded, TimeoutExt};
 
     use crate::test::duplex;
 
@@ -246,7 +244,7 @@ mod tests {
     fn copy_relay_and_proxy_works() {
         block_on(async move {
             let (relay_in_tx, relay_in_rx) = bounded(2);
-            let (relay_out_tx, relay_out_rx) = bounded(2);
+            let (relay_out_tx, mut relay_out_rx) = bounded(2);
 
             let (near_stream, far_stream) = duplex(10).await;
 
@@ -362,7 +360,7 @@ mod tests {
 
                 // Test reply
                 let pkt = relay_out_rx
-                    .recv()
+                    .next()
                     .timeout(Duration::from_secs(1))
                     .await
                     .unwrap()
@@ -383,7 +381,7 @@ mod tests {
             let server = bind_udp(true).await.unwrap();
             let dst = server.local_addr().unwrap();
             let (relay_in_tx, relay_in_rx) = bounded(2);
-            let (relay_out_tx, relay_out_rx) = bounded(2);
+            let (relay_out_tx, mut relay_out_rx) = bounded(2);
 
             let _task = spawn(serve_udp_relay_directly(true, relay_out_tx, relay_in_rx));
 
@@ -436,7 +434,7 @@ mod tests {
 
                 // Check reply
                 let pkt = relay_out_rx
-                    .recv()
+                    .next()
                     .timeout(Duration::from_secs(1))
                     .await
                     .unwrap()

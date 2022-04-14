@@ -9,7 +9,6 @@ mod http;
 mod parse;
 mod pattern;
 pub mod proxy;
-pub mod rsocks;
 pub mod server;
 // mod shared_udp;
 pub mod rt;

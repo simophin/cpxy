@@ -5,19 +5,9 @@ use futures_lite::{AsyncRead, AsyncWrite, AsyncWriteExt};
 
 use crate::{
     buf::RWBuffer,
-    fetch::connect_http,
     http::{parse_request, parse_response, AsyncHttpStream, HeaderValue, HttpCommon, HttpRequest},
     url::HttpUrl,
 };
-
-pub async fn negotiate_websocket_url<'a>(
-    url: &str,
-    extra_headers: Vec<(Cow<'a, str>, HeaderValue<'a>)>,
-) -> anyhow::Result<impl AsyncRead + AsyncWrite + Unpin + Send + Sync> {
-    let url = HttpUrl::try_from(url)?;
-    let stream = connect_http(url.is_https, &url.address).await?;
-    negotiate_websocket(&url, stream, extra_headers).await
-}
 
 pub async fn negotiate_websocket<'a>(
     url: &HttpUrl<'_>,

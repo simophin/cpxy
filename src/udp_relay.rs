@@ -4,11 +4,12 @@ use std::{
 };
 
 use anyhow::{anyhow, Context};
+use futures_lite::StreamExt;
 
 use crate::{
     buf::Buf,
     io::bind_udp,
-    rt::mpmc::{bounded, Receiver, Sender},
+    rt::mpsc::{bounded, Receiver, Sender},
     rt::{spawn, Task},
     socks5::UdpPacket,
 };
@@ -20,7 +21,7 @@ pub async fn new_udp_relay(
     let bound_addr = udp.local_addr().context("Getting local_addr")?;
 
     let (incoming_tx, incoming_rx) = bounded::<UdpPacket<Buf>>(1);
-    let (outgoing_tx, outgoing_rx) = bounded::<UdpPacket<Buf>>(5);
+    let (outgoing_tx, mut outgoing_rx) = bounded::<UdpPacket<Buf>>(5);
 
     let last_addr: Arc<Mutex<Option<SocketAddr>>> = Default::default();
 
@@ -29,7 +30,7 @@ pub async fn new_udp_relay(
         let last_addr = last_addr.clone();
         let task: Task<anyhow::Result<()>> = spawn(async move {
             loop {
-                let pkt = outgoing_rx.recv().await?;
+                let pkt = outgoing_rx.next().await.context("Waiting for packet")?;
                 let dst = last_addr
                     .lock()
                     .map_err(|_| anyhow!("Unable to lock last_addr"))?
@@ -69,7 +70,7 @@ pub async fn new_udp_relay(
 mod tests {
     use std::time::Duration;
 
-    use crate::rt::{block_on, TimepitExt};
+    use crate::rt::{block_on, TimeoutExt};
 
     use crate::socks5::{Address, UdpRepr};
 
@@ -78,7 +79,7 @@ mod tests {
     #[test]
     fn udp_relay_works() -> anyhow::Result<()> {
         block_on(async move {
-            let (relay_addr, tx, rx) = new_udp_relay(true).await?;
+            let (relay_addr, tx, mut rx) = new_udp_relay(true).await?;
 
             let client = bind_udp(true).await?;
 
@@ -100,7 +101,12 @@ mod tests {
                 )
                 .await?;
 
-            let pkt = rx.recv().timeout(Duration::from_secs(1)).await.unwrap()?;
+            let pkt = rx
+                .next()
+                .timeout(Duration::from_secs(1))
+                .await
+                .unwrap()
+                .unwrap();
             assert_eq!(pkt.addr(), target_addr);
             assert_eq!(pkt.payload(), payload);
 

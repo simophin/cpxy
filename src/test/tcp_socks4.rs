@@ -56,7 +56,7 @@ fn test_socks4_tcp_proxy() {
         let (_client, client_addr) = run_test_client(server_addr).await;
         let (_echo_server, echo_server_addr) = echo_tcp_server().await;
 
-        let mut socks4_client = TcpStream::connect_raw(client_addr).await.unwrap();
+        let mut socks4_client = TcpStream::connect(client_addr).await.unwrap();
 
         send_socks4_request(&mut socks4_client, &Address::IP(echo_server_addr))
             .timeout(TIMEOUT)

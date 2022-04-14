@@ -1,7 +1,7 @@
 use anyhow::Context;
 use clap::{Parser, Subcommand};
 use proxy::controller::run_controller;
-use proxy::io::TcpListener;
+use proxy::io::bind_tcp;
 use proxy::rt;
 use proxy::server::run_server;
 use proxy::socks5::Address;
@@ -55,7 +55,7 @@ fn main() -> anyhow::Result<()> {
                 let addr = SocketAddr::new(host, port);
                 log::info!("Start server at {addr}");
                 run_server(
-                    TcpListener::bind(&Address::IP(addr))
+                    bind_tcp(&Address::IP(addr))
                         .await
                         .context("Binding server socket")?,
                 )
@@ -69,7 +69,7 @@ fn main() -> anyhow::Result<()> {
                 let addr = SocketAddr::new(controller_host, controller_port);
                 log::info!("Start controller at {addr}");
                 run_controller(
-                    TcpListener::bind(&Address::IP(addr))
+                    bind_tcp(&Address::IP(addr))
                         .await
                         .context("Binding controller socket")?,
                     Path::new(&config),

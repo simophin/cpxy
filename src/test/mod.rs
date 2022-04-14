@@ -94,7 +94,7 @@ pub async fn echo_udp_server() -> (Task<()>, SocketAddr) {
 }
 
 pub async fn run_test_client(upstream_address: SocketAddr) -> (Task<()>, SocketAddr) {
-    let listener = TcpListener::bind(&Default::default()).await.unwrap();
+    let listener = bind_tcp(&Default::default()).await.unwrap();
     let addr = listener.local_addr().unwrap();
 
     (
