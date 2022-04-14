@@ -2,7 +2,6 @@ use std::{borrow::Cow, pin::Pin};
 
 use anyhow::Context;
 use futures_lite::{AsyncRead, AsyncWrite, AsyncWriteExt};
-use futures_rustls::client::TlsStream;
 
 use crate::{
     buf::RWBuffer,
@@ -35,7 +34,10 @@ pub async fn send_http_with_proxy(
 
 pub enum HttpStream<T> {
     Plain(T),
-    SSL(TlsStream<T>),
+    #[cfg(target_arch = "mips")]
+    SSL(T),
+    #[cfg(not(target_arch = "mips"))]
+    SSL(futures_rustls::client::TlsStream<T>),
 }
 
 pub async fn connect_http(
