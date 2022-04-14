@@ -8,7 +8,7 @@ use std::{
 };
 
 use crate::{
-    io::bind_udp,
+    io::{bind_udp, send_to_addr},
     rt::{
         mpsc::{Receiver, Sender},
         spawn, Task, TimeoutExt,
@@ -114,7 +114,7 @@ async fn serve_udp_relay_directly(
                     "Relay -> UDP: Packet(len={}, dst={pkt_addr})",
                     pkt.payload().len()
                 );
-                socket.send_to_addr(pkt.payload(), &pkt_addr).await?;
+                send_to_addr(&socket, pkt.payload(), &pkt_addr).await?;
             }
 
             Ok(())

@@ -1,5 +1,9 @@
+#[cfg(feature = "tokio")]
 mod tokio;
+#[cfg(feature = "tokio")]
 pub use self::tokio::*;
 
-// mod smol;
-// pub use self::smol::*;
+#[cfg(feature = "smol")]
+mod smol;
+#[cfg(feature = "smol")]
+pub use self::smol::*;

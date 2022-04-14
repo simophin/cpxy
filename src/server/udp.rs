@@ -1,7 +1,7 @@
 use std::{net::SocketAddr, sync::Arc};
 
 use crate::{
-    io::bind_udp,
+    io::{bind_udp, send_to_addr},
     rt::{spawn, Task},
 };
 use anyhow::Context;
@@ -25,8 +25,7 @@ async fn prepare_socket(
 ) -> anyhow::Result<Arc<UdpSocket>> {
     let socket = Arc::new(bind_udp(v4).await?);
 
-    socket
-        .send_to_addr(initial_data.as_ref(), &initial_dst)
+    send_to_addr(&socket, initial_data.as_ref(), &initial_dst)
         .await
         .context("Sending initial data")?;
 
@@ -84,7 +83,7 @@ pub async fn serve_udp_proxy_conn(
                 };
 
                 log::debug!("Sending payload(len={}) to {dst}", pkt.payload().len());
-                socket.send_to_addr(pkt.payload(), dst).await?;
+                send_to_addr(&socket, pkt.payload(), dst).await?;
             }
         })
     };

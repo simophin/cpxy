@@ -1,3 +1,4 @@
+use crate::io::send_to_addr;
 use crate::rt::TimeoutExt;
 
 use crate::{
@@ -35,8 +36,7 @@ fn test_udp() {
         }
         .to_packet()
         .unwrap();
-        socket
-            .send_to_addr(pkt.inner().as_ref(), &relay_addr)
+        send_to_addr(&socket, pkt.inner().as_ref(), &relay_addr)
             .await
             .unwrap();
 

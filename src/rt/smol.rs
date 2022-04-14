@@ -4,7 +4,7 @@ pub mod net {
     pub use smol::net::{resolve, AsyncToSocketAddrs, TcpListener, TcpStream, UdpSocket};
 }
 
-pub mod mpmc {
+pub mod mpsc {
     pub use smol::channel::*;
 }
 

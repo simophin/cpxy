@@ -5,6 +5,10 @@ version = "0.1.0"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
+[features]
+tokio = ["dep:tokio"]
+smol = ["dep:smol", "dep:smol-timeout"]
+
 [dependencies]
 adblock = {version = "0", default-features = false, features = ["full-regex-handling", "embedded-domain-resolver"]}
 anyhow = "1"
@@ -30,9 +34,8 @@ rust-embed = '6'
 serde = {version = "1", features = ["derive"]}
 serde_json = "1"
 serde_yaml = "0"
-# smol = "1"
-# smol-timeout = "0"
-# url = "2"
+smol = { version = "1", optional = true }
+smol-timeout = { version = "0", optional = true }
 chrono = {version = "0", features = ["serde"]}
 dirs = "4" 
 serde_with = "1"
@@ -45,8 +48,7 @@ either = "1"
 libc = "0"
 uuid = { version = "0", features = ["v4"] }
 derive_more = "0"
-tokio = { version = "1", features = ["full"] }
-
+tokio = { version = "1", features = ["full"], optional = true }
 
 [dev-dependencies]
 maplit = "1"

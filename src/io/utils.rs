@@ -8,6 +8,8 @@ use crate::{
     socks5::Address,
 };
 
+use super::send_to_addr;
+
 pub async fn copy_udp_and_udp(
     src: UdpSocket,
     mut src_buf: Buf,
@@ -46,7 +48,7 @@ pub async fn copy_udp_and_udp(
                 };
 
                 if let Some((addr, buf)) = src_to_dst_fn(addr, &mut src_buf)? {
-                    dst.send_to_addr(buf.as_ref(), &addr).await?;
+                    send_to_addr(&dst, buf.as_ref(), &addr).await?;
                 }
             }
         })
@@ -73,7 +75,7 @@ pub async fn copy_udp_and_udp(
                 };
 
                 if let Some((addr, buf)) = dst_to_src_fn(addr, &mut buf)? {
-                    src.send_to_addr(buf.as_ref(), &addr).await?;
+                    send_to_addr(&src, buf.as_ref(), &addr).await?;
                 }
             }
         })
@@ -144,7 +146,7 @@ pub async fn copy_udp_and_stream(
                     udp_buf.set_len(0);
                     match transform_stream_buf(stream_buf.read_buf(), &mut udp_buf)? {
                         Some((offset, addr)) => {
-                            udp.send_to_addr(&udp_buf, &addr).await?;
+                            send_to_addr(&udp, &udp_buf, &addr).await?;
                             stream_buf.advance_read(offset);
                         }
                         None => break,
