@@ -1,5 +1,5 @@
 use crate::controller::run_controller;
-use crate::io::TcpListener;
+use crate::io::bind_tcp;
 use crate::rt::{block_on, spawn, Task};
 use jni::objects::{JClass, JString};
 use jni::sys::{jint, jlong};
@@ -26,7 +26,7 @@ pub extern "system" fn Java_dev_fanchao_CJKProxy_start(
         .expect("To get config string")
         .into();
 
-    let listener = match block_on(TcpListener::bind(&"127.0.0.1:0".try_into().unwrap())) {
+    let listener = match block_on(bind_tcp(&"127.0.0.1:0".try_into().unwrap())) {
         Ok(v) => v,
         Err(e) => {
             let _ = env.throw_new(
