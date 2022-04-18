@@ -1,4 +1,4 @@
-pub use smol::{block_on, spawn, Executor, Task};
+pub use smol::{block_on, spawn, Executor, Task, Timer};
 
 pub mod net {
     pub use smol::net::{resolve, AsyncToSocketAddrs, TcpListener, TcpStream, UdpSocket};

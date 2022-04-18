@@ -2,6 +2,7 @@ mod handler;
 mod http;
 mod stats;
 mod tcp;
+mod transparent;
 mod udp;
 mod utils;
 
