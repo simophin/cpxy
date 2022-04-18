@@ -116,7 +116,7 @@ pub async fn run_test_client(upstream_address: SocketAddr) -> (Task<()>, SocketA
                         }
                     },
                     socks5_udp_host: "0.0.0.0".parse().unwrap(),
-                    fwmark: 0,
+                    fwmark: None,
                 };
                 let stats = ClientStatistics::new(&config);
 

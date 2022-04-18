@@ -133,16 +133,14 @@ impl UdpSession {
                 }
             };
 
-            match (upstream, config.allow_direct(&dst)) {
-                (Some((upstream, stats)), _) => {
-                    // Proxy through upstream
-                    copy_between_udp_and_upstream(rx, upstream, stats).await
-                }
-                (None, true) => {
-                    // Direct connect
-                    serve_udp_direct(rx).await
-                }
-                _ => Ok(()),
+            if let Some((upstream, stats)) = upstream {
+                // Proxy through upstream
+                copy_between_udp_and_upstream(rx, upstream, stats).await
+            } else if config.allow_direct(&dst) {
+                // Direct connect
+                serve_udp_direct(rx).await
+            } else {
+                Ok(())
             }
         });
 

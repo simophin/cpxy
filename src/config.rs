@@ -154,10 +154,6 @@ fn default_socks5_address() -> SocketAddr {
     "127.0.0.1:5000".parse().unwrap()
 }
 
-const fn default_fwmark() -> u32 {
-    0x1001
-}
-
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct ClientConfig {
     #[serde(default)]
@@ -175,8 +171,8 @@ pub struct ClientConfig {
     #[serde(default = "default_socks5_udp_host")]
     pub socks5_udp_host: IpAddr,
 
-    #[serde(default = "default_fwmark")]
-    pub fwmark: u32,
+    #[serde(default)]
+    pub fwmark: Option<u32>,
 }
 
 impl Default for ClientConfig {
@@ -187,7 +183,7 @@ impl Default for ClientConfig {
             socks5_udp_host: default_socks5_udp_host(),
             direct_accept: Default::default(),
             direct_reject: Default::default(),
-            fwmark: default_fwmark(),
+            fwmark: Default::default(),
         }
     }
 }

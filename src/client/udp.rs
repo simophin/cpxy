@@ -22,8 +22,8 @@ use crate::{
     config::ClientConfig,
     handshake::Handshaker,
     proxy::protocol::ProxyRequest,
-    proxy::udp::write_packet_async as write_proxy_udp_packet_async,
     proxy::udp::Packet as ProxyUdpPacket,
+    proxy::udp::PacketWriter as ProxyUdpPacketWriter,
     socks5::UdpPacket as Socks5UdpPacket,
     socks5::{Address, UdpRepr as Socks5UdpRepr},
     udp_relay::new_udp_relay,
@@ -156,61 +156,42 @@ async fn copy_between_relay_and_stream(
     stream: impl AsyncRead + AsyncWrite + Unpin + Send + Sync + 'static,
     stats: Option<&UpstreamStatistics>,
 ) -> anyhow::Result<()> {
-    let (mut stream_r, mut stream_w) = split(stream);
+    let (stream_r, mut stream_w) = split(stream);
 
     // Proxy -> Relay
     let rx_count = stats.map(|s| s.rx.clone()).unwrap_or_default();
     let task1: Task<anyhow::Result<()>> = spawn(async move {
-        let mut last_addr = None;
+        let mut stream = ProxyUdpPacket::new_packet_stream(stream_r, None);
 
-        loop {
-            let pkt = ProxyUdpPacket::read_async(&mut stream_r).await?;
-            log::debug!("Received {pkt:?} from upstream");
-            let addr = match pkt
-                .addr()
-                .map(|a| a.into_owned())
-                .or_else(|| last_addr.take())
-            {
-                Some(v) => v,
-                None => {
-                    log::info!("No source address available");
-                    continue;
-                }
-            };
-
-            rx_count.inc(pkt.inner().len());
+        while let Some((buf, addr)) = stream.next().await {
+            rx_count.inc(buf.as_ref().len());
 
             let repr = Socks5UdpRepr {
                 addr,
-                payload: pkt.payload(),
+                payload: buf.as_ref(),
                 frag_no: 0,
             };
 
             tx.send(repr.to_packet()?).await?;
-            last_addr.replace(repr.addr);
         }
+        Ok(())
     });
 
     // Relay -> Proxy
     let tx_count = stats.map(|s| s.tx.clone()).unwrap_or_default();
     let task2: Task<anyhow::Result<()>> = spawn(async move {
-        let mut last_sent_addr: Option<Address<'static>> = None;
+        let mut writer = ProxyUdpPacketWriter::new();
         while let Some(Some(pkt)) = rx.next().timeout(UDP_IDLING_TIMEOUT).await {
             if pkt.frag_no() != 0 {
                 log::warn!("Dropping fragmented socks5 packet");
                 continue;
             }
 
-            let send_addr = match (pkt.addr(), last_sent_addr.as_ref()) {
-                (v, Some(last)) if last == &v => None,
-                (v, _) => {
-                    last_sent_addr.replace(v.into_owned());
-                    last_sent_addr.as_ref()
-                }
-            };
-
-            tx_count
-                .inc(write_proxy_udp_packet_async(&mut stream_w, send_addr, pkt.payload()).await?);
+            tx_count.inc(
+                writer
+                    .write(&mut stream_w, &pkt.addr(), pkt.payload())
+                    .await?,
+            );
 
             log::debug!("Sent {pkt:?} to upstream");
         }
@@ -234,8 +215,8 @@ async fn drain_socks(
 mod tests {
     use std::time::Duration;
 
+    use crate::proxy::udp::write_packet_async as write_proxy_udp_packet_async;
     use crate::rt::{block_on, mpsc::bounded, TimeoutExt};
-
     use crate::test::duplex;
 
     use super::*;

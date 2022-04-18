@@ -4,9 +4,10 @@ use std::{
 };
 
 use crate::buf::Buf as MutBuf;
+use crate::rt::{mpsc::bounded, spawn};
 use anyhow::{bail, Context};
 use bytes::Buf;
-use futures_lite::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
+use futures_lite::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt, Stream};
 
 use crate::socks5::Address;
 
@@ -136,6 +137,14 @@ pub async fn write_packet_async(
     Ok(written)
 }
 
+struct PacketPayloader(Packet<MutBuf>);
+
+impl AsRef<[u8]> for PacketPayloader {
+    fn as_ref(&self) -> &[u8] {
+        self.0.payload()
+    }
+}
+
 impl Packet<MutBuf> {
     pub async fn read_async(
         input: &mut (impl AsyncRead + Unpin + Send + Sync),
@@ -196,6 +205,67 @@ impl Packet<MutBuf> {
             }
             v => bail!("Invalid payload type: {v}"),
         }
+    }
+
+    pub fn new_packet_stream(
+        mut r: impl AsyncRead + Unpin + Send + Sync + 'static,
+        initial_addr: Option<Address<'static>>,
+    ) -> impl Stream<Item = (impl AsRef<[u8]> + Send + Sync + 'static, Address<'static>)>
+           + Unpin
+           + Send
+           + Sync
+           + 'static {
+        let (tx, rx) = bounded::<(PacketPayloader, Address<'static>)>(5);
+
+        spawn(async move {
+            let mut last_addr = initial_addr;
+            while let Ok(buf) = Self::read_async(&mut r).await {
+                let addr = match (buf.addr(), last_addr.as_ref()) {
+                    (Some(a), _) => {
+                        last_addr.replace(a.into_owned());
+                        last_addr.as_ref().unwrap().clone()
+                    }
+                    (None, Some(a)) => a.clone().into_owned(),
+                    _ => {
+                        log::debug!("No last address received");
+                        continue;
+                    }
+                };
+
+                if tx.send((PacketPayloader(buf), addr)).await.is_err() {
+                    break;
+                }
+            }
+        })
+        .detach();
+        rx
+    }
+}
+
+pub struct PacketWriter {
+    last_addr: Option<Address<'static>>,
+}
+
+impl PacketWriter {
+    pub fn new() -> Self {
+        Self { last_addr: None }
+    }
+
+    pub async fn write(
+        &mut self,
+        out: &mut (impl AsyncWrite + Unpin + Send + Sync),
+        addr: &Address<'_>,
+        payload: &[u8],
+    ) -> anyhow::Result<usize> {
+        let dst = match (addr, self.last_addr.as_ref()) {
+            (a, Some(last)) if a == last => None,
+            (a, _) => {
+                self.last_addr.replace(a.clone().into_owned());
+                Some(a)
+            }
+        };
+
+        write_packet_async(out, dst, payload).await
     }
 }
 

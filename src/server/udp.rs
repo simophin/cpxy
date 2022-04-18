@@ -5,13 +5,13 @@ use crate::{
     rt::{spawn, Task},
 };
 use anyhow::Context;
-use futures_lite::{future::race, io::split, AsyncRead, AsyncWrite};
+use futures_lite::{future::race, io::split, AsyncRead, AsyncWrite, StreamExt};
 
 use crate::{
     buf::Buf,
     proxy::{
         protocol::ProxyResult,
-        udp::{write_packet_async, Packet},
+        udp::{Packet, PacketWriter},
     },
     rt::net::UdpSocket,
     socks5::Address,
@@ -71,39 +71,27 @@ pub async fn serve_udp_proxy_conn(
     let task1: Task<anyhow::Result<()>> = {
         let socket = socket.clone();
         spawn(async move {
-            let mut last_addr = initial_dst;
-            loop {
-                let pkt = Packet::read_async(&mut stream_r).await?;
-                let dst = match (pkt.addr(), &last_addr) {
-                    (Some(requested), _) => {
-                        last_addr = requested.into_owned();
-                        &last_addr
-                    }
-                    (None, last) => last,
-                };
+            let mut packet_stream = Packet::new_packet_stream(stream_r, Some(initial_dst));
 
-                log::debug!("Sending payload(len={}) to {dst}", pkt.payload().len());
-                send_to_addr(&socket, pkt.payload(), dst).await?;
+            while let Some((buf, addr)) = packet_stream.next().await {
+                log::debug!("Sending payload(len={}) to {addr}", buf.as_ref().len());
+                send_to_addr(&socket, buf.as_ref(), &addr).await?;
             }
+
+            Ok(())
         })
     };
 
     let task2: Task<anyhow::Result<()>> = spawn(async move {
-        let mut last_addr: Option<SocketAddr> = None;
+        let mut packet_writer = PacketWriter::new();
         loop {
             let mut buf = Buf::new_for_udp();
             let (len, from) = socket.recv_from(&mut buf).await?;
             buf.set_len(len);
-            let addr = match (from, last_addr.as_ref()) {
-                (v, Some(last)) if last == &v => None,
-                (v, _) => {
-                    last_addr.replace(v);
-                    Some(v)
-                }
-            };
 
-            let written =
-                write_packet_async(&mut stream_w, addr.map(|a| a.into()).as_ref(), &buf).await?;
+            let written = packet_writer
+                .write(&mut stream_w, &from.into(), &buf)
+                .await?;
             log::debug!(
                 "Received {len} bytes from UDP://{from}, written {written} bytes back to TCP stream"
             );
@@ -122,6 +110,7 @@ pub async fn serve_udp_proxy_conn(
 mod tests {
     use std::time::Duration;
 
+    use crate::proxy::udp::write_packet_async;
     use crate::rt::{block_on, TimeoutExt};
 
     use crate::{

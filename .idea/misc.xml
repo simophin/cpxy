@@ -10,20 +10,16 @@
     <option name="openedFilesInfos">
       <list>
         <OpenedFileInfo>
-          <option name="caretOffset" value="3394" />
-          <option name="fileUrl" value="file://$PROJECT_DIR$/app/src/client/handler.rs" />
+          <option name="caretOffset" value="173" />
+          <option name="fileUrl" value="file://$PROJECT_DIR$/Cargo.toml" />
         </OpenedFileInfo>
         <OpenedFileInfo>
-          <option name="caretOffset" value="1295" />
-          <option name="fileUrl" value="file://$PROJECT_DIR$/app/src/test/udp.rs" />
+          <option name="caretOffset" value="122" />
+          <option name="fileUrl" value="file://$PROJECT_DIR$/src/rt/mod.rs" />
         </OpenedFileInfo>
         <OpenedFileInfo>
-          <option name="caretOffset" value="0" />
-          <option name="fileUrl" value="file://$PROJECT_DIR$/app/src/client/udp.rs" />
-        </OpenedFileInfo>
-        <OpenedFileInfo>
-          <option name="caretOffset" value="5003" />
-          <option name="fileUrl" value="file://$PROJECT_DIR$/app/src/buf.rs" />
+          <option name="caretOffset" value="489" />
+          <option name="fileUrl" value="file://$PROJECT_DIR$/src/client/transparent.rs" />
         </OpenedFileInfo>
       </list>
     </option>

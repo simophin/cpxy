@@ -1,8 +1,10 @@
 use crate::cipher::strategy::EncryptionStrategy;
 use crate::config::UpstreamConfig;
 use crate::fetch::connect_http;
+use crate::io::TcpStreamExt;
 use crate::url::HttpUrl;
 use crate::utils::{read_bincode_lengthed_async, write_bincode_lengthed};
+use anyhow::Context;
 use futures_lite::{AsyncRead, AsyncWrite};
 use protocol::{ProxyRequest, ProxyResult};
 use std::time::{Duration, Instant};
@@ -40,17 +42,25 @@ pub async fn request_proxy_upstream_http(
 }
 
 pub async fn request_proxy_upstream_with_config(
-    c: &UpstreamConfig,
+    fwmark: Option<u32>,
+    upstream: &UpstreamConfig,
     req: &ProxyRequest<'_>,
 ) -> anyhow::Result<(
     ProxyResult,
     impl AsyncRead + AsyncWrite + Unpin + Send + Sync,
     Duration,
 )> {
-    let stream = connect_http(c.tls, &c.address).await?;
+    let stream = connect_http(upstream.tls, &upstream.address).await?;
+    if let Some(fwmark) = fwmark {
+        stream
+            .inner()
+            .set_sock_mark(fwmark)
+            .context("Setting FWMARK")?;
+    }
+
     let url = HttpUrl {
-        is_https: c.tls,
-        address: c.address.clone(),
+        is_https: upstream.tls,
+        address: upstream.address.clone(),
         path: Default::default(),
     };
     request_proxy_upstream(&url, stream, req).await
