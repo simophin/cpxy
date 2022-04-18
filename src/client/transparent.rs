@@ -126,7 +126,7 @@ impl UdpSession {
             )
             .await
             {
-                Ok((_, stream, _)) => Some(stream),
+                Ok((_, stream, stats)) => Some((stream, stats)),
                 Err(err) => {
                     log::error!("Error requesting upstream: {err:?}");
                     None
@@ -134,9 +134,9 @@ impl UdpSession {
             };
 
             match (upstream, config.allow_direct(&dst)) {
-                (Some(upstream), _) => {
+                (Some((upstream, stats)), _) => {
                     // Proxy through upstream
-                    copy_between_udp_and_upstream(rx, upstream, &stats).await
+                    copy_between_udp_and_upstream(rx, upstream, stats).await
                 }
                 (None, true) => {
                     // Direct connect
