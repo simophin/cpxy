@@ -7,6 +7,7 @@ use crate::rt::net::{TcpListener, TcpStream};
 pub trait TcpStreamExt {
     fn is_v4(&self) -> bool;
     fn get_original_dst(&self) -> Option<SocketAddr>;
+    fn set_sock_mark(&self, mark: u32) -> std::io::Result<()>;
 }
 
 impl TcpStreamExt for TcpStream {
@@ -15,6 +16,15 @@ impl TcpStreamExt for TcpStream {
             Ok(v) => v.is_ipv4(),
             _ => true,
         }
+    }
+
+    #[cfg(unix)]
+    fn set_sock_mark(&self, mark: u32) -> std::io::Result<()> {
+        use nix::sys::socket::{setsockopt, sockopt::Mark};
+        use std::os::unix::prelude::AsRawFd;
+
+        setsockopt(self.as_raw_fd(), Mark, &mark)?;
+        Ok(())
     }
 
     #[cfg(unix)]

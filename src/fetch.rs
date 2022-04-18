@@ -86,6 +86,15 @@ impl<T: AsyncRead + AsyncWrite + Unpin> AsyncRead for HttpStream<T> {
     }
 }
 
+impl<T> HttpStream<T> {
+    pub fn inner(&self) -> &T {
+        match self {
+            HttpStream::Plain(stream) => stream,
+            HttpStream::SSL(stream) => stream.get_ref().0,
+        }
+    }
+}
+
 impl<T: AsyncRead + AsyncWrite + Unpin> AsyncWrite for HttpStream<T> {
     fn poll_write_vectored(
         self: Pin<&mut Self>,
