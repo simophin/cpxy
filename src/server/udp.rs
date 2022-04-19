@@ -1,4 +1,4 @@
-use std::{net::SocketAddr, sync::Arc};
+use std::sync::Arc;
 
 use crate::{
     io::{bind_udp, send_to_addr},
@@ -66,7 +66,7 @@ pub async fn serve_udp_proxy_conn(
 
     let close_on_receive = initial_dst.get_port() == 53;
 
-    let (mut stream_r, mut stream_w) = split(stream);
+    let (stream_r, mut stream_w) = split(stream);
 
     let task1: Task<anyhow::Result<()>> = {
         let socket = socket.clone();

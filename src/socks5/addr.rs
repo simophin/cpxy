@@ -12,7 +12,7 @@ use futures_lite::{AsyncWrite, AsyncWriteExt};
 
 use crate::parse::ParseError;
 
-#[derive(Eq, PartialEq, Clone)]
+#[derive(Eq, PartialEq, Clone, Hash)]
 pub enum Address<'a> {
     IP(SocketAddr),
     Name { host: Cow<'a, str>, port: u16 },

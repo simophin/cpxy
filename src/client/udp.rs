@@ -18,14 +18,9 @@ use anyhow::{bail, Context};
 use futures_lite::{future::race, io::split, AsyncRead, AsyncReadExt, AsyncWrite, StreamExt};
 
 use crate::{
-    buf::Buf,
-    config::ClientConfig,
-    handshake::Handshaker,
-    proxy::protocol::ProxyRequest,
-    proxy::udp::Packet as ProxyUdpPacket,
-    proxy::udp::PacketWriter as ProxyUdpPacketWriter,
-    socks5::UdpPacket as Socks5UdpPacket,
-    socks5::{Address, UdpRepr as Socks5UdpRepr},
+    buf::Buf, config::ClientConfig, handshake::Handshaker, proxy::protocol::ProxyRequest,
+    proxy::udp::Packet as ProxyUdpPacket, proxy::udp::PacketWriter as ProxyUdpPacketWriter,
+    socks5::UdpPacket as Socks5UdpPacket, socks5::UdpRepr as Socks5UdpRepr,
     udp_relay::new_udp_relay,
 };
 
@@ -217,6 +212,7 @@ mod tests {
 
     use crate::proxy::udp::write_packet_async as write_proxy_udp_packet_async;
     use crate::rt::{block_on, mpsc::bounded, TimeoutExt};
+    use crate::socks5::Address;
     use crate::test::duplex;
 
     use super::*;

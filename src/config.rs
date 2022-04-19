@@ -173,6 +173,9 @@ pub struct ClientConfig {
 
     #[serde(default)]
     pub fwmark: Option<u32>,
+
+    #[serde(default)]
+    pub udp_tproxy_address: Option<SocketAddr>,
 }
 
 impl Default for ClientConfig {
@@ -184,6 +187,7 @@ impl Default for ClientConfig {
             direct_accept: Default::default(),
             direct_reject: Default::default(),
             fwmark: Default::default(),
+            udp_tproxy_address: Default::default(),
         }
     }
 }

@@ -48,25 +48,29 @@ pub async fn run_client(
             }
         };
 
-        // let socket = match UdpSocket::bind_raw(&config.socks5_address).await {
-        //     Ok(v) => v,
-        //     Err(e) => {
-        //         log::error!("Error listening for UDP tproxy: {e:?}");
-        //         continue;
-        //     }
-        // };
+        current_tasks.push(spawn(run_proxy_with(
+            proxy_listener,
+            config.clone(),
+            stats.clone(),
+        )));
 
-        // match start_udp_client_with(socket, config.clone(), stats.clone()).await {
-        //     Ok(task) => current_tasks.push(task),
-        //     Err(e) => {
-        //         log::error!("Error starting UDP client: {e:?}");
-        //         continue;
-        //     }
-        // };
-
+        // UDP tproxy?
+        #[cfg(unix)]
         {
-            let config = config.clone();
-            current_tasks.push(spawn(run_proxy_with(proxy_listener, config, stats)));
+            if let Some(addr) = config.udp_tproxy_address {
+                match super::transparent::serve_udp_transparent_proxy(
+                    addr,
+                    config.clone(),
+                    stats.clone(),
+                )
+                .await
+                {
+                    Ok(task) => current_tasks.push(task),
+                    Err(e) => {
+                        log::error!("Error serving udp transparent proxy: {e:?}");
+                    }
+                }
+            }
         }
 
         log::info!("Proxy server listening on {}", config.socks5_address);
