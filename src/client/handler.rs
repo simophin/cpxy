@@ -38,7 +38,9 @@ pub async fn run_client(
         };
 
         log::debug!("Using configuration {config:?}");
-        current_tasks.clear();
+        while let Some(task) = current_tasks.pop() {
+            task.cancel().await;
+        }
 
         let proxy_listener = match bind_tcp(&Address::IP(config.socks5_address)).await {
             Ok(v) => v,

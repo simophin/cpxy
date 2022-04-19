@@ -28,8 +28,8 @@ use anyhow::{bail, Context};
 use futures_lite::{io::split, AsyncRead, AsyncWrite, StreamExt};
 use futures_util::{select, FutureExt};
 use libc::{
-    c_void, iovec, msghdr, size_t, socklen_t, CMSG_DATA, CMSG_FIRSTHDR, CMSG_LEN, CMSG_NXTHDR,
-    IPV6_RECVORIGDSTADDR, IP_RECVORIGDSTADDR, SOL_SOCKET,
+    c_uint, c_void, iovec, msghdr, size_t, socklen_t, CMSG_DATA, CMSG_FIRSTHDR, CMSG_LEN,
+    CMSG_NXTHDR, IPV6_RECVORIGDSTADDR, IP_RECVORIGDSTADDR, SOL_IP, SOL_IPV6,
 };
 use nix::{
     cmsg_space,
@@ -147,7 +147,10 @@ async fn recv_with_orig_dst(
                 msg_iov: &mut iov as *mut iovec,
                 msg_iovlen: 1,
                 msg_control: cmsg_buf.as_mut_ptr() as *mut c_void,
-                msg_controllen: cmsg_buf.len(),
+                #[cfg(target_arch = "mips")]
+                msg_controllen: cmsg_buf.len() as u32,
+                #[cfg(not(target_arch = "mips"))]
+                msg_controllen: cmsg_buf.len() as size_t,
                 msg_flags: 0,
             };
 
@@ -163,26 +166,24 @@ async fn recv_with_orig_dst(
                 let mut cmsg = CMSG_FIRSTHDR(&hdr);
                 while cmsg != null_mut() {
                     let msg = *cmsg;
-                    if msg.cmsg_level == SOL_SOCKET {
-                        match (msg.cmsg_type, msg.cmsg_len) {
-                            (IP_RECVORIGDSTADDR, len) if len == CMSG_LEN(6) as size_t => {
-                                orig_dst_addr = Some(buf_to_addr(from_raw_parts(
-                                    CMSG_DATA(cmsg) as *const u8,
-                                    6,
-                                ))?);
-                                break;
-                            }
-
-                            (IPV6_RECVORIGDSTADDR, len) if len == CMSG_LEN(18) as size_t => {
-                                orig_dst_addr = Some(buf_to_addr(from_raw_parts(
-                                    CMSG_DATA(cmsg) as *const u8,
-                                    18,
-                                ))?);
-                                break;
-                            }
-
-                            _ => {}
+                    match (msg.cmsg_type, msg.cmsg_len as c_uint) {
+                        (IP_RECVORIGDSTADDR, len) if len == CMSG_LEN(6) => {
+                            orig_dst_addr = Some(buf_to_addr(from_raw_parts(
+                                CMSG_DATA(cmsg) as *const u8,
+                                6,
+                            ))?);
+                            break;
                         }
+
+                        (IPV6_RECVORIGDSTADDR, len) if len == CMSG_LEN(18) => {
+                            orig_dst_addr = Some(buf_to_addr(from_raw_parts(
+                                CMSG_DATA(cmsg) as *const u8,
+                                18,
+                            ))?);
+                            break;
+                        }
+
+                        _ => {}
                     }
 
                     cmsg = CMSG_NXTHDR(&hdr, cmsg);
@@ -270,6 +271,7 @@ async fn copy_between_udp_and_upstream(
 ) -> anyhow::Result<()> {
     let (upstream_r, mut upstream_w) = split(upstream);
     let (link_active_tx, mut link_active_rx) = bounded::<()>(10);
+    let should_close_after_receive = orig_dst.get_port() == 53;
 
     // Upstream -> UDP
     let rx_count = stats.map(|v| v.rx.clone()).unwrap_or_default();
@@ -308,6 +310,9 @@ async fn copy_between_udp_and_upstream(
             let _ = link_active_tx.try_send(());
             let written_len = writer.write(&mut upstream_w, &orig_dst, &b).await?;
             tx_count.inc(written_len);
+            if should_close_after_receive {
+                break;
+            }
         }
         Ok(())
     });
@@ -358,7 +363,10 @@ async fn bind_trasnparent_udp(addr: &Address<'_>) -> anyhow::Result<UdpSocket> {
         let value: isize = 1;
         if libc::setsockopt(
             socket,
-            SOL_SOCKET,
+            match &addr {
+                SocketAddr::V4(_) => SOL_IP,
+                SocketAddr::V6(_) => SOL_IPV6,
+            },
             match &addr {
                 SocketAddr::V4(_) => IP_RECVORIGDSTADDR,
                 SocketAddr::V6(_) => IPV6_RECVORIGDSTADDR,
@@ -367,7 +375,8 @@ async fn bind_trasnparent_udp(addr: &Address<'_>) -> anyhow::Result<UdpSocket> {
             std::mem::size_of::<isize>() as socklen_t,
         ) != 0
         {
-            return Err(std::io::Error::from_raw_os_error(nix::errno::errno()).into());
+            return Err(std::io::Error::from_raw_os_error(nix::errno::errno()))
+                .context("Setting RECV_ORIG_DST_ADDR");
         }
     }
 

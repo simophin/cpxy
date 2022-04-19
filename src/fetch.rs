@@ -90,7 +90,10 @@ impl<T> HttpStream<T> {
     pub fn inner(&self) -> &T {
         match self {
             HttpStream::Plain(stream) => stream,
+            #[cfg(not(target_arch = "mips"))]
             HttpStream::SSL(stream) => stream.get_ref().0,
+            #[cfg(target_arch = "mips")]
+            HttpStream::SSL(stream) => stream,
         }
     }
 }

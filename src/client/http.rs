@@ -2,8 +2,8 @@ use anyhow::{anyhow, Context};
 use futures_lite::{AsyncRead, AsyncWrite};
 
 use crate::{
-    config::ClientConfig, fetch::send_http, handshake::Handshaker, http::HttpRequest,
-    proxy::protocol::ProxyRequest, socks5::Address, utils::copy_duplex,
+    config::ClientConfig, fetch::connect_http, handshake::Handshaker, http::HttpRequest,
+    io::TcpStreamExt, proxy::protocol::ProxyRequest, socks5::Address, utils::copy_duplex,
 };
 
 use super::{utils::request_best_upstream, ClientStatistics};
@@ -36,7 +36,7 @@ pub async fn serve_http_proxy_conn(
         .context("Redirecting upstream traffic")
     } else if config.allow_direct(&dst) {
         if let ProxyRequest::HTTP { req, .. } = proxy_request {
-            match send_http(https, &dst, &req).await {
+            match prepare_http(config, https, &dst, &req).await {
                 Ok(upstream) => {
                     handshaker.respond_ok(&mut stream, None).await?;
                     copy_duplex(upstream, stream, None, None)
@@ -55,4 +55,24 @@ pub async fn serve_http_proxy_conn(
         handshaker.respond_err(&mut stream).await?;
         Err(anyhow!("No where to direct TCP traffic"))
     }
+}
+
+async fn prepare_http(
+    config: &ClientConfig,
+    https: bool,
+    dst: &Address<'_>,
+    req: &HttpRequest<'_>,
+) -> anyhow::Result<impl AsyncRead + AsyncWrite + Unpin + Send + Sync> {
+    let mut stream = connect_http(https, dst)
+        .await
+        .with_context(|| format!("Connecting to {dst}"))?;
+    if let Some(fwmark) = config.fwmark {
+        stream
+            .inner()
+            .set_sock_mark(fwmark)
+            .context("Setting FWMark")?;
+    }
+
+    req.to_async_writer(&mut stream).await?;
+    Ok(stream)
 }

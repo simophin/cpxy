@@ -11,6 +11,8 @@ export type UpstreamConfig = {
 export type ClientConfig = {
     socks5_address?: string,
     socks5_udp_host?: string,
+    fwmark?: number,
+    udp_tproxy_address?: string,
     upstreams: { [name: string]: UpstreamConfig },
     direct_accept: string[],
     direct_reject: string[],

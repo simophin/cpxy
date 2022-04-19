@@ -4,8 +4,13 @@ use anyhow::{anyhow, bail, Context};
 use futures_lite::{AsyncRead, AsyncWrite};
 
 use crate::{
-    config::ClientConfig, handshake::Handshaker, io::connect_tcp, proxy::protocol::ProxyRequest,
-    rt::TimeoutExt, socks5::Address, utils::copy_duplex,
+    config::ClientConfig,
+    handshake::Handshaker,
+    io::{connect_tcp, TcpStreamExt},
+    proxy::protocol::ProxyRequest,
+    rt::TimeoutExt,
+    socks5::Address,
+    utils::copy_duplex,
 };
 
 use super::{utils::request_best_upstream, ClientStatistics};
@@ -31,7 +36,7 @@ pub async fn serve_tcp_proxy_conn(
         .await
         .context("Redirecting upstream traffic")
     } else if config.allow_direct(&dst) {
-        match prepare_direct_tcp(&dst).await {
+        match prepare_direct_tcp(config, &dst).await {
             Ok((bound, upstream)) => {
                 handshaker.respond_ok(&mut stream, bound).await?;
                 copy_duplex(upstream, stream, None, None).await
@@ -49,6 +54,7 @@ pub async fn serve_tcp_proxy_conn(
 }
 
 async fn prepare_direct_tcp(
+    config: &ClientConfig,
     dst: &Address<'_>,
 ) -> anyhow::Result<(
     Option<SocketAddr>,
@@ -58,5 +64,8 @@ async fn prepare_direct_tcp(
         .timeout(Duration::from_secs(2))
         .await
         .ok_or_else(|| anyhow!("Timeout connecting to {dst}"))??;
+    if let Some(fwmark) = config.fwmark {
+        stream.set_sock_mark(fwmark)?;
+    }
     Ok((stream.local_addr().ok(), stream))
 }
