@@ -2,10 +2,9 @@ use std::{
     borrow::Cow,
     collections::HashMap,
     io::ErrorKind,
-    net::SocketAddr,
+    mem::{size_of, MaybeUninit},
+    net::{Ipv4Addr, Ipv6Addr, SocketAddr, SocketAddrV4, SocketAddrV6},
     os::unix::prelude::{AsRawFd, FromRawFd},
-    ptr::null_mut,
-    slice::from_raw_parts,
     sync::Arc,
     time::Duration,
 };
@@ -28,15 +27,11 @@ use anyhow::{bail, Context};
 use futures_lite::{io::split, AsyncRead, AsyncWrite, StreamExt};
 use futures_util::{select, FutureExt};
 use libc::{
-    c_uint, c_void, iovec, msghdr, size_t, socklen_t, CMSG_DATA, CMSG_FIRSTHDR, CMSG_LEN,
-    CMSG_NXTHDR, IPV6_RECVORIGDSTADDR, IP_RECVORIGDSTADDR, SOL_IP, SOL_IPV6,
+    c_int, c_void, size_t, sockaddr_in, sockaddr_in6, socklen_t, ssize_t, AF_INET, AF_INET6,
+    IPV6_RECVORIGDSTADDR, IP_RECVORIGDSTADDR, SOL_IP, SOL_IPV6,
 };
-use nix::{
-    cmsg_space,
-    sys::socket::{
-        setsockopt, sockopt::IpTransparent, AddressFamily, InetAddr, SockAddr, SockFlag,
-        SockProtocol,
-    },
+use nix::sys::socket::{
+    setsockopt, sockopt::IpTransparent, AddressFamily, InetAddr, SockAddr, SockFlag, SockProtocol,
 };
 
 use super::{utils::request_best_upstream, ClientStatistics, UpstreamStatistics};
@@ -78,7 +73,13 @@ pub async fn serve_udp_transparent_proxy(
                 }
 
                 r = recv_with_orig_dst(&socket, &mut buf).fuse() => {
-                    r.context("Receiving tproxy proxy")?
+                    match r {
+                        Ok(v) => v,
+                        Err(e) => {
+                            log::error!("Error receiving TProxy packet: {e:?}");
+                            return Err(e.into());
+                        }
+                    }
                 }
             };
 
@@ -116,15 +117,38 @@ pub async fn serve_udp_transparent_proxy(
     }))
 }
 
-fn buf_to_addr(b: &[u8]) -> std::io::Result<SocketAddr> {
-    match b.len() {
-        6 => todo!(),
-        18 => todo!(),
-        l => Err(std::io::Error::new(
-            ErrorKind::Unsupported,
-            format!("Wrong address len {l}: expecting 6 or 18"),
-        )),
+fn buf_to_addr(buf: *const c_void, _buf_len: usize) -> Option<SocketAddr> {
+    match unsafe { &*(buf as *const sockaddr_in) }.sin_family as c_int {
+        AF_INET => {
+            let addr = unsafe { &*(buf as *const sockaddr_in) };
+            Some(SocketAddr::V4(SocketAddrV4::new(
+                Ipv4Addr::from(u32::from_be(addr.sin_addr.s_addr)),
+                u16::from_be(addr.sin_port),
+            )))
+        }
+        AF_INET6 => {
+            let addr = unsafe { &*(buf as *const sockaddr_in6) };
+            Some(SocketAddr::V6(SocketAddrV6::new(
+                Ipv6Addr::from(addr.sin6_addr.s6_addr),
+                u16::from_be(addr.sin6_port),
+                u32::from_be(addr.sin6_flowinfo),
+                u32::from_be(addr.sin6_scope_id),
+            )))
+        }
+        _ => None,
     }
+}
+
+extern "C" {
+    fn do_recv_with_orig_dst(
+        fd: c_int,
+        buf: *mut c_void,
+        buf_len: size_t,
+        src_addr_buf: *mut c_void,
+        src_addr_len: *mut socklen_t,
+        dst_addr_buf: *mut c_void,
+        dst_addr_len: *mut socklen_t,
+    ) -> ssize_t;
 }
 
 async fn recv_with_orig_dst(
@@ -133,74 +157,50 @@ async fn recv_with_orig_dst(
 ) -> std::io::Result<((usize, SocketAddr), SocketAddr)> {
     socket
         .read_with(|socket| {
-            let mut iov = iovec {
-                iov_base: buf.as_mut_ptr() as *mut c_void,
-                iov_len: buf.len(),
+            const V6_ADDR_LEN: usize = size_of::<sockaddr_in6>();
+            let mut src_addr: [MaybeUninit<u8>; V6_ADDR_LEN] =
+                unsafe { MaybeUninit::uninit().assume_init() };
+
+            let mut dst_addr: [MaybeUninit<u8>; V6_ADDR_LEN] =
+                unsafe { MaybeUninit::uninit().assume_init() };
+
+            let mut src_addr_len = src_addr.len() as socklen_t;
+            let mut dst_addr_len = src_addr.len() as socklen_t;
+
+            let rc = unsafe {
+                do_recv_with_orig_dst(
+                    socket.as_raw_fd() as c_int,
+                    buf.as_mut_ptr() as *mut c_void,
+                    buf.len() as size_t,
+                    src_addr.as_mut_ptr() as *mut c_void,
+                    &mut src_addr_len as &mut socklen_t,
+                    dst_addr.as_mut_ptr() as *mut c_void,
+                    &mut dst_addr_len as &mut socklen_t,
+                )
             };
-
-            let mut cmsg_buf = cmsg_space!([u8; 18]);
-            let mut src_addr = [0u8; 18];
-
-            let mut hdr = msghdr {
-                msg_name: src_addr.as_mut_ptr() as *mut c_void,
-                msg_namelen: src_addr.len() as socklen_t,
-                msg_iov: &mut iov as *mut iovec,
-                msg_iovlen: 1,
-                msg_control: cmsg_buf.as_mut_ptr() as *mut c_void,
-                #[cfg(target_arch = "mips")]
-                msg_controllen: cmsg_buf.len() as u32,
-                #[cfg(not(target_arch = "mips"))]
-                msg_controllen: cmsg_buf.len() as size_t,
-                msg_flags: 0,
-            };
-
-            let rc = unsafe { libc::recvmsg(socket.as_raw_fd(), &mut hdr as *mut msghdr, 0) };
 
             if rc < 0 {
                 return Err(std::io::Error::from_raw_os_error(nix::errno::errno()));
             }
 
-            let mut orig_dst_addr = None;
-
-            unsafe {
-                let mut cmsg = CMSG_FIRSTHDR(&hdr);
-                while cmsg != null_mut() {
-                    let msg = *cmsg;
-                    match (msg.cmsg_type, msg.cmsg_len as c_uint) {
-                        (IP_RECVORIGDSTADDR, len) if len == CMSG_LEN(6) => {
-                            orig_dst_addr = Some(buf_to_addr(from_raw_parts(
-                                CMSG_DATA(cmsg) as *const u8,
-                                6,
-                            ))?);
-                            break;
-                        }
-
-                        (IPV6_RECVORIGDSTADDR, len) if len == CMSG_LEN(18) => {
-                            orig_dst_addr = Some(buf_to_addr(from_raw_parts(
-                                CMSG_DATA(cmsg) as *const u8,
-                                18,
-                            ))?);
-                            break;
-                        }
-
-                        _ => {}
-                    }
-
-                    cmsg = CMSG_NXTHDR(&hdr, cmsg);
-                }
+            if src_addr_len == 0 || dst_addr_len == 0 {
+                return Err(std::io::Error::new(
+                    ErrorKind::AddrNotAvailable,
+                    "SRC or DST addr unavailable",
+                ));
             }
 
-            Ok((
-                (
-                    rc as usize,
-                    buf_to_addr(unsafe {
-                        from_raw_parts(hdr.msg_name as *const u8, hdr.msg_namelen as usize)
-                    })?,
-                ),
-                orig_dst_addr.ok_or_else(|| {
-                    std::io::Error::new(ErrorKind::AddrNotAvailable, "OrigDst not available")
-                })?,
-            ))
+            let src = buf_to_addr(src_addr.as_ptr() as *const c_void, src_addr_len as usize)
+                .ok_or_else(|| {
+                    std::io::Error::new(ErrorKind::AddrNotAvailable, "SRC addr unavailable")
+                })?;
+
+            let dst = buf_to_addr(dst_addr.as_ptr() as *const c_void, dst_addr_len as usize)
+                .ok_or_else(|| {
+                    std::io::Error::new(ErrorKind::AddrNotAvailable, "DST addr unavailable")
+                })?;
+
+            Ok(((rc as usize, src), dst))
         })
         .await
 }
@@ -355,12 +355,9 @@ async fn bind_trasnparent_udp(addr: &Address<'_>) -> anyhow::Result<UdpSocket> {
     .context("Creating Unix Datagram socket")?;
 
     setsockopt(socket, IpTransparent, &true).context("Setting IP_TRANSPARNET on UdpSocket")?;
-    // setsockopt(socket, OriginalDst, &true).context("Setting IP_TRANSPARNET on UdpSocket")?;
-    nix::sys::socket::bind(socket, &SockAddr::Inet(InetAddr::from_std(&addr)))
-        .with_context(|| format!("Binding on {addr}"))?;
 
     unsafe {
-        let value: isize = 1;
+        let value = 1usize;
         if libc::setsockopt(
             socket,
             match &addr {
@@ -371,8 +368,8 @@ async fn bind_trasnparent_udp(addr: &Address<'_>) -> anyhow::Result<UdpSocket> {
                 SocketAddr::V4(_) => IP_RECVORIGDSTADDR,
                 SocketAddr::V6(_) => IPV6_RECVORIGDSTADDR,
             },
-            &value as *const isize as *const c_void,
-            std::mem::size_of::<isize>() as socklen_t,
+            &value as *const usize as *const c_void,
+            size_of::<usize>() as socklen_t,
         ) != 0
         {
             return Err(std::io::Error::from_raw_os_error(nix::errno::errno()))
@@ -380,9 +377,14 @@ async fn bind_trasnparent_udp(addr: &Address<'_>) -> anyhow::Result<UdpSocket> {
         }
     }
 
+    nix::sys::socket::bind(socket, &SockAddr::Inet(InetAddr::from_std(&addr)))
+        .with_context(|| format!("Binding on {addr}"))?;
+
+    log::debug!("UDP tproxy bound on {addr}");
+
     Ok(unsafe { std::net::UdpSocket::from_raw_fd(socket) }.try_into()?)
 }
 
 async fn serve_udp_direct(_rx: Receiver<Buf>) -> anyhow::Result<()> {
-    todo!()
+    bail!("Unimplemented")
 }

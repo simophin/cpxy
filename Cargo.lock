@@ -340,6 +340,7 @@ dependencies = [
  "bit",
  "byteorder",
  "bytes",
+ "cc",
  "chacha20",
  "chrono",
  "cipher",
