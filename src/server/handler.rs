@@ -25,6 +25,8 @@ pub async fn serve_client(
             initial_dst,
         } => serve_udp_proxy_conn(v4, stream, initial_data, initial_dst).await,
         ProxyRequest::DNS { domains } => resolve_domains(domains, stream).await,
+        ProxyRequest::EchoTestTcp => super::echo::serve_tcp(stream).await,
+        ProxyRequest::EchoTestUdp => super::echo::serve_udp(stream).await,
     }
 }
 

@@ -39,6 +39,12 @@ enum Command {
         #[clap(default_value_t = 4000, long)]
         controller_port: u16,
     },
+    #[clap()]
+    Perf {
+        #[clap(long)]
+        /// Path to the configuration file
+        config: String,
+    },
 }
 
 fn main() -> anyhow::Result<()> {
@@ -75,6 +81,9 @@ fn main() -> anyhow::Result<()> {
                     Path::new(&config),
                 )
                 .await
+            }
+            Command::Perf { config } => {
+                proxy::echo_client::run_perf_tests(Path::new(&config)).await
             }
         }
     })

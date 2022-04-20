@@ -13,5 +13,5 @@ configs=(
 for ((i=0; i<${#configs[@]}; )); do
   target=${configs[i++]}
   echo Buildling $target
-  cd app && cross build --package cjk-proxy --release --target=$target
+  cross build --package cjk-proxy --release --target=$target
 done

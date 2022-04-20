@@ -29,8 +29,8 @@ impl<T> Future for Task<T> {
 impl<T> Task<T> {
     pub fn detach(&self) {}
 
-    pub fn cancel(&self) {
-        self.0.abort()
+    pub async fn cancel(&self) {
+        self.0.abort();
     }
 }
 

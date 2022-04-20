@@ -26,6 +26,8 @@ pub enum ProxyRequest<'a> {
         https: bool,
         req: HttpRequest<'a>,
     },
+    EchoTestTcp,
+    EchoTestUdp,
 }
 
 #[derive(Serialize, Deserialize, Debug)]

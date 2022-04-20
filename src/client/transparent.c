@@ -4,6 +4,8 @@
 #include <string.h>
 #include <netinet/in.h>
 #include <netinet/ip6.h>
+#include <netinet/ip.h>
+#include <stdint.h>
 
 ssize_t do_recv_with_orig_dst(
     int fd,
@@ -42,7 +44,7 @@ ssize_t do_recv_with_orig_dst(
     while (cmsg)
     {
         if ((cmsg->cmsg_level == SOL_IP && cmsg->cmsg_type == IP_ORIGDSTADDR) ||
-            (cmsg->cmsg_level == SOL_IPV6 && cmsg->cmsg_type == IPV6_ORIGDSTADDR))
+            (cmsg->cmsg_level == SOL_IPV6 && cmsg->cmsg_type == 74 /*IPV6_ORIGDSTADDR*/))
         {
             memcpy(dst_addr_buf, CMSG_DATA(cmsg), cmsg->cmsg_len);
             *dst_addr_len = cmsg->cmsg_len;

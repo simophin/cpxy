@@ -8,7 +8,7 @@ version = "0.1.0"
 [features]
 tokio = ["dep:tokio"]
 smol = ["dep:smol", "dep:smol-timeout"]
-default = ["smol"]
+default = ["tokio"]
 
 [dependencies]
 adblock = {version = "0", default-features = false, features = ["full-regex-handling", "embedded-domain-resolver"]}

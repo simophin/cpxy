@@ -1,7 +1,7 @@
 use std::{pin::Pin, task::Poll};
 
 use futures_lite::Stream;
-pub use tokio::sync::mpsc::Sender;
+pub use tokio::sync::mpsc::{error::TrySendError, Sender};
 
 use tokio::sync::mpsc::{channel as tokio_channel, Receiver as TokioReceiver};
 
