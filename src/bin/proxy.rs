@@ -40,7 +40,7 @@ enum Command {
         controller_port: u16,
     },
     #[clap()]
-    Perf {
+    Bench {
         #[clap(long)]
         /// Path to the configuration file
         config: String,
@@ -82,8 +82,8 @@ fn main() -> anyhow::Result<()> {
                 )
                 .await
             }
-            Command::Perf { config } => {
-                proxy::echo_client::run_perf_tests(Path::new(&config)).await
+            Command::Bench { config } => {
+                proxy::bench_client::run_perf_tests(Path::new(&config)).await
             }
         }
     })

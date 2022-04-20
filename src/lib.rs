@@ -3,7 +3,7 @@ mod buf;
 mod cipher;
 mod client;
 mod counter;
-pub mod echo_client;
+pub mod bench_client;
 mod fetch;
 mod handshake;
 mod http;
