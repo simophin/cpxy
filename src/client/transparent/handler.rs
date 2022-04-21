@@ -15,6 +15,7 @@ use futures::StreamExt;
 use futures_util::{select, FutureExt};
 
 use super::super::{utils::request_best_upstream, ClientStatistics};
+use super::TransparentUdpSocket;
 
 struct UdpSession {
     tx: Sender<Vec<u8>>,
@@ -32,17 +33,14 @@ pub async fn serve_udp_transparent_proxy(
     config: Arc<ClientConfig>,
     stats: Arc<ClientStatistics>,
 ) -> anyhow::Result<Task<anyhow::Result<()>>> {
-    let socket = Arc::new(
-        super::utils::bind_transparent_udp(&addr.into())
-            .await
-            .context("Binding UDP socket")?,
-    );
+    let socket = super::utils::bind_transparent_udp(addr).context("Binding UDP socket")?;
     log::info!("Started UDP transparent proxy at {addr}");
     Ok(spawn(async move {
         let mut sessions: HashMap<UdpSessionKey, UdpSession> = Default::default();
         let (cleanup_tx, mut cleanup_rx) = bounded::<UdpSessionKey>(2);
 
         let mut buf = new_vec_for_udp();
+
         loop {
             let ((len, src), dst) = select! {
                 k = cleanup_rx.next().fuse() => {
@@ -52,7 +50,7 @@ pub async fn serve_udp_transparent_proxy(
                     continue;
                 }
 
-                r = super::utils::recv_with_orig_dst(&socket, &mut buf).fuse() => {
+                r = socket.recv_from(&mut buf).fuse() => {
                     match r {
                         Ok(v) => v,
                         Err(e) => {

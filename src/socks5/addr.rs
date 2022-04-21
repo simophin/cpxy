@@ -108,6 +108,16 @@ impl From<SocketAddr> for Address<'_> {
 }
 
 impl<'a> Address<'a> {
+    pub async fn resolve(&self) -> impl Iterator<Item = SocketAddr> {
+        match self {
+            Address::IP(addr) => vec![*addr].into_iter(),
+            Address::Name { host, port } => crate::rt::net::resolve((host.as_ref(), *port))
+                .await
+                .unwrap_or_default()
+                .into_iter(),
+        }
+    }
+
     pub fn parse(mut buf: &'a [u8]) -> Result<Option<(usize, Self)>, ParseError> {
         let mut position = 1;
         match buf.get_u8() {

@@ -9,9 +9,9 @@ use crate::client::UpstreamStatistics;
 use crate::proxy::udp::{PacketReader, PacketWriter};
 use crate::socks5::Address;
 
+use super::TransparentUdpSocket;
 use crate::rt::{
     mpsc::{bounded, Receiver},
-    net::UdpSocket,
     spawn, Task, TimeoutExt,
 };
 
@@ -33,22 +33,24 @@ pub async fn serve_udp_with_upstream(
         let link_active_tx = link_active_tx.clone();
         spawn(async move {
             let mut packet_reader = PacketReader::new();
-            let mut sockets: HashMap<Address<'static>, UdpSocket> = Default::default();
+            let mut sockets = HashMap::<Address<'static>, _>::new();
             loop {
                 let (buf, addr) = packet_reader.read(&mut upstream_r).await?;
-                match sockets.get(&addr) {
-                    Some(socket) => {
-                        socket.send_to(&buf, src).await?;
-                    }
+                let socket_addr = match addr.resolve().await.next() {
+                    Some(a) => a,
                     None => {
-                        let socket = super::utils::bind_transparent_udp(addr).await?;
-                        socket.send_to(&buf, src).await?;
-                        sockets.insert(addr.clone().into_owned(), socket);
+                        log::warn!("Unable to resolve {addr}");
+                        continue;
                     }
                 };
 
-                let _ = link_active_tx.try_send(());
+                sockets
+                    .entry(addr.clone().into_owned())
+                    .or_insert_with(|| super::utils::bind_transparent_udp(socket_addr).unwrap())
+                    .send_to(&buf, src)
+                    .await?;
 
+                let _ = link_active_tx.try_send(());
                 rx_count.inc(buf.len());
             }
         })
