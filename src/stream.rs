@@ -1,6 +1,6 @@
 use std::{pin::Pin, task::Poll};
 
-use futures_lite::AsyncRead;
+use futures::AsyncRead;
 
 pub struct VecStream(Vec<u8>, usize);
 

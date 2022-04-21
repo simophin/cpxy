@@ -1,8 +1,7 @@
-use crate::buf::Buf;
-
 use super::Address;
 use anyhow::{bail, Context};
 use byteorder::{BigEndian, ReadBytesExt, WriteBytesExt};
+use bytes::Bytes;
 use std::{fmt::Debug, io::Write};
 
 pub struct UdpPacket<T> {
@@ -66,7 +65,7 @@ impl<T: AsRef<[u8]>> UdpPacket<T> {
 }
 
 pub struct UdpRepr<'a, T> {
-    pub addr: Address<'a>,
+    pub addr: &'a Address<'a>,
     pub payload: T,
     pub frag_no: u8,
 }
@@ -80,15 +79,14 @@ impl<'a, T: AsRef<[u8]>> UdpRepr<'a, T> {
         self.header_write_len() + self.payload.as_ref().len()
     }
 
-    pub fn to_packet(&self) -> anyhow::Result<UdpPacket<Buf>> {
+    pub fn to_packet(&self) -> anyhow::Result<UdpPacket<Bytes>> {
         let out_len = self.write_len();
-        let mut out = Buf::new_with_len(out_len, out_len);
-        out.set_len(0);
+        let mut out = Vec::with_capacity(out_len);
         out.write_u16::<BigEndian>(0)?;
         out.write_u8(self.frag_no)?;
         self.addr.write_to(&mut out)?;
         out.write_all(self.payload.as_ref())?;
-        UdpPacket::new_checked(out)
+        UdpPacket::new_checked(out.into())
     }
 }
 
@@ -104,7 +102,7 @@ mod tests {
         let addr: Address = "localhost:9090".try_into().unwrap();
 
         let pkt = UdpRepr {
-            addr: addr.clone(),
+            addr: &addr,
             payload: payload.clone(),
             frag_no: 1,
         }

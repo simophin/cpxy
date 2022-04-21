@@ -1,13 +1,13 @@
-use futures_lite::{io::split, AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt, StreamExt};
+use bytes::Bytes;
+use futures::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt, StreamExt};
 
 use crate::{
-    buf::Buf,
     proxy::{
         protocol::ProxyResult,
-        udp::{Packet, PacketWriter},
+        udp::{PacketReader, PacketWriter},
     },
     rt::{mpsc::bounded, spawn, Task},
-    utils::write_bincode_lengthed_async,
+    utils::{new_vec_for_udp, write_bincode_lengthed_async, VecExt},
 };
 
 pub async fn serve_tcp(
@@ -22,8 +22,8 @@ pub async fn serve_tcp(
     )
     .await?;
 
-    let (mut r, mut w) = split(stream);
-    let (tx, mut rx) = bounded::<Buf>(2);
+    let (mut r, mut w) = stream.split();
+    let (tx, mut rx) = bounded::<Bytes>(2);
 
     let task: Task<anyhow::Result<()>> = spawn(async move {
         while let Some(buf) = rx.next().await {
@@ -33,13 +33,13 @@ pub async fn serve_tcp(
     });
 
     loop {
-        let mut buf = Buf::new_for_udp();
+        let mut buf = new_vec_for_udp();
         let len = r.read(&mut buf).await?;
         if len == 0 {
             break;
         }
-        buf.set_len(len);
-        tx.send(buf).await?;
+        buf.set_len_uninit(len);
+        tx.send(buf.into()).await?;
     }
 
     task.await
@@ -57,8 +57,8 @@ pub async fn serve_udp(
     )
     .await?;
 
-    let (r, mut w) = split(stream);
-    let mut packet_stream = Packet::new_packet_stream(r, None);
+    let (mut r, mut w) = stream.split();
+    let mut packet_stream = PacketReader::new();
 
     // let (tx, mut rx) = bounded(10);
     // let task: Task<anyhow::Result<()>> = spawn(async move {
@@ -66,7 +66,8 @@ pub async fn serve_udp(
     // });
 
     let mut packet_writer = PacketWriter::new();
-    while let Some((pkt, addr)) = packet_stream.next().await {
+    loop {
+        let (pkt, addr) = packet_stream.read(&mut r).await?;
         packet_writer.write(&mut w, &addr, pkt.as_ref()).await?;
     }
 

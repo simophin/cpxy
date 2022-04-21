@@ -1,6 +1,6 @@
 use std::{path::Path, pin::Pin, task::Poll};
 
-use futures_lite::{AsyncRead, AsyncWrite};
+use futures::{AsyncRead, AsyncWrite};
 pub use tokio::fs::create_dir_all;
 
 use tokio::{fs::File as TokioFile, io::ReadBuf};

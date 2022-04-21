@@ -1,7 +1,7 @@
 use std::{net::SocketAddr, time::Duration};
 
 use anyhow::{anyhow, bail, Context};
-use futures_lite::{AsyncRead, AsyncWrite};
+use futures::{AsyncRead, AsyncWrite};
 
 use crate::{
     config::ClientConfig,

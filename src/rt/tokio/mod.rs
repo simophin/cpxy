@@ -1,7 +1,7 @@
 use std::{pin::Pin, task::Poll, time::Duration};
 
 use derive_more::Deref;
-use futures_lite::Future;
+use futures::Future;
 use pin_project_lite::pin_project;
 
 pub fn spawn<T: Send + 'static>(fut: impl Future<Output = T> + Send + 'static) -> Task<T> {

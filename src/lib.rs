@@ -1,9 +1,9 @@
+pub mod bench_client;
 mod broadcast;
 mod buf;
 mod cipher;
 mod client;
 mod counter;
-pub mod bench_client;
 mod fetch;
 mod handshake;
 mod http;
@@ -32,7 +32,3 @@ pub mod config;
 pub mod controller;
 mod geoip;
 mod udp_relay;
-
-pub use env_logger;
-pub use futures_lite;
-pub use futures_util;

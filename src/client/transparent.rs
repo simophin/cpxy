@@ -10,11 +10,10 @@ use std::{
 };
 
 use crate::{
-    buf::Buf,
     config::ClientConfig,
     proxy::{
         protocol::ProxyRequest,
-        udp::{Packet, PacketWriter},
+        udp::{PacketReader, PacketWriter},
     },
     rt::{
         mpsc::{bounded, Receiver, Sender, TrySendError},
@@ -22,9 +21,10 @@ use crate::{
         spawn, Task, TimeoutExt,
     },
     socks5::Address,
+    utils::{new_vec_for_udp, VecExt},
 };
 use anyhow::{bail, Context};
-use futures_lite::{io::split, AsyncRead, AsyncWrite, StreamExt};
+use futures::{AsyncRead, AsyncReadExt, AsyncWrite, StreamExt};
 use futures_util::{select, FutureExt};
 use libc::{
     c_int, c_void, size_t, sockaddr_in, sockaddr_in6, socklen_t, ssize_t, AF_INET, AF_INET6,
@@ -37,7 +37,7 @@ use nix::sys::socket::{
 use super::{utils::request_best_upstream, ClientStatistics, UpstreamStatistics};
 
 struct UdpSession {
-    tx: Sender<Buf>,
+    tx: Sender<Vec<u8>>,
     _task: Task<anyhow::Result<()>>,
 }
 
@@ -62,7 +62,7 @@ pub async fn serve_udp_transparent_proxy(
         let mut sessions: HashMap<UdpSessionKey, UdpSession> = Default::default();
         let (cleanup_tx, mut cleanup_rx) = bounded::<UdpSessionKey>(2);
 
-        let mut buf = Buf::new_for_udp();
+        let mut buf = new_vec_for_udp();
         loop {
             let ((len, src), dst) = select! {
                 k = cleanup_rx.next().fuse() => {
@@ -83,13 +83,13 @@ pub async fn serve_udp_transparent_proxy(
                 }
             };
 
-            buf.set_len(len);
+            buf.set_len_uninit(len);
 
             log::debug!("TProxy received {len} from {src}, orig dst = {dst}");
             let key = UdpSessionKey { src, dst };
             buf = match sessions.get_mut(&key) {
                 Some(s) => match s.tx.try_send(buf) {
-                    Ok(_) => Buf::new_for_udp(),
+                    Ok(_) => new_vec_for_udp(),
                     Err(TrySendError::Closed(b)) => {
                         let key = UdpSessionKey { src, dst };
                         log::debug!("Session {key:?} closed");
@@ -108,11 +108,11 @@ pub async fn serve_udp_transparent_proxy(
                         buf,
                     );
                     sessions.insert(key, session);
-                    Buf::new_for_udp()
+                    new_vec_for_udp()
                 }
             };
 
-            buf.set_len(buf.capacity());
+            buf.set_len_to_capacity();
         }
     }))
 }
@@ -212,7 +212,7 @@ impl UdpSession {
         config: Arc<ClientConfig>,
         stats: Arc<ClientStatistics>,
         clean_up: Sender<UdpSessionKey>,
-        initial_data: Buf,
+        initial_data: Vec<u8>,
     ) -> Self {
         let (tx, rx) = bounded(10);
         let dst_addr: Address = dst.into();
@@ -264,12 +264,12 @@ impl UdpSession {
 async fn copy_between_udp_and_upstream(
     src: SocketAddr,
     orig_dst: Address<'static>,
-    mut rx: Receiver<Buf>,
+    mut rx: Receiver<Vec<u8>>,
     upstream: impl AsyncRead + AsyncWrite + Unpin + Send + Sync + 'static,
     stats: Option<&UpstreamStatistics>,
     idling_duration: Duration,
 ) -> anyhow::Result<()> {
-    let (upstream_r, mut upstream_w) = split(upstream);
+    let (mut upstream_r, mut upstream_w) = upstream.split();
     let (link_active_tx, mut link_active_rx) = bounded::<()>(10);
     let should_close_after_receive = orig_dst.get_port() == 53;
 
@@ -278,26 +278,25 @@ async fn copy_between_udp_and_upstream(
     let task1: Task<anyhow::Result<()>> = {
         let link_active_tx = link_active_tx.clone();
         spawn(async move {
-            let mut packet_stream = Packet::new_packet_stream(upstream_r, None);
+            let mut packet_reader = PacketReader::new();
             let mut sockets: HashMap<Address<'static>, UdpSocket> = Default::default();
-            while let Some((buf, addr)) = packet_stream.next().await {
+            loop {
+                let (buf, addr) = packet_reader.read(&mut upstream_r).await?;
                 match sockets.get(&addr) {
                     Some(socket) => {
-                        socket.send_to(buf.as_ref(), src).await?;
+                        socket.send_to(&buf, src).await?;
                     }
                     None => {
                         let socket = bind_trasnparent_udp(&addr).await?;
-                        socket.send_to(buf.as_ref(), src).await?;
-                        sockets.insert(addr, socket);
+                        socket.send_to(&buf, src).await?;
+                        sockets.insert(addr.clone().into_owned(), socket);
                     }
                 };
 
                 let _ = link_active_tx.try_send(());
 
-                rx_count.inc(buf.as_ref().len());
+                rx_count.inc(buf.len());
             }
-
-            Ok(())
         })
     };
 
@@ -385,6 +384,6 @@ async fn bind_trasnparent_udp(addr: &Address<'_>) -> anyhow::Result<UdpSocket> {
     Ok(unsafe { std::net::UdpSocket::from_raw_fd(socket) }.try_into()?)
 }
 
-async fn serve_udp_direct(_rx: Receiver<Buf>) -> anyhow::Result<()> {
+async fn serve_udp_direct(_rx: Receiver<Vec<u8>>) -> anyhow::Result<()> {
     bail!("Unimplemented")
 }

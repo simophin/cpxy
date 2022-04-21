@@ -13,7 +13,7 @@ use adblock::{
 };
 use anyhow::{anyhow, bail};
 use chrono::{DateTime, Utc};
-use futures_lite::AsyncWriteExt;
+use futures::AsyncWriteExt;
 use lazy_static::lazy_static;
 use rust_embed::RustEmbed;
 

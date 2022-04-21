@@ -1,7 +1,7 @@
 use std::borrow::Cow;
 
 use anyhow::{bail, Context};
-use futures_lite::{AsyncRead, AsyncWrite, AsyncWriteExt};
+use futures::{AsyncRead, AsyncWrite, AsyncWriteExt};
 
 use crate::{
     buf::RWBuffer,
@@ -37,7 +37,7 @@ pub async fn negotiate_websocket<'a>(
         .await
         .context("Sending request")?;
 
-    let http_stream = parse_response(stream, RWBuffer::new(512, 65536))
+    let http_stream = parse_response(stream, RWBuffer::new_vec_uninitialised(512))
         .await
         .context("Parsing initial response")?;
 
@@ -85,7 +85,7 @@ impl<T: AsyncRead + AsyncWrite + Unpin + Send + Sync> WebSocketServeResult<T> {
 pub async fn serve_websocket<T: AsyncRead + AsyncWrite + Unpin + Send + Sync>(
     stream: T,
 ) -> anyhow::Result<WebSocketServeResult<T>> {
-    let mut req = parse_request(stream, RWBuffer::new(512, 65536))
+    let mut req = parse_request(stream, RWBuffer::new_vec_uninitialised(512))
         .await
         .map_err(|(e, _)| e)?;
 

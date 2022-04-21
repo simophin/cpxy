@@ -2,7 +2,7 @@ use std::collections::{HashMap, HashSet};
 
 use crate::rt::{net::resolve, spawn};
 use anyhow::Context;
-use futures_lite::{AsyncRead, AsyncWrite};
+use futures::{AsyncRead, AsyncWrite};
 
 use crate::{proxy::protocol::ProxyResult, utils::write_bincode_lengthed_async};
 

@@ -4,24 +4,29 @@ use std::{
 };
 
 use anyhow::{anyhow, Context};
-use futures_lite::StreamExt;
+use bytes::Bytes;
+use futures::StreamExt;
 
 use crate::{
-    buf::Buf,
     io::bind_udp,
     rt::mpsc::{bounded, Receiver, Sender},
     rt::{spawn, Task},
     socks5::UdpPacket,
+    utils::{new_vec_for_udp, VecExt},
 };
 
 pub async fn new_udp_relay(
     v4: bool,
-) -> anyhow::Result<(SocketAddr, Sender<UdpPacket<Buf>>, Receiver<UdpPacket<Buf>>)> {
+) -> anyhow::Result<(
+    SocketAddr,
+    Sender<UdpPacket<Bytes>>,
+    Receiver<UdpPacket<Bytes>>,
+)> {
     let udp = Arc::new(bind_udp(v4).await?);
     let bound_addr = udp.local_addr().context("Getting local_addr")?;
 
-    let (incoming_tx, incoming_rx) = bounded::<UdpPacket<Buf>>(1);
-    let (outgoing_tx, mut outgoing_rx) = bounded::<UdpPacket<Buf>>(5);
+    let (incoming_tx, incoming_rx) = bounded::<UdpPacket<Bytes>>(1);
+    let (outgoing_tx, mut outgoing_rx) = bounded::<UdpPacket<Bytes>>(5);
 
     let last_addr: Arc<Mutex<Option<SocketAddr>>> = Default::default();
 
@@ -48,16 +53,18 @@ pub async fn new_udp_relay(
     {
         let task: Task<anyhow::Result<()>> = spawn(async move {
             loop {
-                let mut buf = Buf::new_for_udp();
+                let mut buf = new_vec_for_udp();
                 let (len, src) = udp.recv_from(&mut buf).await?;
-                buf.set_len(len);
+                buf.set_len_uninit(len);
 
                 last_addr
                     .lock()
                     .map_err(|_| anyhow!("Unable to lock last_addr"))?
                     .replace(src);
 
-                incoming_tx.send(UdpPacket::new_checked(buf)?).await?;
+                incoming_tx
+                    .send(UdpPacket::new_checked(buf.into())?)
+                    .await?;
             }
         });
         task.detach();
@@ -69,6 +76,8 @@ pub async fn new_udp_relay(
 #[cfg(test)]
 mod tests {
     use std::time::Duration;
+
+    use futures::StreamExt;
 
     use crate::rt::{block_on, TimeoutExt};
 
@@ -90,7 +99,7 @@ mod tests {
             client
                 .send_to(
                     UdpRepr {
-                        addr: target_addr.clone(),
+                        addr: &target_addr,
                         payload,
                         frag_no: 0,
                     }
@@ -114,7 +123,7 @@ mod tests {
             let reply = b"hello, again!".as_ref();
             tx.send(
                 UdpRepr {
-                    addr: target_addr.clone(),
+                    addr: &target_addr,
                     payload: reply,
                     frag_no: 0,
                 }
@@ -122,13 +131,13 @@ mod tests {
             )
             .await?;
 
-            let mut buf = Buf::new_for_udp();
+            let mut buf = new_vec_for_udp();
             let (len, _) = client
                 .recv_from(&mut buf)
                 .timeout(Duration::from_secs(1))
                 .await
                 .unwrap()?;
-            buf.set_len(len);
+            buf.set_len_uninit(len);
 
             let pkt = UdpPacket::new_checked(buf)?;
             assert_eq!(pkt.addr(), target_addr);

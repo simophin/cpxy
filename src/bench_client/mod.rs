@@ -4,7 +4,7 @@ use std::{
 };
 
 use anyhow::Context;
-use futures_lite::{io::split, AsyncReadExt, AsyncWriteExt, StreamExt};
+use futures::{AsyncReadExt, AsyncWriteExt};
 use smol_timeout::TimeoutExt;
 
 use crate::{
@@ -12,7 +12,7 @@ use crate::{
     proxy::{
         protocol::{ProxyRequest, ProxyResult},
         request_proxy_upstream_with_config,
-        udp::{Packet, PacketWriter},
+        udp::{PacketReader, PacketWriter},
     },
 };
 
@@ -119,11 +119,11 @@ async fn run_upstream_test_udp(
         .await
         .context("UDP: Timeout requesting proxy")??
     {
-        (ProxyResult::Granted { .. }, upstream, delay) => {
+        (ProxyResult::Granted { .. }, mut upstream, delay) => {
             println!("UDP: Connected to {upstream_config:?}, initial delay = {delay:?}");
 
-            let (upstream_r, mut upstream_w) = split(upstream);
-            let mut packet_stream = Packet::new_packet_stream(upstream_r, None);
+            // let (upstream_r, mut upstream_w) = upstream.split();
+            let mut packet_stream = PacketReader::new();
             let mut packet_writer = PacketWriter::new();
 
             let start = Instant::now();
@@ -136,7 +136,7 @@ async fn run_upstream_test_udp(
             while total_uploaded.0 < MAX_BYTES && Instant::now().duration_since(start) < MAX_TIME {
                 let upload_start = Instant::now();
                 let len = packet_writer
-                    .write(&mut upstream_w, &test_address, &[0u8; 4986])
+                    .write(&mut upstream, &test_address, &[0u8; 4986])
                     .timeout(TIMEOUT)
                     .await
                     .context("UDP: Timeout writing packet")??;
@@ -147,7 +147,7 @@ async fn run_upstream_test_udp(
 
                 let download_start = Instant::now();
                 let len = packet_stream
-                    .next()
+                    .read(&mut upstream)
                     .timeout(TIMEOUT)
                     .await
                     .context("UDP: Timeout receiving packet")?

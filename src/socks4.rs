@@ -2,7 +2,7 @@ use std::net::{IpAddr, Ipv4Addr, SocketAddr, SocketAddrV4};
 
 use anyhow::bail;
 use bytes::Buf;
-use futures_lite::{AsyncWrite, AsyncWriteExt};
+use futures::{AsyncWrite, AsyncWriteExt};
 
 use crate::socks5::Address;
 

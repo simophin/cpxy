@@ -1,7 +1,7 @@
 use std::{borrow::Cow, pin::Pin};
 
 use anyhow::Context;
-use futures_lite::{AsyncRead, AsyncWrite, AsyncWriteExt};
+use futures::{AsyncRead, AsyncWrite, AsyncWriteExt};
 
 use crate::{
     buf::RWBuffer,
@@ -205,5 +205,5 @@ pub async fn fetch_http_with_proxy<'a, 'b>(
         client.write_all(body).await?;
     }
 
-    super::http::parse_response(client, RWBuffer::new(512, 65536)).await
+    super::http::parse_response(client, RWBuffer::new_vec_uninitialised(512)).await
 }

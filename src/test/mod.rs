@@ -10,7 +10,7 @@ use crate::{
     rt::{block_on, spawn, Task},
 };
 use anyhow::bail;
-use futures_lite::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
+use futures::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
 use futures_util::join;
 use maplit::hashmap;
 
@@ -148,7 +148,7 @@ async fn read_exact(r: &mut (impl AsyncRead + Unpin), n: usize) -> anyhow::Resul
 async fn parse_address(
     r: &mut (impl AsyncRead + Unpin),
 ) -> anyhow::Result<(Address<'static>, RWBuffer)> {
-    let mut buf = RWBuffer::new(128, 520);
+    let mut buf = RWBuffer::new_vec_uninitialised(128);
     loop {
         match r.read(buf.write_buf()).await? {
             0 => bail!("Unexpected EOF"),

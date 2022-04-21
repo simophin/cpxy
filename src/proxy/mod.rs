@@ -5,7 +5,7 @@ use crate::io::TcpStreamExt;
 use crate::url::HttpUrl;
 use crate::utils::{read_bincode_lengthed_async, write_bincode_lengthed};
 use anyhow::Context;
-use futures_lite::{AsyncRead, AsyncWrite};
+use futures::{AsyncRead, AsyncWrite};
 use protocol::{ProxyRequest, ProxyResult};
 use std::time::{Duration, Instant};
 

@@ -1,5 +1,5 @@
 use anyhow::{anyhow, Context};
-use futures_lite::{AsyncRead, AsyncWrite};
+use futures::{AsyncRead, AsyncWrite};
 
 use crate::{
     config::ClientConfig, fetch::connect_http, handshake::Handshaker, http::HttpRequest,

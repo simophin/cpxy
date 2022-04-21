@@ -1,6 +1,6 @@
 use crate::parse::ParseError;
 use bytes::Buf;
-use futures_lite::{AsyncWrite, AsyncWriteExt};
+use futures::{AsyncWrite, AsyncWriteExt};
 
 use super::Address;
 

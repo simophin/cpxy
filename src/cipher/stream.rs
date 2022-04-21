@@ -1,4 +1,4 @@
-use futures_lite::{AsyncRead, AsyncWrite};
+use futures::{AsyncRead, AsyncWrite};
 use pin_project_lite::pin_project;
 use std::cmp::{max, min};
 use std::io::Error;

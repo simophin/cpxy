@@ -1,6 +1,6 @@
 use crate::io::TcpStreamExt;
 use crate::rt::spawn;
-use futures_lite::{AsyncRead, AsyncWrite};
+use futures::{AsyncRead, AsyncWrite};
 
 use super::{
     dns::resolve_domains, tcp::serve_http_proxy, tcp::serve_tcp_proxy, udp::serve_udp_proxy_conn,

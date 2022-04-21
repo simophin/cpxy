@@ -3,7 +3,7 @@ pub use f::connect_tls;
 #[cfg(target_arch = "mips")]
 mod f {
     use anyhow::bail;
-    use futures_lite::{AsyncRead, AsyncWrite};
+    use futures::{AsyncRead, AsyncWrite};
 
     pub async fn connect_tls<T: AsyncRead + AsyncWrite + Unpin + Send + Sync + 'static>(
         host: &str,
@@ -15,7 +15,7 @@ mod f {
 
 #[cfg(not(target_arch = "mips"))]
 mod f {
-    use futures_lite::{AsyncRead, AsyncWrite};
+    use futures::{AsyncRead, AsyncWrite};
     use std::sync::Arc;
 
     use futures_rustls::{

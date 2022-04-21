@@ -11,7 +11,7 @@ use crate::socks5::{
 };
 use crate::url::HttpUrl;
 use anyhow::{anyhow, bail, Context};
-use futures_lite::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
+use futures::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
 use std::borrow::Cow;
 use std::net::{Ipv4Addr, SocketAddr, SocketAddrV4};
 

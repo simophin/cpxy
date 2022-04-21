@@ -1,8 +1,8 @@
 use anyhow::{anyhow, Context};
 use bytes::{Buf, BufMut};
-use futures_lite::future::race;
-use futures_lite::io::{copy, split};
-use futures_lite::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
+use futures::future::FusedFuture;
+use futures::io::copy;
+use futures::{select, AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt, Future, FutureExt};
 use serde::{de::DeserializeOwned, Serialize};
 use std::sync::Arc;
 
@@ -33,14 +33,14 @@ pub async fn copy_duplex(
     d1d2_count: Option<Arc<Counter>>,
     d2d1_count: Option<Arc<Counter>>,
 ) -> anyhow::Result<()> {
-    let (d1r, d1w) = split(d1);
-    let (d2r, d2w) = split(d2);
+    let (d1r, mut d1w) = d1.split();
+    let (d2r, mut d2w) = d2.split();
 
     let task1 = async move {
         if let Some(count) = d1d2_count {
             let _ = copy_with_stats(d1r, d2w, count.as_ref()).await?;
         } else {
-            let _ = copy(d1r, d2w).await?;
+            let _ = copy(d1r, &mut d2w).await?;
         }
         anyhow::Result::<()>::Ok(())
     };
@@ -49,12 +49,16 @@ pub async fn copy_duplex(
         if let Some(count) = d2d1_count {
             let _ = copy_with_stats(d2r, d1w, count.as_ref()).await?;
         } else {
-            let _ = copy(d2r, d1w).await?;
+            let _ = copy(d2r, &mut d1w).await?;
         }
         anyhow::Result::<()>::Ok(())
     };
 
-    race(task1, task2).await
+    select! {
+        r1 = task1.fuse() => r1,
+        r2 = task2.fuse() => r2,
+    }
+    // race(task1.fuse(), task2.fuse()).await
 }
 
 pub fn write_bincode_lengthed(mut buf: &mut Vec<u8>, o: &impl Serialize) -> anyhow::Result<()> {
@@ -105,6 +109,49 @@ pub trait JsonSerializable {
 impl<T: Serialize> JsonSerializable for T {
     fn to_json(&self) -> Vec<u8> {
         serde_json::to_vec(self).expect("Encode json")
+    }
+}
+
+pub fn new_vec_uninitialised<T>(len: usize) -> Vec<T> {
+    let mut vec = Vec::with_capacity(len);
+    unsafe { vec.set_len(vec.capacity()) };
+    vec
+}
+
+pub fn new_vec_for_udp() -> Vec<u8> {
+    new_vec_uninitialised(65536)
+}
+
+pub async fn race<T>(
+    mut f1: impl Future<Output = T> + FusedFuture + Unpin,
+    mut f2: impl Future<Output = T> + FusedFuture + Unpin,
+) -> T {
+    select! {
+        r1 = f1 => r1,
+        r2 = f2 => r2,
+    }
+}
+
+pub trait VecExt {
+    fn set_len_uninit(&mut self, len: usize);
+    fn set_len_to_capacity(&mut self);
+}
+
+impl VecExt for Vec<u8> {
+    fn set_len_uninit(&mut self, len: usize) {
+        if len > self.capacity() {
+            panic!(
+                "Desired length {len} is greater than capacity {}",
+                self.capacity()
+            );
+        }
+        unsafe {
+            self.set_len(len);
+        }
+    }
+
+    fn set_len_to_capacity(&mut self) {
+        self.set_len_uninit(self.capacity())
     }
 }
 

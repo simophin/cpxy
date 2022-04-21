@@ -1,7 +1,7 @@
 use std::net::SocketAddr;
 
 use anyhow::bail;
-use futures_lite::{AsyncRead, AsyncWrite};
+use futures::{AsyncRead, AsyncWrite};
 
 use crate::{
     config::ClientConfig,

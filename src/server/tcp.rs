@@ -7,7 +7,7 @@ use crate::rt::TimeoutExt;
 use crate::socks5::Address;
 use crate::utils::{copy_duplex, write_bincode_lengthed_async};
 use anyhow::anyhow;
-use futures_lite::{AsyncRead, AsyncWrite};
+use futures::{AsyncRead, AsyncWrite};
 use futures_util::FutureExt;
 use std::net::SocketAddr;
 use std::time::Duration;

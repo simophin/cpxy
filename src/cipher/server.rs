@@ -1,7 +1,6 @@
 use super::client::CipherParams;
 use anyhow::bail;
-use futures_lite::io::split;
-use futures_lite::{AsyncRead, AsyncReadExt, AsyncWrite};
+use futures::{AsyncRead, AsyncReadExt, AsyncWrite};
 
 use crate::stream::VecStream;
 use crate::ws::serve_websocket;
@@ -64,9 +63,7 @@ pub async fn listen<T: AsyncRead + AsyncWrite + Send + Sync + Unpin>(
     };
 
     // Respond client with correct details
-    let req = req.respond_success().await?;
-
-    let (r, w) = split(req);
+    let (r, w) = req.respond_success().await?.split();
 
     Ok(CipherStream::new(
         "server".to_string(),
@@ -83,7 +80,7 @@ mod test {
     use super::super::strategy::EncryptionStrategy;
     use super::*;
     use crate::{fetch::connect_http, rt, test::create_http_server, url::HttpUrl};
-    use futures_lite::{io::copy, AsyncReadExt, AsyncWriteExt};
+    use futures::{io::copy, AsyncReadExt, AsyncWriteExt};
     use rand::RngCore;
 
     #[test]
@@ -93,9 +90,8 @@ mod test {
             let server_task = rt::spawn(async move {
                 loop {
                     let (stream, _) = http_server.accept().await.unwrap();
-                    let stream = listen(stream).await.unwrap();
-                    let (r, w) = split(stream);
-                    copy(r, w).await.unwrap();
+                    let (r, mut w) = listen(stream).await.unwrap().split();
+                    copy(r, &mut w).await.unwrap();
                 }
             });
 

@@ -8,7 +8,7 @@ use std::{
 
 use anyhow::{anyhow, bail, Context};
 use derive_more::Deref;
-use futures_lite::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
+use futures::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
 use pin_project_lite::pin_project;
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
 
@@ -216,7 +216,7 @@ impl<'a, I: Deref<Target = HttpCommon<'a>>, T: AsyncRead + Unpin + Send + Sync>
             }
             (_, Some(e)) if e.eq_ignore_ascii_case("chunked") => {
                 let mut final_buf = Vec::new();
-                let mut buf = RWBuffer::new(8, 24);
+                let mut buf = RWBuffer::new_vec_uninitialised(8);
                 loop {
                     match self.read(buf.write_buf()).await? {
                         0 => return Ok(final_buf),

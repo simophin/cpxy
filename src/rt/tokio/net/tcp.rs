@@ -1,6 +1,6 @@
 use std::{net::SocketAddr, os::unix::prelude::AsRawFd, pin::Pin, task::Poll};
 
-use futures_lite::{AsyncRead, AsyncWrite};
+use futures::{AsyncRead, AsyncWrite};
 use tokio::{
     io::ReadBuf,
     net::TcpStream as TokioStream,

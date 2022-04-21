@@ -1,8 +1,8 @@
 use crate::io::send_to_addr;
 use crate::rt::TimeoutExt;
 
+use crate::utils::{new_vec_for_udp, VecExt};
 use crate::{
-    buf::Buf,
     io::bind_udp,
     socks5::{UdpPacket as Socks5UdpPacket, UdpRepr as Socks5UdpRepr},
 };
@@ -30,7 +30,7 @@ fn test_udp() {
         let payload = b"hello, world";
 
         let pkt = Socks5UdpRepr {
-            addr: echo_server_addr.into(),
+            addr: &echo_server_addr.into(),
             payload,
             frag_no: 0,
         }
@@ -40,14 +40,14 @@ fn test_udp() {
             .await
             .unwrap();
 
-        let mut buf = Buf::new_for_udp();
+        let mut buf = new_vec_for_udp();
         let (received, _) = socket
             .recv_from(&mut buf)
             .timeout(TIMEOUT)
             .await
             .unwrap()
             .unwrap();
-        buf.set_len(received);
+        buf.set_len_uninit(received);
         let pkt = Socks5UdpPacket::new_checked(buf).unwrap();
         assert_eq!(pkt.payload(), payload.as_ref());
     });

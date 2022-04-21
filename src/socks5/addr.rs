@@ -8,7 +8,7 @@ use std::net::{Ipv4Addr, Ipv6Addr, SocketAddr, SocketAddrV4, SocketAddrV6};
 use std::str::FromStr;
 
 use bytes::Buf;
-use futures_lite::{AsyncWrite, AsyncWriteExt};
+use futures::{AsyncWrite, AsyncWriteExt};
 
 use crate::parse::ParseError;
 

@@ -5,7 +5,7 @@ use std::{
     sync::{Arc, RwLock},
 };
 
-use futures_lite::Stream;
+use futures::Stream;
 
 use crate::{buf::Buf, io::UdpSocket};
 

@@ -1,6 +1,6 @@
 use std::task::Poll;
 
-use futures_lite::Stream;
+use futures::Stream;
 use pin_project_lite::pin_project;
 
 pin_project! {
@@ -44,8 +44,8 @@ pub fn bounded<T: Clone>(init: Option<T>, cap: usize) -> (async_broadcast::Sende
 #[cfg(test)]
 mod test {
     use super::*;
-    use futures_lite::StreamExt;
     use crate::rt::block_on;
+    use futures::StreamExt;
 
     #[test]
     fn test_channel_init() {

@@ -11,8 +11,7 @@ use crate::socks5::Address;
 use anyhow::{anyhow, Context};
 use async_broadcast::Sender;
 use chrono::{DateTime, Utc};
-use futures_lite::io::split;
-use futures_lite::{AsyncRead, AsyncWrite, AsyncWriteExt};
+use futures::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
 use rust_embed::RustEmbed;
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
@@ -163,7 +162,7 @@ impl Controller {
     }
 
     async fn dispatch(&mut self, r: impl AsyncRead + Unpin + Send + Sync) -> HttpResult<Response> {
-        match parse_request(r, RWBuffer::new(512, 65536)).await {
+        match parse_request(r, RWBuffer::new_vec_uninitialised(512)).await {
             Ok(mut r) => {
                 log::debug!("Dispatching {} {}", r.method, r.path);
                 match (r.method.as_ref(), r.path.as_ref()) {
@@ -248,7 +247,7 @@ impl Controller {
         &mut self,
         sock: impl AsyncRead + AsyncWrite + Unpin + Send + Sync,
     ) -> anyhow::Result<()> {
-        let (r, mut w) = split(sock);
+        let (r, mut w) = sock.split();
         let result = self.dispatch(r).await;
 
         match result {

@@ -6,7 +6,7 @@ use crate::{http::HeaderValue, url::HttpUrl, ws::negotiate_websocket};
 use anyhow::{anyhow, Context};
 use base64::{display::Base64Display, URL_SAFE_NO_PAD};
 use cipher::StreamCipher;
-use futures_lite::{io::split, AsyncRead, AsyncWrite};
+use futures::{AsyncRead, AsyncReadExt, AsyncWrite};
 
 pub struct CipherParams<'a> {
     pub key: Cow<'a, [u8]>,
@@ -76,24 +76,23 @@ pub async fn connect(
         wr_cipher.apply_keystream(initial_data.as_mut());
     }
 
-    let (r, w) = split(
-        negotiate_websocket(
-            &HttpUrl {
-                is_https: url.is_https,
-                address: url.address.clone(),
-                path: Cow::Owned(params.to_string()),
-            },
-            stream,
-            vec![(
-                Cow::Borrowed(INITIAL_DATA_HEADER),
-                HeaderValue::from_display(Base64Display::with_config(
-                    initial_data.as_mut(),
-                    INITIAL_DATA_CONFIG,
-                )),
-            )],
-        )
-        .await?,
-    );
+    let (r, w) = negotiate_websocket(
+        &HttpUrl {
+            is_https: url.is_https,
+            address: url.address.clone(),
+            path: Cow::Owned(params.to_string()),
+        },
+        stream,
+        vec![(
+            Cow::Borrowed(INITIAL_DATA_HEADER),
+            HeaderValue::from_display(Base64Display::with_config(
+                initial_data.as_mut(),
+                INITIAL_DATA_CONFIG,
+            )),
+        )],
+    )
+    .await?
+    .split();
 
     let rd_cipher = recv_strategy.wrap_cipher(
         super::suite::create_cipher(cipher_type, key.as_slice(), iv.as_slice())

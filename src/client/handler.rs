@@ -5,7 +5,7 @@ use crate::{
     rt::{spawn, Task},
 };
 use anyhow::Context;
-use futures_lite::{Stream, StreamExt};
+use futures::{Stream, StreamExt};
 
 use crate::{
     buf::RWBuffer,
@@ -108,7 +108,7 @@ async fn serve_proxy_conn(
     config: Arc<ClientConfig>,
     stats: Arc<ClientStatistics>,
 ) -> anyhow::Result<()> {
-    let mut buf = RWBuffer::new(128, 65536);
+    let mut buf = RWBuffer::new_vec_uninitialised(512);
     let transparent_addr = socks.get_original_dst();
     let (hs, req) = Handshaker::start(&mut socks, transparent_addr, &mut buf)
         .await
