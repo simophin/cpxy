@@ -28,12 +28,15 @@ struct UdpSessionKey {
     dst: SocketAddr,
 }
 
-pub async fn serve_udp_transparent_proxy(
+pub async fn serve_udp_transparent_proxy<
+    S: TransparentUdpSocket + Unpin + Send + Sync + 'static,
+>(
+    socket_creator: impl Fn(SocketAddr) -> anyhow::Result<S> + Clone + Send + Sync + 'static,
     addr: SocketAddr,
     config: Arc<ClientConfig>,
     stats: Arc<ClientStatistics>,
 ) -> anyhow::Result<Task<anyhow::Result<()>>> {
-    let socket = super::utils::bind_transparent_udp(addr).context("Binding UDP socket")?;
+    let socket = socket_creator(addr).context("Binding UDP socket")?;
     log::info!("Started UDP transparent proxy at {addr}");
     Ok(spawn(async move {
         let mut sessions: HashMap<UdpSessionKey, UdpSession> = Default::default();
@@ -78,6 +81,7 @@ pub async fn serve_udp_transparent_proxy(
                 },
                 None => {
                     let session = UdpSession::new(
+                        socket_creator.clone(),
                         src,
                         dst,
                         config.clone(),
@@ -96,7 +100,8 @@ pub async fn serve_udp_transparent_proxy(
 }
 
 impl UdpSession {
-    pub fn new(
+    pub fn new<S: TransparentUdpSocket + Unpin + Send + Sync + 'static>(
+        socket_creator: impl Fn(SocketAddr) -> anyhow::Result<S> + Send + Sync + 'static,
         src: SocketAddr,
         dst: SocketAddr,
         config: Arc<ClientConfig>,
@@ -128,6 +133,7 @@ impl UdpSession {
             let result = if let Some((upstream, stats)) = upstream {
                 // Proxy through upstream
                 super::proxy::serve_udp_with_upstream(
+                    socket_creator,
                     src,
                     dst_addr,
                     rx,

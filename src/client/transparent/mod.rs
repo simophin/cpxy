@@ -3,13 +3,9 @@ mod handler;
 mod proxy;
 
 #[cfg(test)]
+#[allow(dead_code, unused_variables)]
 mod test;
-#[cfg(test)]
-use test::utils;
-
-mod utils_nix;
-#[cfg(not(test))]
-use utils_nix as utils;
+mod utils;
 
 use std::{
     net::SocketAddr,
@@ -19,6 +15,7 @@ use std::{
 
 use futures::Future;
 pub use handler::serve_udp_transparent_proxy;
+pub use utils::bind_transparent_udp;
 
 pub trait TransparentUdpSocket {
     fn poll_recv(

@@ -15,7 +15,8 @@ use crate::rt::{
     spawn, Task, TimeoutExt,
 };
 
-pub async fn serve_udp_with_upstream(
+pub async fn serve_udp_with_upstream<S: TransparentUdpSocket + Unpin + Send + Sync + 'static>(
+    socket_creator: impl Fn(SocketAddr) -> anyhow::Result<S> + Send + Sync + 'static,
     src: SocketAddr,
     orig_dst: Address<'static>,
     mut rx: Receiver<Vec<u8>>,
@@ -46,7 +47,7 @@ pub async fn serve_udp_with_upstream(
 
                 sockets
                     .entry(addr.clone().into_owned())
-                    .or_insert_with(|| super::utils::bind_transparent_udp(socket_addr).unwrap())
+                    .or_insert_with(|| socket_creator(socket_addr).unwrap())
                     .send_to(&buf, src)
                     .await?;
 
