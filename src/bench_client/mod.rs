@@ -5,7 +5,6 @@ use std::{
 
 use anyhow::Context;
 use futures::{AsyncReadExt, AsyncWriteExt};
-use smol_timeout::TimeoutExt;
 
 use crate::{
     config::{ClientConfig, UpstreamConfig},
@@ -14,6 +13,7 @@ use crate::{
         request_proxy_upstream_with_config,
         udp::{PacketReader, PacketWriter},
     },
+    rt::TimeoutExt
 };
 
 const MAX_BYTES: usize = 10 * 1024 * 1024;

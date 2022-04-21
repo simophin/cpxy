@@ -66,6 +66,14 @@ impl AsyncWrite for TcpStream {
     ) -> Poll<std::io::Result<()>> {
         tokio::io::AsyncWrite::poll_shutdown(Pin::new(&mut self.0), cx)
     }
+
+    fn poll_write_vectored(
+        mut self: Pin<&mut Self>,
+        cx: &mut std::task::Context<'_>,
+        bufs: &[std::io::IoSlice<'_>],
+    ) -> Poll<std::io::Result<usize>> {
+        tokio::io::AsyncWrite::poll_write_vectored(Pin::new(&mut self.0), cx, bufs)
+    }
 }
 
 pub struct TcpListener(TokioListener);
