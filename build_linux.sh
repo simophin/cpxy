@@ -3,7 +3,7 @@
 cargo install cross
 
 configs=(
-  # x86_64-unknown-linux-gnu
+  x86_64-unknown-linux-gnu
   aarch64-unknown-linux-gnu
   # armv7-unknown-linux-gnueabihf
   # mips-unknown-linux-musl 

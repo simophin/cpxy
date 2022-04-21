@@ -8,6 +8,10 @@ use proxy::socks5::Address;
 use std::net::{IpAddr, SocketAddr};
 use std::path::Path;
 
+#[cfg(not(target_env = "msvc"))]
+#[global_allocator]
+static GLOBAL: tikv_jemallocator::Jemalloc = tikv_jemallocator::Jemalloc;
+
 /// SOCKS5 over HTTPs
 #[derive(Parser)]
 struct Cli {
