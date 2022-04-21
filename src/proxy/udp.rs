@@ -1,5 +1,6 @@
 use std::{
     borrow::Cow,
+    io::IoSlice,
     net::{IpAddr, SocketAddr},
 };
 
@@ -168,72 +169,90 @@ impl PacketWriter {
 
         match addr {
             None => {
-                out.write_all(&[1]).await?;
-                out.write_all(&payload_len.to_be_bytes()).await?;
-                written += 3;
+                out.write_all_vectored(&mut [
+                    IoSlice::new(&[PacketType::PayloadOnly as u8]),
+                    IoSlice::new(&payload_len.to_be_bytes()),
+                    IoSlice::new(payload),
+                ])
+                .await?;
+                written += 3 + payload.len();
             }
             Some(Address::IP(SocketAddr::V4(addr))) => {
-                out.write_all(&[2]).await?;
-                out.write_all(&payload_len.to_be_bytes()).await?;
-                out.write_all(addr.ip().octets().as_ref()).await?;
-                out.write_all(&addr.port().to_be_bytes()).await?;
-                written += 9;
+                out.write_all_vectored(&mut [
+                    IoSlice::new(&[PacketType::WithV4Addr as u8]),
+                    IoSlice::new(&payload_len.to_be_bytes()),
+                    IoSlice::new(addr.ip().octets().as_ref()),
+                    IoSlice::new(addr.port().to_be_bytes().as_ref()),
+                    IoSlice::new(payload),
+                ])
+                .await?;
+                written += 9 + payload.len();
             }
             Some(Address::IP(SocketAddr::V6(addr))) => {
-                out.write_all(&[3]).await?;
-                out.write_all(&payload_len.to_be_bytes()).await?;
-                out.write_all(addr.ip().octets().as_ref()).await?;
-                out.write_all(&addr.port().to_be_bytes()).await?;
+                out.write_all_vectored(&mut [
+                    IoSlice::new(&[PacketType::WithV6Addr as u8]),
+                    IoSlice::new(&payload_len.to_be_bytes()),
+                    IoSlice::new(addr.ip().octets().as_ref()),
+                    IoSlice::new(addr.port().to_be_bytes().as_ref()),
+                    IoSlice::new(payload),
+                ])
+                .await?;
                 written += 21;
             }
             Some(Address::Name { host, port }) => {
-                out.write_all(&[4]).await?;
-                out.write_all(&payload_len.to_be_bytes()).await?;
                 let host = host.as_bytes();
                 let domain_name_len: u16 = host
                     .len()
                     .try_into()
                     .context("Converting name len to u16 int")?;
-                out.write_all(&domain_name_len.to_be_bytes()).await?;
-                out.write_all(host).await?;
-                out.write_all(&port.to_be_bytes()).await?;
-                written += 3 + domain_name_len as usize + 4
+
+                out.write_all_vectored(&mut [
+                    IoSlice::new(&[PacketType::WithDomainName as u8]),
+                    IoSlice::new(&payload_len.to_be_bytes()),
+                    IoSlice::new(&domain_name_len.to_be_bytes()),
+                    IoSlice::new(host),
+                    IoSlice::new(&port.to_be_bytes()),
+                    IoSlice::new(payload),
+                ])
+                .await?;
+
+                written += 3 + domain_name_len as usize + 4 + payload.len();
             }
         }
 
-        out.write_all(payload).await?;
-        written += payload.len();
         Ok(written)
     }
 }
 
-// #[cfg(test)]
-// mod tests {
-//     use crate::rt::block_on;
+#[cfg(test)]
+mod tests {
+    use crate::rt::block_on;
 
-//     use super::*;
+    use super::*;
 
-//     #[test]
-//     fn encoding_works() {
-//         block_on(async move {
-//             let payload = b"hello, world";
+    #[test]
+    fn encoding_works() {
+        block_on(async move {
+            let payload = b"hello, world";
 
-//             let addresses = ["www.google.com:3567", "1.2.3.4:80", "[::1]:80"];
+            let addresses = ["www.google.com:3567", "1.2.3.4:80", "[::1]:80"];
 
-//             for address in addresses {
-//                 let mut buf = vec![0u8; 0];
+            for address in addresses {
+                let mut buf = vec![0u8; 0];
 
-//                 let addr: Address = address.parse().unwrap();
-//                 write_packet_async(&mut buf, Some(&addr), payload)
-//                     .await
-//                     .expect("To write to buffer");
+                let addr: Address = address.parse().unwrap();
+                PacketWriter::new()
+                    .write(&mut buf, &addr, payload)
+                    .await
+                    .expect("To write to buffer");
 
-//                 let mut input = buf.as_slice();
-//                 let pkt = Packet::read_async(&mut input).await.unwrap();
-//                 assert_eq!(pkt.addr(), Some(addr));
-//                 assert_eq!(pkt.payload(), payload);
-//                 assert_eq!(input.len(), 0);
-//             }
-//         });
-//     }
-// }
+                let mut input = buf.as_slice();
+                let mut reader = PacketReader::new();
+                let received = reader.read(&mut input).await.expect("To read");
+                assert_eq!(received.1, &addr);
+                assert_eq!(&received.0, payload.as_ref());
+                assert_eq!(input.len(), 0);
+            }
+        });
+    }
+}

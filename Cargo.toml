@@ -20,7 +20,7 @@ chacha20 = "0"
 cipher = "0"
 clap = {version = "3", features = ["derive"]}
 env_logger = "0"
-futures = "0"
+futures = {version = "0", features = ["write-all-vectored"]}
 pin-project-lite = "0"
 futures-util = "0"
 httparse = "1"

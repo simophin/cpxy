@@ -133,6 +133,44 @@ impl<R, T: AsyncWrite, RC, WC: StreamCipherExt + Send + Sync> AsyncWrite
         result
     }
 
+    fn poll_write_vectored(
+        mut self: Pin<&mut Self>,
+        cx: &mut Context<'_>,
+        mut bufs: &[std::io::IoSlice<'_>],
+    ) -> Poll<std::io::Result<usize>> {
+        match self.wr_cipher.as_ref() {
+            Some(c) if c.will_modify_data() => {
+                let mut total_len = 0usize;
+                while let Some(buf) = slice_take_first(&mut bufs) {
+                    match self.as_mut().poll_write(cx, buf) {
+                        Poll::Ready(Ok(len)) => {
+                            total_len += len;
+                        }
+                        Poll::Ready(Err(e)) => return Poll::Ready(Err(e)),
+                        Poll::Pending if total_len > 0 => return Poll::Ready(Ok(total_len)),
+                        Poll::Pending => return Poll::Pending,
+                    };
+
+                    if !matches!(self.wr_cipher.as_ref(), Some(c) if c.will_modify_data()) {
+                        break;
+                    }
+                }
+
+                if bufs.is_empty() {
+                    Poll::Ready(Ok(total_len))
+                } else {
+                    match self.project().w.poll_write_vectored(cx, bufs) {
+                        Poll::Ready(Ok(v)) => Poll::Ready(Ok(total_len + v)),
+                        Poll::Ready(Err(e)) => Poll::Ready(Err(e)),
+                        Poll::Pending if total_len > 0 => Poll::Ready(Ok(total_len)),
+                        Poll::Pending => Poll::Pending,
+                    }
+                }
+            }
+            _ => self.project().w.poll_write_vectored(cx, bufs),
+        }
+    }
+
     fn poll_flush(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Result<(), Error>> {
         self.project().w.as_mut().poll_flush(cx)
     }
@@ -140,4 +178,14 @@ impl<R, T: AsyncWrite, RC, WC: StreamCipherExt + Send + Sync> AsyncWrite
     fn poll_close(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<std::io::Result<()>> {
         self.project().w.as_mut().poll_close(cx)
     }
+}
+
+fn slice_take_first<'a, T>(slice: &mut &'a [T]) -> Option<&'a T> {
+    if slice.is_empty() {
+        return None;
+    }
+
+    let (first, rest) = slice.split_at(1);
+    *slice = rest;
+    Some(&first[0])
 }
