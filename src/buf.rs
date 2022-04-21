@@ -56,9 +56,9 @@ impl RWBuffer {
         self.buf.len() - self.write_cursor
     }
 
-    pub fn should_compact(&self) -> bool {
-        self.remaining_write() < self.buf.len() / 4
-    }
+    // pub fn should_compact(&self) -> bool {
+    //     self.remaining_write() < self.buf.len() / 4
+    // }
 
     pub fn write_buf(&mut self) -> &mut [u8] {
         if self.remaining_write() == 0 {
