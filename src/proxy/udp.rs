@@ -9,7 +9,7 @@ use futures::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
 
 use crate::{socks5::Address, utils::new_vec_uninitialised};
 use enum_primitive_derive::Primitive;
-use num_traits::{FromPrimitive, ToPrimitive};
+use num_traits::FromPrimitive;
 
 // Packet structure:
 // |packet_type(u8)|payload_len(u16)|address(variable)|payload|

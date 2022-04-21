@@ -70,6 +70,4 @@ pub async fn serve_udp(
         let (pkt, addr) = packet_stream.read(&mut r).await?;
         packet_writer.write(&mut w, &addr, pkt.as_ref()).await?;
     }
-
-    Ok(())
 }

@@ -222,139 +222,117 @@ mod tests {
     use super::*;
 
     #[test]
-    // fn copy_relay_and_proxy_works() {
-    //     block_on(async move {
-    //         let (relay_in_tx, relay_in_rx) = bounded(2);
-    //         let (relay_out_tx, mut relay_out_rx) = bounded(2);
+    fn copy_relay_and_proxy_works() {
+        block_on(async move {
+            let (relay_in_tx, relay_in_rx) = bounded(2);
+            let (relay_out_tx, mut relay_out_rx) = bounded(2);
 
-    //         let (near_stream, far_stream) = duplex(10).await;
+            let (near_stream, far_stream) = duplex(10).await;
 
-    //         let (mut far_stream_r, mut far_stream_w) = far_stream.split();
+            let (mut far_stream_r, mut far_stream_w) = far_stream.split();
 
-    //         let _task = spawn(copy_between_relay_and_stream(
-    //             relay_out_tx,
-    //             relay_in_rx,
-    //             near_stream,
-    //             None,
-    //         ));
+            let _task = spawn(copy_between_relay_and_stream(
+                relay_out_tx,
+                relay_in_rx,
+                near_stream,
+                None,
+            ));
 
-    //         struct PacketData<'a> {
-    //             payload: &'a [u8],
-    //             dst: &'a str,
-    //             expect_stream_receives_dst: bool,
-    //             reply_payload: &'a [u8],
-    //             reply_src_addr: Option<&'a str>,
-    //             expect_socks5_src_addr: &'a str,
-    //         }
+            struct PacketData<'a> {
+                payload: &'a [u8],
+                dst: &'a str,
+                reply_payload: &'a [u8],
+                reply_src_addr: &'a str,
+            }
 
-    //         let packets = [
-    //             PacketData {
-    //                 payload: b"hello, world1",
-    //                 dst: "1.2.3.4:9000",
-    //                 expect_stream_receives_dst: true,
-    //                 reply_payload: b"reply1",
-    //                 reply_src_addr: Some("5.5.5.5:2000"),
-    //                 expect_socks5_src_addr: "5.5.5.5:2000",
-    //             },
-    //             PacketData {
-    //                 payload: b"hello, world2",
-    //                 dst: "1.2.3.4:9001",
-    //                 expect_stream_receives_dst: true,
-    //                 reply_payload: b"reply2",
-    //                 reply_src_addr: None,
-    //                 expect_socks5_src_addr: "5.5.5.5:2000",
-    //             },
-    //             PacketData {
-    //                 payload: b"hello, world3",
-    //                 dst: "1.2.3.4:9000",
-    //                 expect_stream_receives_dst: true,
-    //                 reply_payload: b"reply3",
-    //                 reply_src_addr: Some("5.5.5.5:2001"),
-    //                 expect_socks5_src_addr: "5.5.5.5:2001",
-    //             },
-    //             PacketData {
-    //                 payload: b"hello, world4",
-    //                 dst: "1.2.3.4:9000",
-    //                 expect_stream_receives_dst: false,
-    //                 reply_payload: b"reply4",
-    //                 reply_src_addr: None,
-    //                 expect_socks5_src_addr: "5.5.5.5:2001",
-    //             },
-    //             PacketData {
-    //                 payload: b"hello, world4",
-    //                 dst: "google.com:9000",
-    //                 expect_stream_receives_dst: true,
-    //                 reply_payload: b"reply5",
-    //                 reply_src_addr: Some("5.5.5.5:2000"),
-    //                 expect_socks5_src_addr: "5.5.5.5:2000",
-    //             },
-    //         ];
+            let packets = [
+                PacketData {
+                    payload: b"hello, world1",
+                    dst: "1.2.3.4:9000",
+                    reply_payload: b"reply1",
+                    reply_src_addr: "5.5.5.5:2000",
+                },
+                PacketData {
+                    payload: b"hello, world2",
+                    dst: "1.2.3.4:9001",
+                    reply_payload: b"reply2",
+                    reply_src_addr: "5.5.5.5:2000",
+                },
+                PacketData {
+                    payload: b"hello, world3",
+                    dst: "1.2.3.4:9000",
+                    reply_payload: b"reply3",
+                    reply_src_addr: "5.5.5.5:2001",
+                },
+                PacketData {
+                    payload: b"hello, world4",
+                    dst: "1.2.3.4:9000",
+                    reply_payload: b"reply4",
+                    reply_src_addr: "5.5.5.5:2001",
+                },
+                PacketData {
+                    payload: b"hello, world4",
+                    dst: "google.com:9000",
+                    reply_payload: b"reply5",
+                    reply_src_addr: "5.5.5.5:2000",
+                },
+            ];
 
-    //         for PacketData {
-    //             payload,
-    //             dst,
-    //             expect_stream_receives_dst,
-    //             reply_payload,
-    //             reply_src_addr,
-    //             expect_socks5_src_addr,
-    //         } in packets
-    //         {
-    //             let dst: Address = dst.try_into().unwrap();
-    //             relay_in_tx
-    //                 .send(
-    //                     Socks5UdpRepr {
-    //                         addr: dst.clone(),
-    //                         payload,
-    //                         frag_no: 0,
-    //                     }
-    //                     .to_packet()
-    //                     .unwrap(),
-    //                 )
-    //                 .await
-    //                 .unwrap();
+            let mut packet_reader = ProxyUdpPacketReader::new();
+            let mut packet_writer = ProxyUdpPacketWriter::new();
 
-    //             let received = ProxyUdpPacket::read_async(&mut far_stream_r)
-    //                 .timeout(Duration::from_secs(1))
-    //                 .await
-    //                 .unwrap()
-    //                 .unwrap();
+            for PacketData {
+                payload,
+                dst,
+                reply_payload,
+                reply_src_addr,
+            } in packets
+            {
+                let dst: Address = dst.try_into().unwrap();
+                relay_in_tx
+                    .send(
+                        Socks5UdpRepr {
+                            addr: &dst,
+                            payload,
+                            frag_no: 0,
+                        }
+                        .to_packet()
+                        .unwrap(),
+                    )
+                    .await
+                    .unwrap();
 
-    //             // Test received stream packet
-    //             assert_eq!(
-    //                 received.addr().as_ref(),
-    //                 if expect_stream_receives_dst {
-    //                     Some(&dst)
-    //                 } else {
-    //                     None
-    //                 }
-    //             );
-    //             assert_eq!(received.payload(), payload);
+                let received = packet_reader
+                    .read(&mut far_stream_r)
+                    .timeout(Duration::from_secs(1))
+                    .await
+                    .unwrap()
+                    .unwrap();
 
-    //             // Reply...
-    //             write_proxy_udp_packet_async(
-    //                 &mut far_stream_w,
-    //                 reply_src_addr.map(|v| v.try_into().unwrap()).as_ref(),
-    //                 reply_payload,
-    //             )
-    //             .await
-    //             .unwrap();
+                // Test received stream packet
+                assert_eq!(received.1, &dst);
+                assert_eq!(received.0.as_ref(), payload);
 
-    //             // Test reply
-    //             let pkt = relay_out_rx
-    //                 .next()
-    //                 .timeout(Duration::from_secs(1))
-    //                 .await
-    //                 .unwrap()
-    //                 .unwrap();
+                // Reply...
+                let reply_src_addr: Address = reply_src_addr.try_into().unwrap();
+                packet_writer
+                    .write(&mut far_stream_w, &reply_src_addr, reply_payload)
+                    .await
+                    .unwrap();
 
-    //             assert_eq!(
-    //                 pkt.addr(),
-    //                 Address::try_from(expect_socks5_src_addr).unwrap()
-    //             );
-    //             assert_eq!(pkt.payload(), reply_payload);
-    //         }
-    //     });
-    // }
+                // Test reply
+                let pkt = relay_out_rx
+                    .next()
+                    .timeout(Duration::from_secs(1))
+                    .await
+                    .unwrap()
+                    .unwrap();
+
+                assert_eq!(pkt.addr(), reply_src_addr);
+                assert_eq!(pkt.payload(), reply_payload);
+            }
+        });
+    }
     #[test]
     fn serve_directly_works() {
         block_on(async move {
