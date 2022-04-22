@@ -2,9 +2,11 @@ use std::collections::HashMap;
 use std::net::SocketAddr;
 use std::time::Duration;
 
-use anyhow::bail;
+use anyhow::{bail, Context};
+use bytes::Bytes;
 use futures::{select, AsyncRead, AsyncReadExt, AsyncWrite, FutureExt, StreamExt};
 
+use super::utils::bind_transparent_udp;
 use crate::client::UpstreamStatistics;
 use crate::io::DatagramSocket;
 use crate::proxy::udp::{PacketReader, PacketWriter};
@@ -15,13 +17,10 @@ use crate::rt::{
     spawn, Task, TimeoutExt,
 };
 
-pub async fn serve_udp_with_upstream<
-    S: DatagramSocket<RecvType = ((usize, SocketAddr), SocketAddr)> + Unpin + Send + Sync + 'static,
->(
-    socket_creator: impl Fn(SocketAddr) -> anyhow::Result<S> + Send + Sync + 'static,
+pub async fn serve_udp_on_stream(
     src: SocketAddr,
     orig_dst: Address<'static>,
-    mut rx: Receiver<Vec<u8>>,
+    mut rx: Receiver<Bytes>,
     upstream: impl AsyncRead + AsyncWrite + Unpin + Send + Sync + 'static,
     stats: Option<&UpstreamStatistics>,
     idling_duration: Duration,
@@ -47,12 +46,28 @@ pub async fn serve_udp_with_upstream<
                     }
                 };
 
-                sockets
-                    .entry(addr.clone().into_owned())
-                    .or_insert_with(|| socket_creator(socket_addr).unwrap())
-                    .send_dgram(&buf, src)
-                    .await?;
+                let v = sockets.get(addr);
 
+                if v.is_none() {
+                    let socket = bind_transparent_udp(socket_addr).with_context(|| {
+                        format!("Creating transparent UDP socket on {socket_addr} for client {src}")
+                    })?;
+
+                    socket
+                        .send_dgram(&buf, socket_addr)
+                        .await
+                        .with_context(|| {
+                            format!("Sending datagram to {socket_addr} for client {src}")
+                        })?;
+                    sockets.insert(addr.clone().into_owned(), socket);
+                } else {
+                    v.unwrap()
+                        .send_dgram(&buf, socket_addr)
+                        .await
+                        .with_context(|| {
+                            format!("Sending datagram to {socket_addr} for client {src}")
+                        })?;
+                }
                 let _ = link_active_tx.try_send(());
                 rx_count.inc(buf.len());
             }

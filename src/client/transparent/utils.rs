@@ -2,15 +2,14 @@ use std::{
     io::ErrorKind,
     mem::{size_of, MaybeUninit},
     net::{Ipv4Addr, Ipv6Addr, SocketAddr, SocketAddrV4, SocketAddrV6},
-    os::unix::prelude::{AsRawFd, FromRawFd},
-    pin::Pin,
-    task::Poll,
+    os::unix::prelude::{AsRawFd, FromRawFd, RawFd},
 };
 
 use anyhow::Context;
+use async_trait::async_trait;
+use bytes::Bytes;
 use nix::sys::socket::{
-    setsockopt, sockopt::IpTransparent, AddressFamily, InetAddr, MsgFlags, SockAddr, SockFlag,
-    SockProtocol,
+    setsockopt, sockopt::IpTransparent, AddressFamily, InetAddr, SockAddr, SockFlag, SockProtocol,
 };
 
 use libc::{
@@ -18,13 +17,17 @@ use libc::{
     IPV6_RECVORIGDSTADDR, IP_RECVORIGDSTADDR, SOL_IP, SOL_IPV6,
 };
 
-use crate::{io::DatagramSocket, rt::net::UdpSocket};
+use crate::{
+    io::DatagramSocket,
+    rt::net::UdpSocket,
+    utils::{new_vec_for_udp, VecExt},
+};
 
 #[allow(dead_code)]
 pub fn bind_transparent_udp(
     addr: SocketAddr,
 ) -> anyhow::Result<
-    impl DatagramSocket<RecvType = ((usize, SocketAddr), SocketAddr)> + Unpin + Send + Sync + Sized,
+    impl DatagramSocket<RecvType = (Bytes, SocketAddr, SocketAddr)> + Unpin + Send + Sync + Sized,
 > {
     let socket = nix::sys::socket::socket(
         match &addr {
@@ -71,9 +74,9 @@ pub fn bind_transparent_udp(
 }
 
 fn recv_with_orig_dst(
-    socket: &UdpSocket,
+    socket: RawFd,
     buf: &mut [u8],
-) -> std::io::Result<((usize, SocketAddr), SocketAddr)> {
+) -> std::io::Result<(usize, SocketAddr, SocketAddr)> {
     const V6_ADDR_LEN: usize = size_of::<sockaddr_in6>();
     let mut src_addr: [MaybeUninit<u8>; V6_ADDR_LEN] =
         unsafe { MaybeUninit::uninit().assume_init() };
@@ -86,7 +89,7 @@ fn recv_with_orig_dst(
 
     let rc = unsafe {
         do_recv_with_orig_dst(
-            socket.as_raw_fd() as c_int,
+            socket as c_int,
             buf.as_mut_ptr() as *mut c_void,
             buf.len() as size_t,
             src_addr.as_mut_ptr() as *mut c_void,
@@ -113,7 +116,7 @@ fn recv_with_orig_dst(
     let dst = buf_to_addr(dst_addr.as_ptr() as *const c_void, dst_addr_len as usize)
         .ok_or_else(|| std::io::Error::new(ErrorKind::AddrNotAvailable, "DST addr unavailable"))?;
 
-    Ok(((rc as usize, src), dst))
+    Ok((rc as usize, src, dst))
 }
 
 fn buf_to_addr(buf: *const c_void, _buf_len: usize) -> Option<SocketAddr> {
@@ -152,43 +155,22 @@ extern "C" {
 
 struct TransparentUdpSocket(UdpSocket);
 
+#[async_trait]
 impl DatagramSocket for TransparentUdpSocket {
-    type RecvType = ((usize, SocketAddr), SocketAddr);
+    type RecvType = (Bytes, SocketAddr, SocketAddr);
 
-    fn poll_recv(
-        self: std::pin::Pin<&Self>,
-        cx: &mut std::task::Context<'_>,
-        buf: &mut [u8],
-    ) -> Poll<std::io::Result<((usize, SocketAddr), SocketAddr)>> {
-        match Pin::new(&self.0).poll_readable(cx) {
-            Poll::Ready(Ok(())) => {}
-            Poll::Ready(Err(e)) => return Poll::Ready(Err(e)),
-            Poll::Pending => return Poll::Pending,
-        };
-
-        Poll::Ready(recv_with_orig_dst(&self.0, buf))
+    async fn send_dgram(&self, buf: &[u8], addr: SocketAddr) -> std::io::Result<usize> {
+        self.0.send_dgram(buf, addr).await
     }
 
-    fn poll_send(
-        self: std::pin::Pin<&Self>,
-        cx: &mut std::task::Context<'_>,
-        buf: &[u8],
-        addr: SocketAddr,
-    ) -> Poll<std::io::Result<usize>> {
-        match Pin::new(&self.0).poll_writable(cx) {
-            Poll::Ready(Ok(())) => {}
-            Poll::Ready(Err(e)) => return Poll::Ready(Err(e)),
-            Poll::Pending => return Poll::Pending,
-        };
-
-        Poll::Ready(
-            nix::sys::socket::sendto(
-                self.0.as_raw_fd(),
-                buf,
-                &SockAddr::Inet(InetAddr::from_std(&addr)),
-                MsgFlags::MSG_DONTWAIT,
-            )
-            .map_err(|errno| std::io::Error::from_raw_os_error(errno as i32)),
-        )
+    async fn recv_dgram(&self) -> std::io::Result<Self::RecvType> {
+        self.0
+            .read_with(|socket| {
+                let mut buf = new_vec_for_udp();
+                let (len, src, dst) = recv_with_orig_dst(socket.as_raw_fd(), &mut buf)?;
+                buf.set_len_uninit(len);
+                Ok((buf.into(), src, dst))
+            })
+            .await
     }
 }

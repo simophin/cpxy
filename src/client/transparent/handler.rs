@@ -2,23 +2,24 @@ use std::{borrow::Cow, collections::HashMap, net::SocketAddr, sync::Arc, time::D
 
 use crate::{
     config::ClientConfig,
-    io::DatagramSocket,
+    io::{bind_udp, DatagramSocket},
     proxy::protocol::ProxyRequest,
     rt::{
         mpsc::{bounded, Sender, TrySendError},
         spawn, Task,
     },
     socks5::Address,
-    utils::{new_vec_for_udp, VecExt},
 };
 use anyhow::Context;
+use bytes::Bytes;
 use futures::StreamExt;
 use futures_util::{select, FutureExt};
 
 use super::super::{utils::request_best_upstream, ClientStatistics};
+use super::utils::bind_transparent_udp;
 
 struct UdpSession {
-    tx: Sender<Vec<u8>>,
+    tx: Sender<Bytes>,
     _task: Task<anyhow::Result<()>>,
 }
 
@@ -28,24 +29,19 @@ struct UdpSessionKey {
     dst: SocketAddr,
 }
 
-pub async fn serve_udp_transparent_proxy<
-    S: DatagramSocket<RecvType = ((usize, SocketAddr), SocketAddr)> + Unpin + Send + Sync + 'static,
->(
-    socket_creator: impl Fn(SocketAddr) -> anyhow::Result<S> + Clone + Send + Sync + 'static,
+pub async fn serve_udp_transparent_proxy(
     addr: SocketAddr,
     config: Arc<ClientConfig>,
     stats: Arc<ClientStatistics>,
 ) -> anyhow::Result<Task<anyhow::Result<()>>> {
-    let socket = socket_creator(addr).context("Binding UDP socket")?;
+    let socket = bind_transparent_udp(addr).context("Binding UDP socket")?;
     log::info!("Started UDP transparent proxy at {addr}");
     Ok(spawn(async move {
         let mut sessions: HashMap<UdpSessionKey, UdpSession> = Default::default();
         let (cleanup_tx, mut cleanup_rx) = bounded::<UdpSessionKey>(2);
 
-        let mut buf = new_vec_for_udp();
-
         loop {
-            let ((len, src), dst) = select! {
+            let (buf, src, dst) = select! {
                 k = cleanup_rx.next().fuse() => {
                     let k = k.context("Timeout channel closed")?;
                     log::info!("UDP session {k:?} timeout");
@@ -53,7 +49,7 @@ pub async fn serve_udp_transparent_proxy<
                     continue;
                 }
 
-                r = socket.recv_dgram(&mut buf).fuse() => {
+                r = socket.recv_dgram().fuse() => {
                     match r {
                         Ok(v) => v,
                         Err(e) => {
@@ -64,24 +60,20 @@ pub async fn serve_udp_transparent_proxy<
                 }
             };
 
-            buf.set_len_uninit(len);
-
-            log::debug!("TProxy received {len} from {src}, orig dst = {dst}");
+            log::debug!("TProxy received {} from {src}, orig dst = {dst}", buf.len());
             let key = UdpSessionKey { src, dst };
-            buf = match sessions.get_mut(&key) {
+            match sessions.get_mut(&key) {
                 Some(s) => match s.tx.try_send(buf) {
-                    Ok(_) => new_vec_for_udp(),
-                    Err(TrySendError::Closed(b)) => {
+                    Ok(_) => {}
+                    Err(TrySendError::Closed(_)) => {
                         let key = UdpSessionKey { src, dst };
                         log::debug!("Session {key:?} closed");
                         sessions.remove(&key);
-                        b
                     }
-                    Err(TrySendError::Full(b)) => b,
+                    Err(TrySendError::Full(_)) => {}
                 },
                 None => {
                     let session = UdpSession::new(
-                        socket_creator.clone(),
                         src,
                         dst,
                         config.clone(),
@@ -90,30 +82,20 @@ pub async fn serve_udp_transparent_proxy<
                         buf,
                     );
                     sessions.insert(key, session);
-                    new_vec_for_udp()
                 }
             };
-
-            buf.set_len_to_capacity();
         }
     }))
 }
 
 impl UdpSession {
-    pub fn new<
-        S: DatagramSocket<RecvType = ((usize, SocketAddr), SocketAddr)>
-            + Unpin
-            + Send
-            + Sync
-            + 'static,
-    >(
-        socket_creator: impl Fn(SocketAddr) -> anyhow::Result<S> + Send + Sync + 'static,
+    pub fn new(
         src: SocketAddr,
         dst: SocketAddr,
         config: Arc<ClientConfig>,
         stats: Arc<ClientStatistics>,
         clean_up: Sender<UdpSessionKey>,
-        initial_data: Vec<u8>,
+        initial_data: Bytes,
     ) -> Self {
         let (tx, rx) = bounded(10);
         let dst_addr: Address = dst.into();
@@ -138,8 +120,7 @@ impl UdpSession {
 
             let result = if let Some((upstream, stats)) = upstream {
                 // Proxy through upstream
-                super::proxy::serve_udp_with_upstream(
-                    socket_creator,
+                super::proxy::serve_udp_on_stream(
                     src,
                     dst_addr,
                     rx,
@@ -150,7 +131,17 @@ impl UdpSession {
                 .await
             } else if config.allow_direct(&dst_addr) {
                 // Direct connect
-                super::direct::serve_udp_direct(rx).await
+                super::udp_proxy::serve_udp_on_dgram(
+                    bind_udp(matches!(dst, SocketAddr::V4(_)))
+                        .await
+                        .with_context(|| format!("Binding direct socket for client {src}"))?,
+                    src,
+                    dst,
+                    rx,
+                    initial_data,
+                    Duration::from_secs(60),
+                )
+                .await
             } else {
                 Ok(())
             };

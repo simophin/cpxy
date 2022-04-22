@@ -61,7 +61,6 @@ pub async fn run_client(
         {
             if let Some(addr) = config.udp_tproxy_address {
                 match super::transparent::serve_udp_transparent_proxy(
-                    super::transparent::bind_transparent_udp,
                     addr,
                     config.clone(),
                     stats.clone(),
