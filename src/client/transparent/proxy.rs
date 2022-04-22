@@ -6,16 +6,18 @@ use anyhow::bail;
 use futures::{select, AsyncRead, AsyncReadExt, AsyncWrite, FutureExt, StreamExt};
 
 use crate::client::UpstreamStatistics;
+use crate::io::DatagramSocket;
 use crate::proxy::udp::{PacketReader, PacketWriter};
 use crate::socks5::Address;
 
-use super::TransparentUdpSocket;
 use crate::rt::{
     mpsc::{bounded, Receiver},
     spawn, Task, TimeoutExt,
 };
 
-pub async fn serve_udp_with_upstream<S: TransparentUdpSocket + Unpin + Send + Sync + 'static>(
+pub async fn serve_udp_with_upstream<
+    S: DatagramSocket<RecvType = ((usize, SocketAddr), SocketAddr)> + Unpin + Send + Sync + 'static,
+>(
     socket_creator: impl Fn(SocketAddr) -> anyhow::Result<S> + Send + Sync + 'static,
     src: SocketAddr,
     orig_dst: Address<'static>,
@@ -48,7 +50,7 @@ pub async fn serve_udp_with_upstream<S: TransparentUdpSocket + Unpin + Send + Sy
                 sockets
                     .entry(addr.clone().into_owned())
                     .or_insert_with(|| socket_creator(socket_addr).unwrap())
-                    .send_to(&buf, src)
+                    .send_dgram(&buf, src)
                     .await?;
 
                 let _ = link_active_tx.try_send(());

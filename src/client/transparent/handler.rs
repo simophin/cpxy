@@ -2,6 +2,7 @@ use std::{borrow::Cow, collections::HashMap, net::SocketAddr, sync::Arc, time::D
 
 use crate::{
     config::ClientConfig,
+    io::DatagramSocket,
     proxy::protocol::ProxyRequest,
     rt::{
         mpsc::{bounded, Sender, TrySendError},
@@ -15,7 +16,6 @@ use futures::StreamExt;
 use futures_util::{select, FutureExt};
 
 use super::super::{utils::request_best_upstream, ClientStatistics};
-use super::TransparentUdpSocket;
 
 struct UdpSession {
     tx: Sender<Vec<u8>>,
@@ -29,7 +29,7 @@ struct UdpSessionKey {
 }
 
 pub async fn serve_udp_transparent_proxy<
-    S: TransparentUdpSocket + Unpin + Send + Sync + 'static,
+    S: DatagramSocket<RecvType = ((usize, SocketAddr), SocketAddr)> + Unpin + Send + Sync + 'static,
 >(
     socket_creator: impl Fn(SocketAddr) -> anyhow::Result<S> + Clone + Send + Sync + 'static,
     addr: SocketAddr,
@@ -53,7 +53,7 @@ pub async fn serve_udp_transparent_proxy<
                     continue;
                 }
 
-                r = socket.recv_from(&mut buf).fuse() => {
+                r = socket.recv_dgram(&mut buf).fuse() => {
                     match r {
                         Ok(v) => v,
                         Err(e) => {
@@ -100,7 +100,13 @@ pub async fn serve_udp_transparent_proxy<
 }
 
 impl UdpSession {
-    pub fn new<S: TransparentUdpSocket + Unpin + Send + Sync + 'static>(
+    pub fn new<
+        S: DatagramSocket<RecvType = ((usize, SocketAddr), SocketAddr)>
+            + Unpin
+            + Send
+            + Sync
+            + 'static,
+    >(
         socket_creator: impl Fn(SocketAddr) -> anyhow::Result<S> + Send + Sync + 'static,
         src: SocketAddr,
         dst: SocketAddr,

@@ -3,6 +3,7 @@ use std::{
     mem::{size_of, MaybeUninit},
     net::{Ipv4Addr, Ipv6Addr, SocketAddr, SocketAddrV4, SocketAddrV6},
     os::unix::prelude::{AsRawFd, FromRawFd},
+    pin::Pin,
     task::Poll,
 };
 
@@ -17,14 +18,14 @@ use libc::{
     IPV6_RECVORIGDSTADDR, IP_RECVORIGDSTADDR, SOL_IP, SOL_IPV6,
 };
 
-use crate::rt::net::UdpSocket;
-
-use super::TransparentUdpSocket;
+use crate::{io::DatagramSocket, rt::net::UdpSocket};
 
 #[allow(dead_code)]
 pub fn bind_transparent_udp(
     addr: SocketAddr,
-) -> anyhow::Result<impl TransparentUdpSocket + Unpin + Send + Sync + Sized> {
+) -> anyhow::Result<
+    impl DatagramSocket<RecvType = ((usize, SocketAddr), SocketAddr)> + Unpin + Send + Sync + Sized,
+> {
     let socket = nix::sys::socket::socket(
         match &addr {
             SocketAddr::V4(_) => AddressFamily::Inet,
@@ -64,9 +65,9 @@ pub fn bind_transparent_udp(
 
     log::debug!("UDP tproxy bound on {addr}");
 
-    Ok(UdpSocket::try_from(unsafe {
+    Ok(TransparentUdpSocket(UdpSocket::try_from(unsafe {
         std::net::UdpSocket::from_raw_fd(socket)
-    })?)
+    })?))
 }
 
 fn recv_with_orig_dst(
@@ -149,28 +150,32 @@ extern "C" {
     ) -> ssize_t;
 }
 
-impl TransparentUdpSocket for UdpSocket {
+struct TransparentUdpSocket(UdpSocket);
+
+impl DatagramSocket for TransparentUdpSocket {
+    type RecvType = ((usize, SocketAddr), SocketAddr);
+
     fn poll_recv(
         self: std::pin::Pin<&Self>,
         cx: &mut std::task::Context<'_>,
         buf: &mut [u8],
     ) -> Poll<std::io::Result<((usize, SocketAddr), SocketAddr)>> {
-        match self.poll_readable(cx) {
+        match Pin::new(&self.0).poll_readable(cx) {
             Poll::Ready(Ok(())) => {}
             Poll::Ready(Err(e)) => return Poll::Ready(Err(e)),
             Poll::Pending => return Poll::Pending,
         };
 
-        Poll::Ready(recv_with_orig_dst(&self, buf))
+        Poll::Ready(recv_with_orig_dst(&self.0, buf))
     }
 
-    fn poll_send_to(
+    fn poll_send(
         self: std::pin::Pin<&Self>,
         cx: &mut std::task::Context<'_>,
         buf: &[u8],
         addr: SocketAddr,
     ) -> Poll<std::io::Result<usize>> {
-        match self.poll_writable(cx) {
+        match Pin::new(&self.0).poll_writable(cx) {
             Poll::Ready(Ok(())) => {}
             Poll::Ready(Err(e)) => return Poll::Ready(Err(e)),
             Poll::Pending => return Poll::Pending,
@@ -178,7 +183,7 @@ impl TransparentUdpSocket for UdpSocket {
 
         Poll::Ready(
             nix::sys::socket::sendto(
-                self.as_raw_fd(),
+                self.0.as_raw_fd(),
                 buf,
                 &SockAddr::Inet(InetAddr::from_std(&addr)),
                 MsgFlags::MSG_DONTWAIT,

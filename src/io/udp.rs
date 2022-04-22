@@ -1,6 +1,13 @@
-use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
+use std::{
+    net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr},
+    task::Poll,
+};
+
+use futures::ready;
 
 use crate::{rt::net::UdpSocket, socks5::Address};
+
+use super::DatagramSocket;
 
 pub async fn bind_udp(v4: bool) -> std::io::Result<UdpSocket> {
     UdpSocket::bind((
@@ -35,5 +42,28 @@ impl UdpSocketExt for UdpSocket {
             Ok(v) => v.is_ipv4(),
             _ => true,
         }
+    }
+}
+
+impl DatagramSocket for UdpSocket {
+    type RecvType = (usize, SocketAddr);
+
+    fn poll_recv(
+        self: std::pin::Pin<&Self>,
+        cx: &mut std::task::Context<'_>,
+        buf: &mut [u8],
+    ) -> Poll<std::io::Result<Self::RecvType>> {
+        ready!(self.poll_readable(cx))?;
+        Poll::Ready(self.as_std().recv_from(buf))
+    }
+
+    fn poll_send(
+        self: std::pin::Pin<&Self>,
+        cx: &mut std::task::Context<'_>,
+        buf: &[u8],
+        addr: std::net::SocketAddr,
+    ) -> Poll<std::io::Result<usize>> {
+        ready!(self.poll_writable(cx))?;
+        Poll::Ready(self.as_std().send_to(buf, addr))
     }
 }

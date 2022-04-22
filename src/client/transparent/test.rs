@@ -9,8 +9,10 @@ use std::{
 use bytes::Bytes;
 use smol::stream::StreamExt;
 
-use super::TransparentUdpSocket;
-use crate::rt::mpsc::{Receiver, Sender, TrySendError};
+use crate::{
+    io::DatagramSocket,
+    rt::mpsc::{Receiver, Sender, TrySendError},
+};
 
 struct TestTransparentSocket {
     bound: SocketAddr,
@@ -34,7 +36,9 @@ impl TestEnvironment {
     }
 }
 
-impl TransparentUdpSocket for TestTransparentSocket {
+impl DatagramSocket for TestTransparentSocket {
+    type RecvType = ((usize, SocketAddr), SocketAddr);
+
     fn poll_recv(
         self: std::pin::Pin<&Self>,
         cx: &mut std::task::Context<'_>,
@@ -54,7 +58,7 @@ impl TransparentUdpSocket for TestTransparentSocket {
         }
     }
 
-    fn poll_send_to(
+    fn poll_send(
         self: std::pin::Pin<&Self>,
         cx: &mut std::task::Context<'_>,
         buf: &[u8],

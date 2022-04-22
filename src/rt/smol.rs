@@ -43,6 +43,10 @@ pub mod net {
         pub fn poll_writable(self: Pin<&Self>, cx: &mut Context<'_>) -> Poll<std::io::Result<()>> {
             self.s.poll_writable(cx)
         }
+
+        pub fn as_std(&self) -> &std::net::UdpSocket {
+            self.s.get_ref()
+        }
     }
 
     impl TryFrom<std::net::UdpSocket> for UdpSocket {
