@@ -2,7 +2,7 @@ mod handler;
 mod http;
 mod stats;
 mod tcp;
-#[cfg(unix)]
+#[cfg(target_os = "linux")]
 mod transparent;
 mod udp;
 mod utils;

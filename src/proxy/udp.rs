@@ -5,14 +5,10 @@ use std::{
 };
 
 use anyhow::Context;
-use async_trait::async_trait;
 use bytes::{Buf, Bytes};
-use futures::{
-    io::{ReadHalf, WriteHalf},
-    AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt,
-};
+use futures::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
 
-use crate::{io::DatagramSocket, socks5::Address, utils::new_vec_uninitialised};
+use crate::{socks5::Address, utils::new_vec_uninitialised};
 use enum_primitive_derive::Primitive;
 use num_traits::FromPrimitive;
 

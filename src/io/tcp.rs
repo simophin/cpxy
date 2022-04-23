@@ -18,7 +18,20 @@ impl TcpStreamExt for TcpStream {
         }
     }
 
-    #[cfg(unix)]
+    #[cfg(not(target_os = "linux"))]
+    fn set_sock_mark(&self, _mark: u32) -> std::io::Result<()> {
+        Err(std::io::Error::new(
+            std::io::ErrorKind::Other,
+            "Not implemented",
+        ))
+    }
+
+    #[cfg(not(target_os = "linux"))]
+    fn get_original_dst(&self) -> Option<SocketAddr> {
+        None
+    }
+
+    #[cfg(target_os = "linux")]
     fn set_sock_mark(&self, mark: u32) -> std::io::Result<()> {
         use nix::sys::socket::{setsockopt, sockopt::Mark};
         use std::os::unix::prelude::AsRawFd;
@@ -27,7 +40,7 @@ impl TcpStreamExt for TcpStream {
         Ok(())
     }
 
-    #[cfg(unix)]
+    #[cfg(target_os = "linux")]
     fn get_original_dst(&self) -> Option<SocketAddr> {
         use std::{net::SocketAddrV4, os::unix::prelude::AsRawFd};
 

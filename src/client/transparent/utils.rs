@@ -155,7 +155,6 @@ extern "C" {
 
 struct TransparentUdpSocket(UdpSocket);
 
-#[async_trait]
 impl DatagramSocket for TransparentUdpSocket {
     type RecvType = (Bytes, SocketAddr, SocketAddr);
 

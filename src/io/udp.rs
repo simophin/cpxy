@@ -1,7 +1,8 @@
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr};
+use std::task::Poll;
 
-use async_trait::async_trait;
 use bytes::Bytes;
+use futures::ready;
 
 use crate::{
     rt::net::UdpSocket,
@@ -47,18 +48,27 @@ impl UdpSocketExt for UdpSocket {
     }
 }
 
-#[async_trait]
 impl DatagramSocket for UdpSocket {
     type RecvType = (Bytes, SocketAddr);
 
-    async fn send_dgram(&self, buf: &[u8], addr: SocketAddr) -> std::io::Result<usize> {
-        self.send_to(buf, addr).await
+    fn poll_recv(
+        self: std::pin::Pin<&Self>,
+        cx: &mut std::task::Context<'_>,
+    ) -> Poll<std::io::Result<Self::RecvType>> {
+        ready!(self.poll_readable(cx))?;
+        let mut buf = new_vec_for_udp();
+        let (len, addr) = self.as_std().recv_from(&mut buf)?;
+        buf.set_len_uninit(len);
+        Poll::Ready(Ok((buf.into(), addr)))
     }
 
-    async fn recv_dgram(&self) -> std::io::Result<Self::RecvType> {
-        let mut buf = new_vec_for_udp();
-        let (len, from) = self.recv_from(&mut buf).await?;
-        buf.set_len_uninit(len);
-        Ok((buf.into(), from))
+    fn poll_send(
+        self: std::pin::Pin<&Self>,
+        cx: &mut std::task::Context<'_>,
+        buf: &[u8],
+        addr: std::net::SocketAddr,
+    ) -> Poll<std::io::Result<usize>> {
+        ready!(self.poll_writable(cx))?;
+        Poll::Ready(self.as_std().send_to(buf, addr))
     }
 }

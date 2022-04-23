@@ -57,7 +57,7 @@ pub async fn run_client(
         )));
 
         // UDP tproxy?
-        #[cfg(unix)]
+        #[cfg(target_os = "linux")]
         {
             if let Some(addr) = config.udp_tproxy_address {
                 match super::transparent::serve_udp_transparent_proxy(
