@@ -17,7 +17,7 @@ use crate::{
 };
 use anyhow::{bail, Context};
 use bytes::Bytes;
-use futures::{select, AsyncRead, AsyncReadExt, AsyncWrite, FutureExt, StreamExt};
+use futures::{AsyncRead, AsyncReadExt, AsyncWrite, FutureExt, StreamExt};
 
 use crate::{
     config::ClientConfig, handshake::Handshaker, proxy::protocol::ProxyRequest,

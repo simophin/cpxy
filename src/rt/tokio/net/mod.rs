@@ -1,3 +1,5 @@
+use std::net::SocketAddr;
+
 pub use tokio::net::ToSocketAddrs as AsyncToSocketAddrs;
 
 mod tcp;

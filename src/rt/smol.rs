@@ -2,14 +2,22 @@ pub use smol::{block_on, spawn, Executor, Task, Timer};
 
 pub mod net {
     use std::{
+        io::ErrorKind,
+        net::SocketAddr,
         pin::Pin,
         sync::Arc,
         task::{Context, Poll},
     };
 
     use derive_more::Deref;
-    pub use smol::net::{resolve, AsyncToSocketAddrs, TcpListener, TcpStream};
+    pub use smol::net::{AsyncToSocketAddrs, TcpListener, TcpStream};
     use smol::Async;
+
+    pub async fn resolve<A: AsyncToSocketAddrs>(
+        name: A,
+    ) -> std::io::Result<impl Iterator<Item = SocketAddr>> {
+        Ok(smol::net::resolve(name).await?.into_iter())
+    }
 
     #[derive(Deref)]
     pub struct UdpSocket {
@@ -44,8 +52,23 @@ pub mod net {
             self.s.poll_writable(cx)
         }
 
-        pub fn as_std(&self) -> &std::net::UdpSocket {
-            self.s.get_ref()
+        pub fn try_recv_from(
+            &self,
+            buf: &mut [u8],
+        ) -> std::io::Result<Option<(usize, SocketAddr)>> {
+            match self.s.get_ref().recv_from(buf) {
+                Ok(v) => Ok(Some(v)),
+                Err(e) if e.kind() == ErrorKind::WouldBlock => Ok(None),
+                Err(e) => Err(e),
+            }
+        }
+
+        pub fn try_send_to(&self, buf: &[u8], addr: SocketAddr) -> std::io::Result<Option<usize>> {
+            match self.s.get_ref().send_to(buf, addr) {
+                Ok(v) => Ok(Some(v)),
+                Err(e) if e.kind() == ErrorKind::WouldBlock => Ok(None),
+                Err(e) => Err(e),
+            }
         }
     }
 

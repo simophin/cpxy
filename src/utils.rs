@@ -1,8 +1,8 @@
 use anyhow::{anyhow, Context};
 use bytes::{Buf, BufMut};
-use futures::future::FusedFuture;
 use futures::io::copy;
 use futures::{select, AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt, Future, FutureExt};
+use pin_project_lite::pin_project;
 use serde::{de::DeserializeOwned, Serialize};
 use std::marker::PhantomData;
 use std::pin::Pin;
@@ -57,11 +57,7 @@ pub async fn copy_duplex(
         anyhow::Result::<()>::Ok(())
     };
 
-    select! {
-        r1 = task1.fuse() => r1,
-        r2 = task2.fuse() => r2,
-    }
-    // race(task1.fuse(), task2.fuse()).await
+    race(task1.fuse(), task2.fuse()).await
 }
 
 pub fn write_bincode_lengthed(mut buf: &mut Vec<u8>, o: &impl Serialize) -> anyhow::Result<()> {
@@ -125,14 +121,40 @@ pub fn new_vec_for_udp() -> Vec<u8> {
     new_vec_uninitialised(65536)
 }
 
-pub async fn race<T>(
-    mut f1: impl Future<Output = T> + FusedFuture + Unpin,
-    mut f2: impl Future<Output = T> + FusedFuture + Unpin,
-) -> T {
-    select! {
-        r1 = f1 => r1,
-        r2 = f2 => r2,
+pin_project! {
+    struct Race<F1, F2, T> {
+        #[pin]
+        f1: F1,
+
+        #[pin]
+        f2: F2,
+
+        _t: PhantomData<T>,
     }
+}
+
+impl<T, F1: Future<Output = T>, F2: Future<Output = T>> Future for Race<F1, F2, T> {
+    type Output = T;
+
+    fn poll(self: Pin<&mut Self>, cx: &mut std::task::Context<'_>) -> Poll<Self::Output> {
+        let this = self.project();
+        match (this.f1.poll(cx), this.f2.poll(cx)) {
+            (Poll::Ready(v), _) | (_, Poll::Ready(v)) => Poll::Ready(v),
+            _ => Poll::Pending,
+        }
+    }
+}
+
+pub fn race<T>(
+    f1: impl Future<Output = T>,
+    f2: impl Future<Output = T>,
+) -> impl Future<Output = T> {
+    Race {
+        f1,
+        f2,
+        _t: Default::default(),
+    }
+    .fuse()
 }
 
 pub trait VecExt {

@@ -108,13 +108,13 @@ impl From<SocketAddr> for Address<'_> {
 }
 
 impl<'a> Address<'a> {
-    pub async fn resolve(&self) -> impl Iterator<Item = SocketAddr> {
+    pub async fn resolve(&self) -> std::io::Result<impl Iterator<Item = SocketAddr>> {
         match self {
-            Address::IP(addr) => vec![*addr].into_iter(),
-            Address::Name { host, port } => crate::rt::net::resolve((host.as_ref(), *port))
-                .await
-                .unwrap_or_default()
-                .into_iter(),
+            Address::IP(addr) => Ok(vec![*addr].into_iter()),
+            Address::Name { host, port } => Ok(crate::rt::net::resolve((host.as_ref(), *port))
+                .await?
+                .collect::<Vec<_>>()
+                .into_iter()),
         }
     }
 

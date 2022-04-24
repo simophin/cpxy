@@ -38,7 +38,7 @@ pub async fn serve_udp_on_stream(
             let mut sockets = HashMap::<Address<'static>, _>::new();
             loop {
                 let (buf, addr) = packet_reader.read(&mut upstream_r).await?;
-                let socket_addr = match addr.resolve().await.next() {
+                let socket_addr = match addr.resolve().await?.next() {
                     Some(a) => a,
                     None => {
                         log::warn!("Unable to resolve {addr}");

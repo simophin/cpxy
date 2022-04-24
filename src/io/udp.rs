@@ -57,7 +57,10 @@ impl DatagramSocket for UdpSocket {
     ) -> Poll<std::io::Result<Self::RecvType>> {
         ready!(self.poll_readable(cx))?;
         let mut buf = new_vec_for_udp();
-        let (len, addr) = self.as_std().recv_from(&mut buf)?;
+        let (len, addr) = match self.try_recv_from(&mut buf)? {
+            Some(v) => v,
+            None => return Poll::Pending,
+        };
         buf.set_len_uninit(len);
         Poll::Ready(Ok((buf.into(), addr)))
     }
@@ -69,6 +72,10 @@ impl DatagramSocket for UdpSocket {
         addr: std::net::SocketAddr,
     ) -> Poll<std::io::Result<usize>> {
         ready!(self.poll_writable(cx))?;
-        Poll::Ready(self.as_std().send_to(buf, addr))
+        Poll::Ready(match self.try_send_to(buf, addr) {
+            Ok(Some(v)) => Ok(v),
+            Ok(None) => return Poll::Pending,
+            Err(e) => Err(e),
+        })
     }
 }
