@@ -4,7 +4,7 @@ use futures::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt, StreamExt};
 use crate::{
     proxy::{
         protocol::ProxyResult,
-        udp::{PacketReader, PacketWriter},
+        udp_stream::{PacketReader, PacketWriter},
     },
     rt::{mpsc::bounded, spawn, Task},
     utils::{new_vec_for_udp, write_bincode_lengthed_async, VecExt},

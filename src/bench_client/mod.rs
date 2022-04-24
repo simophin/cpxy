@@ -11,9 +11,9 @@ use crate::{
     proxy::{
         protocol::{ProxyRequest, ProxyResult},
         request_proxy_upstream_with_config,
-        udp::{PacketReader, PacketWriter},
+        udp_stream::{PacketReader, PacketWriter},
     },
-    rt::TimeoutExt
+    rt::TimeoutExt,
 };
 
 const MAX_BYTES: usize = 10 * 1024 * 1024;

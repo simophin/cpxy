@@ -9,7 +9,7 @@ use futures::{select, AsyncRead, AsyncReadExt, AsyncWrite, FutureExt, StreamExt}
 use super::utils::bind_transparent_udp;
 use crate::client::UpstreamStatistics;
 use crate::io::DatagramSocket;
-use crate::proxy::udp::{PacketReader, PacketWriter};
+use crate::proxy::udp_stream::{PacketReader, PacketWriter};
 use crate::socks5::Address;
 
 use crate::rt::{

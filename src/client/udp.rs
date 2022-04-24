@@ -13,7 +13,7 @@ use crate::{
         mpsc::{Receiver, Sender},
         spawn, Task, TimeoutExt,
     },
-    utils::{new_vec_for_udp, race, VecExt},
+    utils::{new_vec_for_udp, new_vec_uninitialised, race, VecExt},
 };
 use anyhow::{bail, Context};
 use bytes::Bytes;
@@ -21,8 +21,8 @@ use futures::{select, AsyncRead, AsyncReadExt, AsyncWrite, FutureExt, StreamExt}
 
 use crate::{
     config::ClientConfig, handshake::Handshaker, proxy::protocol::ProxyRequest,
-    proxy::udp::PacketReader as ProxyUdpPacketReader,
-    proxy::udp::PacketWriter as ProxyUdpPacketWriter, socks5::UdpPacket as Socks5UdpPacket,
+    proxy::udp_stream::PacketReader as ProxyUdpPacketReader,
+    proxy::udp_stream::PacketWriter as ProxyUdpPacketWriter, socks5::UdpPacket as Socks5UdpPacket,
     socks5::UdpRepr as Socks5UdpRepr, udp_relay::new_udp_relay,
 };
 
@@ -64,10 +64,13 @@ pub async fn serve_udp_proxy_conn(
     .await
     {
         Ok((_, upstream, stat)) => {
-            return select! {
-                r1 = copy_between_relay_and_stream(tx, rx, upstream, stat).fuse() => r1,
-                r2 = drain_socks(stream).fuse() => r2,
-            };
+            return race(
+                copy_between_relay_and_stream(tx, rx, upstream, stat)
+                    .boxed()
+                    .fuse(),
+                drain_socks(&mut stream).boxed().fuse(),
+            )
+            .await;
         }
         Err(e) => {
             log::warn!("Error requesting best upstream for UDP://{addr}: {e:?}");
@@ -75,10 +78,11 @@ pub async fn serve_udp_proxy_conn(
     };
 
     if c.allow_direct(&addr) {
-        return select! {
-            r1 = serve_udp_relay_directly(is_v4, tx, rx).fuse() => r1,
-            r2 = drain_socks(stream).fuse() => r2,
-        };
+        return race(
+            serve_udp_relay_directly(is_v4, tx, rx).boxed().fuse(),
+            drain_socks(&mut stream).boxed().fuse(),
+        )
+        .await;
     }
 
     bail!("There's no where for UDP packet to go")
@@ -202,11 +206,9 @@ async fn copy_between_relay_and_stream(
     result
 }
 
-async fn drain_socks(
-    mut socks: impl AsyncRead + AsyncWrite + Unpin + Send + Sync,
-) -> anyhow::Result<()> {
-    let mut buf = vec![0u8; 24];
-    while socks.read(buf.as_mut_slice()).await? > 0 {}
+async fn drain_socks(socks: &mut (impl AsyncRead + Unpin)) -> anyhow::Result<()> {
+    let mut buf = new_vec_uninitialised(24);
+    while socks.read(&mut buf).await? > 0 {}
     Ok(())
 }
 

@@ -4,7 +4,8 @@ use std::{
     task::{Context, Poll},
 };
 
-use futures::Future;
+use bytes::Bytes;
+use futures::{ready, Future, Sink, Stream};
 
 pub trait DatagramSocket {
     type RecvType;
@@ -30,6 +31,37 @@ pub trait DatagramSocket {
         Self: Unpin,
     {
         PollSend { t: self, buf, addr }
+    }
+}
+
+struct DatagramSocketStream<T>(T);
+
+impl<T: DatagramSocket + Unpin> Stream for DatagramSocketStream<T> {
+    type Item = T::RecvType;
+
+    fn poll_next(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
+        let item = ready!(Pin::new(&self.0).poll_recv(cx));
+        Poll::Ready(item.ok())
+    }
+}
+
+impl<T: DatagramSocket + Unpin> Sink<(Bytes, SocketAddr)> for DatagramSocketStream<T> {
+    type Error = anyhow::Error;
+
+    fn poll_ready(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
+        todo!()
+    }
+
+    fn start_send(self: Pin<&mut Self>, item: (Bytes, SocketAddr)) -> Result<(), Self::Error> {
+        todo!()
+    }
+
+    fn poll_flush(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
+        Poll::Ready(Ok(()))
+    }
+
+    fn poll_close(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
+        Poll::Ready(Ok(()))
     }
 }
 

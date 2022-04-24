@@ -4,7 +4,10 @@ use futures::future::FusedFuture;
 use futures::io::copy;
 use futures::{select, AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt, Future, FutureExt};
 use serde::{de::DeserializeOwned, Serialize};
+use std::marker::PhantomData;
+use std::pin::Pin;
 use std::sync::Arc;
+use std::task::Poll;
 
 use crate::counter::Counter;
 

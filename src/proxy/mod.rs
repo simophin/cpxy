@@ -10,7 +10,7 @@ use protocol::{ProxyRequest, ProxyResult};
 use std::time::{Duration, Instant};
 
 pub mod protocol;
-pub mod udp;
+pub mod udp_stream;
 
 pub async fn request_proxy_upstream_http(
     upstream_url: &HttpUrl<'_>,

@@ -11,7 +11,7 @@ use futures::{AsyncRead, AsyncReadExt, AsyncWrite, FutureExt};
 use crate::{
     proxy::{
         protocol::ProxyResult,
-        udp::{PacketReader, PacketWriter},
+        udp_stream::{PacketReader, PacketWriter},
     },
     rt::net::UdpSocket,
     socks5::Address,

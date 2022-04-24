@@ -1,3 +1,4 @@
+mod common;
 mod handler;
 mod http;
 mod stats;

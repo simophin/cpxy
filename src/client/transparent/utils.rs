@@ -3,13 +3,16 @@ use std::{
     mem::{size_of, MaybeUninit},
     net::{Ipv4Addr, Ipv6Addr, SocketAddr, SocketAddrV4, SocketAddrV6},
     os::unix::prelude::{AsRawFd, FromRawFd, RawFd},
+    pin::Pin,
+    task::Poll,
 };
 
 use anyhow::Context;
-use async_trait::async_trait;
 use bytes::Bytes;
+use futures::ready;
 use nix::sys::socket::{
-    setsockopt, sockopt::IpTransparent, AddressFamily, InetAddr, SockAddr, SockFlag, SockProtocol,
+    setsockopt, sockopt::IpTransparent, AddressFamily, SockFlag, SockProtocol, SockaddrIn,
+    SockaddrIn6,
 };
 
 use libc::{
@@ -63,8 +66,11 @@ pub fn bind_transparent_udp(
         }
     }
 
-    nix::sys::socket::bind(socket, &SockAddr::Inet(InetAddr::from_std(&addr)))
-        .with_context(|| format!("Binding on {addr}"))?;
+    match addr {
+        SocketAddr::V4(addr) => nix::sys::socket::bind(socket, &SockaddrIn::from(addr)),
+        SocketAddr::V6(addr) => nix::sys::socket::bind(socket, &SockaddrIn6::from(addr)),
+    }
+    .with_context(|| format!("Binding on {addr}"))?;
 
     log::debug!("UDP tproxy bound on {addr}");
 
@@ -158,18 +164,23 @@ struct TransparentUdpSocket(UdpSocket);
 impl DatagramSocket for TransparentUdpSocket {
     type RecvType = (Bytes, SocketAddr, SocketAddr);
 
-    async fn send_dgram(&self, buf: &[u8], addr: SocketAddr) -> std::io::Result<usize> {
-        self.0.send_dgram(buf, addr).await
+    fn poll_recv(
+        self: std::pin::Pin<&Self>,
+        cx: &mut std::task::Context<'_>,
+    ) -> Poll<std::io::Result<Self::RecvType>> {
+        ready!(Pin::new(&self.0).poll_readable(cx))?;
+        let mut buf = new_vec_for_udp();
+        let (len, src, dst) = recv_with_orig_dst(self.0.as_raw_fd(), &mut buf)?;
+        buf.set_len_uninit(len);
+        Poll::Ready(Ok((buf.into(), src, dst)))
     }
 
-    async fn recv_dgram(&self) -> std::io::Result<Self::RecvType> {
-        self.0
-            .read_with(|socket| {
-                let mut buf = new_vec_for_udp();
-                let (len, src, dst) = recv_with_orig_dst(socket.as_raw_fd(), &mut buf)?;
-                buf.set_len_uninit(len);
-                Ok((buf.into(), src, dst))
-            })
-            .await
+    fn poll_send(
+        self: std::pin::Pin<&Self>,
+        cx: &mut std::task::Context<'_>,
+        buf: &[u8],
+        addr: SocketAddr,
+    ) -> Poll<std::io::Result<usize>> {
+        Pin::new(&self.0).poll_send(cx, buf, addr)
     }
 }
