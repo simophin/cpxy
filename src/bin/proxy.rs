@@ -87,7 +87,8 @@ fn main() -> anyhow::Result<()> {
                 .await
             }
             Command::Bench { config } => {
-                proxy::bench_client::run_perf_tests(Path::new(&config)).await
+                todo!()
+                // proxy::bench_client::run_perf_tests(Path::new(&config)).await
             }
         }
     })

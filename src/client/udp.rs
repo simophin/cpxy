@@ -9,13 +9,14 @@ use std::{
 
 use crate::{
     io::{bind_udp, send_to_addr},
+    protocol::Protocol,
     rt::{
         mpsc::{Receiver, Sender},
         spawn, Task, TimeoutExt,
     },
     utils::{new_vec_for_udp, new_vec_uninitialised, race, VecExt},
 };
-use anyhow::{bail, Context};
+use anyhow::{anyhow, Context};
 use bytes::Bytes;
 use futures::{AsyncRead, AsyncReadExt, AsyncWrite, FutureExt, StreamExt};
 
@@ -26,7 +27,7 @@ use crate::{
     socks5::UdpRepr as Socks5UdpRepr, udp_relay::new_udp_relay,
 };
 
-use super::{utils::request_best_upstream, ClientStatistics, UpstreamStatistics};
+use super::{ClientStatistics, UpstreamStatistics};
 
 const UDP_IDLING_TIMEOUT: Duration = Duration::from_secs(60);
 
@@ -52,40 +53,27 @@ pub async fn serve_udp_proxy_conn(
     let pkt = rx.next().await.context("Waiting for first packet")?;
     let addr = pkt.addr().into_owned();
 
-    match request_best_upstream(
-        c,
-        stats,
-        &addr,
-        &ProxyRequest::UDP {
-            initial_dst: pkt.addr(),
-            initial_data: Cow::Borrowed(pkt.payload()),
-        },
-    )
-    .await
-    {
-        Ok((_, upstream, stat)) => {
-            return race(
-                copy_between_relay_and_stream(tx, rx, upstream, stat)
-                    .boxed()
-                    .fuse(),
-                drain_socks(&mut stream).boxed().fuse(),
-            )
-            .await;
-        }
-        Err(e) => {
-            log::warn!("Error requesting best upstream for UDP://{addr}: {e:?}");
-        }
+    let req = ProxyRequest::UDP {
+        initial_dst: pkt.addr(),
+        initial_data: Cow::Borrowed(pkt.payload()),
     };
+    let mut upstreams = c.find_best_upstream(&req, stats, &addr);
+    let mut last_error = None;
 
-    if c.allow_direct(&addr) {
-        return race(
-            serve_udp_relay_directly(is_v4, tx, rx).boxed().fuse(),
-            drain_socks(&mut stream).boxed().fuse(),
-        )
-        .await;
+    while let Some((name, upstream)) = upstreams.pop() {
+        log::debug!("Trying upstream {name} for {req:?}");
+        let conn = match upstream.protocol.new_dgram_conn(&req).await {
+            Ok(v) => v,
+            Err(e) => {
+                last_error.replace(e);
+                continue;
+            }
+        };
+
+        return Ok(());
     }
 
-    bail!("There's no where for UDP packet to go")
+    Err(last_error.unwrap_or_else(|| anyhow!("No upstreams available for {req:?}")))
 }
 
 async fn serve_udp_relay_directly(

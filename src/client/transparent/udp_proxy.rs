@@ -2,21 +2,23 @@ use std::{collections::HashMap, net::SocketAddr, sync::Arc, time::Duration};
 
 use anyhow::{bail, Context};
 use bytes::Bytes;
-use futures::{select, FutureExt, StreamExt};
+use futures::{select, FutureExt, Sink, Stream, StreamExt};
 use parking_lot::Mutex;
 
-use crate::{
-    io::DatagramSocket,
-    rt::{
-        mpsc::{bounded, Receiver},
-        spawn, Task, TimeoutExt,
-    },
+use crate::rt::{
+    mpsc::{bounded, Receiver},
+    spawn, Task, TimeoutExt,
 };
 
 use super::utils::bind_transparent_udp;
 
 pub async fn serve_udp_on_dgram(
-    upstream: impl DatagramSocket<RecvType = (Bytes, SocketAddr)> + Unpin + Send + Sync + 'static,
+    upstream: impl Stream<Item = (Bytes, SocketAddr, SocketAddr)>
+        + Sink<(Bytes, SocketAddr, SocketAddr), Error = anyhow::Error>
+        + Unpin
+        + Send
+        + Sync
+        + 'static,
     src: SocketAddr,
     dst: SocketAddr,
     mut rx: Receiver<Bytes>,

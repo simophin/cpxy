@@ -1,61 +1,55 @@
-use std::net::SocketAddr;
-use std::sync::Arc;
+use anyhow::{anyhow, Context};
+use futures::{AsyncRead, AsyncWrite};
 
-use bytes::Bytes;
-use futures::io::{ReadHalf, WriteHalf};
-use futures::{AsyncRead, AsyncReadExt, AsyncWrite, Future, FutureExt};
+use crate::{
+    config::ClientConfig, handshake::Handshaker, protocol::Protocol, proxy::protocol::ProxyRequest,
+    socks5::Address, utils::copy_duplex,
+};
 
-use crate::counter::Counter;
-use crate::io::DatagramSocket;
-use crate::rt::{spawn, Task};
-use crate::utils::{copy_duplex, race};
+use super::ClientStatistics;
 
-pub async fn serve_stream_over_stream(
-    stream: impl AsyncRead + AsyncWrite + Unpin + Send + Sync + 'static,
-    upstream: impl AsyncRead + AsyncWrite + Unpin + Send + Sync + 'static,
-    txc: Option<Arc<Counter>>,
-    rxc: Option<Arc<Counter>>,
+pub async fn serve_stream_based_conn(
+    dst: Address<'_>,
+    proxy_request: &ProxyRequest<'_>,
+    config: &ClientConfig,
+    stats: &ClientStatistics,
+    mut stream: impl AsyncRead + AsyncWrite + Unpin + Send + Sync,
+    handshaker: Handshaker,
 ) -> anyhow::Result<()> {
-    copy_duplex(stream, upstream, txc, rxc).await
-}
+    let mut upstreams = config.find_best_upstream(&proxy_request, stats, &dst);
 
-pub async fn serve_dgram_over_stream<S, UploadFut, DownloadFut>(
-    dgram: Arc<impl DatagramSocket<RecvType = (Bytes, SocketAddr)> + Unpin + Send + Sync + 'static>,
-    upstream: S,
-    mut dgram_writer: impl FnMut(&mut WriteHalf<S>, Bytes, SocketAddr) -> UploadFut
-        + Send
-        + Sync
-        + 'static,
-    mut dgram_reader: impl FnMut(&mut ReadHalf<S>) -> DownloadFut + Send + Sync + 'static,
-    txc: Option<Arc<Counter>>,
-    rxc: Option<Arc<Counter>>,
-) -> anyhow::Result<()>
-where
-    S: AsyncRead + AsyncWrite + Unpin + Send + Sync + 'static,
-    UploadFut: Future<Output = anyhow::Result<usize>> + Send + Sync,
-    DownloadFut: Future<Output = anyhow::Result<(Bytes, SocketAddr, usize)>> + Send + Sync,
-{
-    let (mut upstream_r, mut upstream_w) = upstream.split();
-    let upload_task: Task<anyhow::Result<()>> = {
-        let dgram = dgram.clone();
-        let txc = txc.unwrap_or_default();
-        spawn(async move {
-            loop {
-                let (data, dst) = dgram.recv_dgram().await?;
-                let len = dgram_writer(&mut upstream_w, data, dst).await?;
-                txc.inc(len);
+    let mut last_error = None;
+
+    while let Some((name, config)) = upstreams.pop() {
+        log::debug!("Trying {proxy_request:?} on {name}");
+
+        match config
+            .protocol
+            .new_stream_conn(&proxy_request)
+            .await
+            .with_context(|| format!("Requesting new streaming connection from {name}"))
+        {
+            Ok((upstream, latency)) => {
+                handshaker
+                    .respond_ok(&mut stream, None)
+                    .await
+                    .context("Responding OK to handshaker")?;
+                log::debug!("{proxy_request:?} connected on {name}");
+                let (tx, rx) = match stats.upstreams.get(name) {
+                    Some(s) => (Some(s.tx.clone()), Some(s.rx.clone())),
+                    None => (None, None),
+                };
+
+                stats.update_upstream(name, latency);
+                return copy_duplex(stream, upstream, tx, rx).await;
             }
-        })
-    };
+            Err(err) => last_error.replace(err),
+        };
+    }
 
-    let rxc = rxc.unwrap_or_default();
-    let download_task: Task<anyhow::Result<()>> = spawn(async move {
-        loop {
-            let (data, dst, read_len) = dgram_reader(&mut upstream_r).await?;
-            rxc.inc(read_len);
-            dgram.send_dgram(&data, dst).await?;
-        }
-    });
-
-    race(upload_task.fuse(), download_task.fuse()).await
+    handshaker
+        .respond_err(&mut stream)
+        .await
+        .context("Responding Err to handshaker")?;
+    Err(last_error.unwrap_or_else(|| anyhow!("No upstreams available")))
 }

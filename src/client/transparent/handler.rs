@@ -2,7 +2,7 @@ use std::{borrow::Cow, collections::HashMap, net::SocketAddr, sync::Arc, time::D
 
 use crate::{
     config::ClientConfig,
-    io::{bind_udp, DatagramSocket},
+    io::bind_udp,
     proxy::protocol::ProxyRequest,
     rt::{
         mpsc::{bounded, Sender, TrySendError},
@@ -15,7 +15,7 @@ use bytes::Bytes;
 use futures::StreamExt;
 use futures_util::{select, FutureExt};
 
-use super::super::{utils::request_best_upstream, ClientStatistics};
+use super::super::ClientStatistics;
 use super::utils::bind_transparent_udp;
 
 struct UdpSession {
@@ -34,7 +34,7 @@ pub async fn serve_udp_transparent_proxy(
     config: Arc<ClientConfig>,
     stats: Arc<ClientStatistics>,
 ) -> anyhow::Result<Task<anyhow::Result<()>>> {
-    let socket = bind_transparent_udp(addr).context("Binding UDP socket")?;
+    let mut socket = bind_transparent_udp(addr).context("Binding UDP socket")?;
     log::info!("Started UDP transparent proxy at {addr}");
     Ok(spawn(async move {
         let mut sessions: HashMap<UdpSessionKey, UdpSession> = Default::default();
@@ -49,12 +49,11 @@ pub async fn serve_udp_transparent_proxy(
                     continue;
                 }
 
-                r = socket.recv_dgram().fuse() => {
+                r = socket.next().fuse() => {
                     match r {
-                        Ok(v) => v,
-                        Err(e) => {
-                            log::error!("Error receiving TProxy packet: {e:?}");
-                            return Err(e.into());
+                        Some(v) => v,
+                        None => {
+                            return Ok(())
                         }
                     }
                 }
@@ -100,54 +99,55 @@ impl UdpSession {
         let (tx, rx) = bounded(10);
         let dst_addr: Address = dst.into();
         let _task = spawn(async move {
-            let upstream = match request_best_upstream(
-                &config,
-                &stats,
-                &dst_addr,
-                &ProxyRequest::UDP {
-                    initial_dst: dst_addr.clone(),
-                    initial_data: Cow::Borrowed(&initial_data),
-                },
-            )
-            .await
-            {
-                Ok((_, stream, stats)) => Some((stream, stats)),
-                Err(err) => {
-                    log::error!("Error requesting upstream: {err:?}");
-                    None
-                }
-            };
+            todo!()
+            // let upstream = match request_best_upstream(
+            //     &config,
+            //     &stats,
+            //     &dst_addr,
+            //     &ProxyRequest::UDP {
+            //         initial_dst: dst_addr.clone(),
+            //         initial_data: Cow::Borrowed(&initial_data),
+            //     },
+            // )
+            // .await
+            // {
+            //     Ok((_, stream, stats)) => Some((stream, stats)),
+            //     Err(err) => {
+            //         log::error!("Error requesting upstream: {err:?}");
+            //         None
+            //     }
+            // };
 
-            let result = if let Some((upstream, stats)) = upstream {
-                // Proxy through upstream
-                super::proxy::serve_udp_on_stream(
-                    src,
-                    dst_addr,
-                    rx,
-                    upstream,
-                    stats,
-                    Duration::from_secs(60),
-                )
-                .await
-            } else if config.allow_direct(&dst_addr) {
-                // Direct connect
-                super::udp_proxy::serve_udp_on_dgram(
-                    bind_udp(matches!(dst, SocketAddr::V4(_)))
-                        .await
-                        .with_context(|| format!("Binding direct socket for client {src}"))?,
-                    src,
-                    dst,
-                    rx,
-                    initial_data,
-                    Duration::from_secs(60),
-                )
-                .await
-            } else {
-                Ok(())
-            };
+            // let result = if let Some((upstream, stats)) = upstream {
+            //     // Proxy through upstream
+            //     super::proxy::serve_udp_on_stream(
+            //         src,
+            //         dst_addr,
+            //         rx,
+            //         upstream,
+            //         stats,
+            //         Duration::from_secs(60),
+            //     )
+            //     .await
+            // } else if config.allow_direct(&dst_addr) {
+            //     // Direct connect
+            //     super::udp_proxy::serve_udp_on_dgram(
+            //         bind_udp(matches!(dst, SocketAddr::V4(_)))
+            //             .await
+            //             .with_context(|| format!("Binding direct socket for client {src}"))?,
+            //         src,
+            //         dst,
+            //         rx,
+            //         initial_data,
+            //         Duration::from_secs(60),
+            //     )
+            //     .await
+            // } else {
+            //     Ok(())
+            // };
 
-            clean_up.send(UdpSessionKey { src, dst }).await?;
-            result
+            // clean_up.send(UdpSessionKey { src, dst }).await?;
+            // result
         });
 
         Self { tx, _task }

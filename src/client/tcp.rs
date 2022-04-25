@@ -1,71 +1,28 @@
-use std::{net::SocketAddr, time::Duration};
-
-use anyhow::{anyhow, bail, Context};
+use anyhow::Context;
 use futures::{AsyncRead, AsyncWrite};
 
 use crate::{
-    config::ClientConfig,
-    handshake::Handshaker,
-    io::{connect_tcp, TcpStreamExt},
-    proxy::protocol::ProxyRequest,
-    rt::TimeoutExt,
-    socks5::Address,
-    utils::copy_duplex,
+    config::ClientConfig, handshake::Handshaker, proxy::protocol::ProxyRequest, socks5::Address,
 };
 
-use super::{utils::request_best_upstream, ClientStatistics};
+use super::ClientStatistics;
 
 pub async fn serve_tcp_proxy_conn(
     dst: Address<'_>,
     config: &ClientConfig,
     stats: &ClientStatistics,
-    mut stream: impl AsyncRead + AsyncWrite + Unpin + Send + Sync,
+    stream: impl AsyncRead + AsyncWrite + Unpin + Send + Sync,
     handshaker: Handshaker,
 ) -> anyhow::Result<()> {
     let proxy_request = ProxyRequest::TCP { dst: dst.clone() };
-    if let Ok((bound, upstream, stats)) =
-        request_best_upstream(config, stats, &dst, &proxy_request).await
-    {
-        handshaker.respond_ok(&mut stream, bound).await?;
-        copy_duplex(
-            upstream,
-            stream,
-            stats.map(|s| s.rx.clone()),
-            stats.map(|s| s.tx.clone()),
-        )
-        .await
-        .context("Redirecting upstream traffic")
-    } else if config.allow_direct(&dst) {
-        match prepare_direct_tcp(config, &dst).await {
-            Ok((bound, upstream)) => {
-                handshaker.respond_ok(&mut stream, bound).await?;
-                copy_duplex(upstream, stream, None, None).await
-            }
-
-            Err(err) => {
-                handshaker.respond_err(&mut stream).await?;
-                return Err(err);
-            }
-        }
-    } else {
-        handshaker.respond_err(&mut stream).await?;
-        bail!("No where to direct TCP traffic");
-    }
-}
-
-async fn prepare_direct_tcp(
-    config: &ClientConfig,
-    dst: &Address<'_>,
-) -> anyhow::Result<(
-    Option<SocketAddr>,
-    impl AsyncRead + AsyncWrite + Unpin + Send + Sync,
-)> {
-    let stream = connect_tcp(dst)
-        .timeout(Duration::from_secs(2))
-        .await
-        .ok_or_else(|| anyhow!("Timeout connecting to {dst}"))??;
-    if let Some(fwmark) = config.fwmark {
-        stream.set_sock_mark(fwmark)?;
-    }
-    Ok((stream.local_addr().ok(), stream))
+    super::common::serve_stream_based_conn(
+        dst.clone(),
+        &proxy_request,
+        config,
+        stats,
+        stream,
+        handshaker,
+    )
+    .await
+    .with_context(|| format!("Proxying TCP connection to {dst}"))
 }

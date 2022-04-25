@@ -1,10 +1,11 @@
 use anyhow::anyhow;
+use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::fmt::{Display, Formatter};
 use std::net::{IpAddr, Ipv4Addr, SocketAddr};
 use std::str::FromStr;
-use std::time::UNIX_EPOCH;
+use std::time::{Duration, UNIX_EPOCH};
 
 use ipnetwork::IpNetwork;
 use serde_with::{DeserializeFromStr, SerializeDisplay};
@@ -13,6 +14,8 @@ use crate::abp::{adblock_list_engine, gfw_list_engine};
 use crate::client::ClientStatistics;
 use crate::geoip::{find_geoip, CountryCode};
 use crate::pattern::Pattern;
+use crate::protocol::{AsyncDgram, AsyncStream, Protocol};
+use crate::proxy::protocol::ProxyRequest;
 use crate::socks5::Address;
 
 #[derive(Debug, Clone, DeserializeFromStr, SerializeDisplay)]
@@ -92,11 +95,38 @@ const fn default_upstream_enabled() -> bool {
     true
 }
 
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
+#[serde(tag = "type")]
+pub enum UpstreamProtocol {
+    TcpMan(super::protocol::tcpman::TcpMan),
+}
+
+#[async_trait]
+impl Protocol for UpstreamProtocol {
+    fn supports(&self, req: &ProxyRequest<'_>) -> bool {
+        match self {
+            UpstreamProtocol::TcpMan(p) => p.supports(req),
+        }
+    }
+
+    async fn new_stream_conn(
+        &self,
+        req: &ProxyRequest<'_>,
+    ) -> anyhow::Result<(Box<dyn AsyncStream>, Duration)> {
+        match self {
+            UpstreamProtocol::TcpMan(p) => p.new_stream_conn(req).await,
+        }
+    }
+    async fn new_dgram_conn(&self, req: &ProxyRequest<'_>) -> anyhow::Result<Box<dyn AsyncDgram>> {
+        match self {
+            UpstreamProtocol::TcpMan(p) => p.new_dgram_conn(req).await,
+        }
+    }
+}
+
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct UpstreamConfig {
-    pub address: Address<'static>,
-    #[serde(default)]
-    pub tls: bool,
+    pub protocol: UpstreamProtocol,
     #[serde(default)]
     pub accept: Vec<TrafficMatchRule>,
     #[serde(default)]
@@ -159,12 +189,6 @@ pub struct ClientConfig {
     #[serde(default)]
     pub upstreams: HashMap<String, UpstreamConfig>,
 
-    #[serde(default)]
-    pub direct_accept: Vec<TrafficMatchRule>,
-
-    #[serde(default)]
-    pub direct_reject: Vec<TrafficMatchRule>,
-
     #[serde(default = "default_socks5_address")]
     pub socks5_address: SocketAddr,
 
@@ -181,13 +205,9 @@ pub struct ClientConfig {
 impl Default for ClientConfig {
     fn default() -> Self {
         Self {
-            upstreams: Default::default(),
             socks5_address: default_socks5_address(),
             socks5_udp_host: default_socks5_udp_host(),
-            direct_accept: Default::default(),
-            direct_reject: Default::default(),
-            fwmark: Default::default(),
-            udp_tproxy_address: Default::default(),
+            ..Default::default()
         }
     }
 }
@@ -207,8 +227,10 @@ impl ClientConfig {
         }) as usize
     }
 
+    // Sorted by score MIN -> MAX
     pub fn find_best_upstream(
         &self,
+        req: &ProxyRequest,
         stats: &ClientStatistics,
         target: &Address,
     ) -> Vec<(&str, &UpstreamConfig)> {
@@ -225,9 +247,17 @@ impl ClientConfig {
             // Find suitable upstreams first
             self.upstreams
                 .iter()
-                .filter_map(|(n, c)| match c.calc_score(target, country_code) {
-                    0 => None,
-                    score => Some((n.as_str(), c, score + Self::calc_last_visit_score(stats, n))),
+                .filter_map(|(n, c)| {
+                    if !c.protocol.supports(req) {
+                        return None;
+                    }
+
+                    match c.calc_score(target, country_code) {
+                        0 => None,
+                        score => {
+                            Some((n.as_str(), c, score + Self::calc_last_visit_score(stats, n)))
+                        }
+                    }
                 })
                 .filter(|(_, _, score)| *score > 0)
                 .collect()
@@ -235,36 +265,5 @@ impl ClientConfig {
 
         upstreams.sort_by_key(|(_, _, score)| *score);
         upstreams.into_iter().map(|(n, c, _)| (n, c)).collect()
-    }
-
-    pub fn allow_direct(&self, target: &Address) -> bool {
-        let (ip, country_code) = match target {
-            Address::IP(addr) => (Some(addr.ip()), find_geoip(&addr.ip())),
-            _ => (None, None),
-        };
-
-        if !self.direct_accept.is_empty() {
-            if self
-                .direct_accept
-                .iter()
-                .find(|r| r.calc_match_score(country_code, ip, target) > 0)
-                .is_none()
-            {
-                return false;
-            }
-        }
-
-        if !self.direct_reject.is_empty() {
-            if self
-                .direct_reject
-                .iter()
-                .find(|r| r.calc_match_score(country_code, ip, target) > 0)
-                .is_some()
-            {
-                return false;
-            }
-        }
-
-        true
     }
 }

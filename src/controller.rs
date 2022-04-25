@@ -128,7 +128,7 @@ impl Controller {
         {
             let stats = if let Some(old_name) = old_name {
                 match new_config.upstreams.remove(&old_name) {
-                    Some(upstream) if upstream.address == config.address => {
+                    Some(upstream) if upstream.protocol == config.protocol => {
                         // Reuse the stats
                         new_stats.upstreams.remove(&old_name)
                     }

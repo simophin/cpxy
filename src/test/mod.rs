@@ -97,37 +97,38 @@ pub async fn run_test_client(upstream_address: SocketAddr) -> (Task<()>, SocketA
     let listener = bind_tcp(&Default::default()).await.unwrap();
     let addr = listener.local_addr().unwrap();
 
-    (
-        {
-            let socks5_address = addr.clone();
-            spawn(async move {
-                let config = ClientConfig {
-                    socks5_address,
-                    direct_accept: Default::default(),
-                    direct_reject: Default::default(),
-                    upstreams: hashmap! {
-                        String::from("echo") => UpstreamConfig {
-                            address: Address::IP(upstream_address),
-                            tls: false,
-                            accept: Default::default(),
-                            reject: Default::default(),
-                            priority: 0,
-                            enabled: true
-                        }
-                    },
-                    socks5_udp_host: "0.0.0.0".parse().unwrap(),
-                    fwmark: None,
-                    udp_tproxy_address: None,
-                };
-                let stats = ClientStatistics::new(&config);
+    todo!()
+    // (
+    //     {
+    //         let socks5_address = addr.clone();
+    //         spawn(async move {
+    //             let config = ClientConfig {
+    //                 socks5_address,
+    //                 direct_accept: Default::default(),
+    //                 direct_reject: Default::default(),
+    //                 upstreams: hashmap! {
+    //                     String::from("echo") => UpstreamConfig {
+    //                         address: Address::IP(upstream_address),
+    //                         tls: false,
+    //                         accept: Default::default(),
+    //                         reject: Default::default(),
+    //                         priority: 0,
+    //                         enabled: true
+    //                     }
+    //                 },
+    //                 socks5_udp_host: "0.0.0.0".parse().unwrap(),
+    //                 fwmark: None,
+    //                 udp_tproxy_address: None,
+    //             };
+    //             let stats = ClientStatistics::new(&config);
 
-                run_proxy_with(listener, Arc::new(config), Arc::new(stats))
-                    .await
-                    .unwrap();
-            })
-        },
-        addr,
-    )
+    //             run_proxy_with(listener, Arc::new(config), Arc::new(stats))
+    //                 .await
+    //                 .unwrap();
+    //         })
+    //     },
+    //     addr,
+    // )
 }
 
 pub async fn run_test_server() -> (Task<()>, SocketAddr) {

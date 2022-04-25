@@ -1,4 +1,5 @@
 use std::{
+    collections::HashMap,
     io::ErrorKind,
     mem::{size_of, MaybeUninit},
     net::{Ipv4Addr, Ipv6Addr, SocketAddr, SocketAddrV4, SocketAddrV6},
@@ -9,7 +10,7 @@ use std::{
 
 use anyhow::Context;
 use bytes::Bytes;
-use futures::ready;
+use futures::{ready, Sink, Stream};
 use nix::sys::socket::{
     setsockopt, sockopt::IpTransparent, AddressFamily, SockFlag, SockProtocol, SockaddrIn,
     SockaddrIn6,
@@ -21,17 +22,11 @@ use libc::{
 };
 
 use crate::{
-    io::DatagramSocket,
     rt::net::UdpSocket,
     utils::{new_vec_for_udp, VecExt},
 };
 
-#[allow(dead_code)]
-pub fn bind_transparent_udp(
-    addr: SocketAddr,
-) -> anyhow::Result<
-    impl DatagramSocket<RecvType = (Bytes, SocketAddr, SocketAddr)> + Unpin + Send + Sync + Sized,
-> {
+fn new_tsock(addr: SocketAddr) -> anyhow::Result<UdpSocket> {
     let socket = nix::sys::socket::socket(
         match &addr {
             SocketAddr::V4(_) => AddressFamily::Inet,
@@ -74,9 +69,26 @@ pub fn bind_transparent_udp(
 
     log::debug!("UDP tproxy bound on {addr}");
 
-    Ok(TransparentUdpSocket(UdpSocket::try_from(unsafe {
+    Ok(UdpSocket::try_from(unsafe {
         std::net::UdpSocket::from_raw_fd(socket)
-    })?))
+    })?)
+}
+
+#[allow(dead_code)]
+pub fn bind_transparent_udp(
+    addr: SocketAddr,
+) -> anyhow::Result<
+    impl Stream<Item = (Bytes, SocketAddr, SocketAddr)>
+        + Sink<(Bytes, SocketAddr, SocketAddr), Error = anyhow::Error>
+        + Unpin
+        + Send
+        + Sync
+        + Sized,
+> {
+    Ok(TransparentUdpSocket {
+        main: new_tsock(addr)?,
+        senders: Default::default(),
+    })
 }
 
 fn recv_with_orig_dst(
@@ -159,28 +171,104 @@ extern "C" {
     ) -> ssize_t;
 }
 
-struct TransparentUdpSocket(UdpSocket);
+struct TransparentUdpSocket {
+    main: UdpSocket,
+    senders: HashMap<SocketAddr, UdpSocket>,
+}
 
-impl DatagramSocket for TransparentUdpSocket {
-    type RecvType = (Bytes, SocketAddr, SocketAddr);
+impl Stream for TransparentUdpSocket {
+    type Item = (Bytes, SocketAddr, SocketAddr);
 
-    fn poll_recv(
-        self: std::pin::Pin<&Self>,
+    fn poll_next(
+        self: Pin<&mut Self>,
         cx: &mut std::task::Context<'_>,
-    ) -> Poll<std::io::Result<Self::RecvType>> {
-        ready!(Pin::new(&self.0).poll_readable(cx))?;
+    ) -> Poll<Option<Self::Item>> {
+        ready!(Pin::new(&self.main).poll_readable(cx));
         let mut buf = new_vec_for_udp();
-        let (len, src, dst) = recv_with_orig_dst(self.0.as_raw_fd(), &mut buf)?;
-        buf.set_len_uninit(len);
-        Poll::Ready(Ok((buf.into(), src, dst)))
-    }
-
-    fn poll_send(
-        self: std::pin::Pin<&Self>,
-        cx: &mut std::task::Context<'_>,
-        buf: &[u8],
-        addr: SocketAddr,
-    ) -> Poll<std::io::Result<usize>> {
-        Pin::new(&self.0).poll_send(cx, buf, addr)
+        match recv_with_orig_dst(self.main.as_raw_fd(), &mut buf) {
+            Ok((len, src, dst)) => {
+                buf.set_len_uninit(len);
+                Poll::Ready(Some((buf, src, dst)))
+            }
+            Err(e) => Poll::Ready(None),
+        }
     }
 }
+
+impl Sink<(Bytes, SocketAddr, SocketAddr)> for TransparentUdpSocket {
+    type Error = anyhow::Result<()>;
+
+    fn poll_ready(
+        self: Pin<&mut Self>,
+        cx: &mut std::task::Context<'_>,
+    ) -> Poll<Result<(), Self::Error>> {
+        Poll::Ready(Ok(()))
+    }
+
+    fn start_send(
+        self: Pin<&mut Self>,
+        item: (Bytes, SocketAddr, SocketAddr),
+    ) -> Result<(), Self::Error> {
+        let (data, dst, orig_dst) = item;
+        match self.senders.get(&orig_dst) {
+            Some(v) => match Pin::new(v).try_send_to(&data, dst)? {
+                Some(_) => Poll::Ready(Ok(())),
+                None => Poll::Pending,
+            },
+            None => {
+                let sender = new_tsock(orig_dst)?;
+                let r = match Pin::new(&sender).try_send_to(&data, dst)? {
+                    Some(_) => Poll::Ready(Ok),
+                    None => Poll::Pending,
+                };
+                self.senders.insert(orig_dst, sender);
+                r
+            }
+        }
+    }
+
+    fn poll_flush(
+        self: Pin<&mut Self>,
+        cx: &mut std::task::Context<'_>,
+    ) -> Poll<Result<(), Self::Error>> {
+        Poll::Ready(Ok(()))
+    }
+
+    fn poll_close(
+        self: Pin<&mut Self>,
+        cx: &mut std::task::Context<'_>,
+    ) -> Poll<Result<(), Self::Error>> {
+        Poll::Ready(Ok(()))
+    }
+}
+
+// impl DatagramSocket for TransparentUdpSocket {
+//     type RecvType = (Bytes, SocketAddr, SocketAddr);
+
+//     fn poll_recv(
+//         self: std::pin::Pin<&Self>,
+//         cx: &mut std::task::Context<'_>,
+//     ) -> Poll<std::io::Result<Self::RecvType>> {
+//         ready!(Pin::new(&self.0).poll_readable(cx))?;
+//         let mut buf = new_vec_for_udp();
+//         let (len, src, dst) = recv_with_orig_dst(self.0.as_raw_fd(), &mut buf)?;
+//         buf.set_len_uninit(len);
+//         Poll::Ready(Ok((buf.into(), src, dst)))
+//     }
+
+//     fn poll_send(
+//         self: std::pin::Pin<&Self>,
+//         cx: &mut std::task::Context<'_>,
+//         buf: &[u8],
+//         addr: SocketAddr,
+//     ) -> Poll<std::io::Result<usize>> {
+//         Pin::new(&self.0).poll_send(cx, buf, addr)
+//     }
+
+//     fn poll_send_ready(
+//         self: Pin<&Self>,
+//         cx: &mut std::task::Context<'_>,
+//     ) -> Poll<std::io::Result<()>> {
+//         Pin::new(&self.0).poll_writable(cx)
+//     }
+// }

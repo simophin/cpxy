@@ -1,4 +1,4 @@
-pub mod bench_client;
+// pub mod bench_client;
 mod broadcast;
 mod buf;
 mod cipher;
@@ -9,6 +9,7 @@ mod handshake;
 mod http;
 mod parse;
 mod pattern;
+mod protocol;
 pub mod proxy;
 pub mod rt;
 pub mod server;
