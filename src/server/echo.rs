@@ -1,12 +1,12 @@
 use bytes::Bytes;
-use futures::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt, StreamExt};
+use futures::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt, SinkExt, StreamExt};
 
 use crate::{
     proxy::{
         protocol::ProxyResult,
         udp_stream::{PacketReader, PacketWriter},
     },
-    rt::{mpsc::bounded, spawn, Task},
+    rt::{mpsc::channel, spawn, Task},
     utils::{new_vec_for_udp, write_bincode_lengthed_async, VecExt},
 };
 
@@ -23,7 +23,7 @@ pub async fn serve_tcp(
     .await?;
 
     let (mut r, mut w) = stream.split();
-    let (tx, mut rx) = bounded::<Bytes>(2);
+    let (mut tx, mut rx) = channel::<Bytes>(2);
 
     let task: Task<anyhow::Result<()>> = spawn(async move {
         while let Some(buf) = rx.next().await {
@@ -39,7 +39,7 @@ pub async fn serve_tcp(
             break;
         }
         buf.set_len_uninit(len);
-        tx.send(buf.into()).await?;
+        tx.feed(buf.into()).await?;
     }
 
     task.await

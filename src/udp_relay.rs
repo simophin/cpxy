@@ -5,11 +5,11 @@ use std::{
 
 use anyhow::{anyhow, Context};
 use bytes::Bytes;
-use futures::StreamExt;
+use futures::{SinkExt, StreamExt};
 
 use crate::{
     io::bind_udp,
-    rt::mpsc::{bounded, Receiver, Sender},
+    rt::mpsc::{channel, Receiver, Sender},
     rt::{spawn, Task},
     socks5::UdpPacket,
     utils::{new_vec_for_udp, VecExt},
@@ -25,8 +25,8 @@ pub async fn new_udp_relay(
     let udp = Arc::new(bind_udp(v4).await?);
     let bound_addr = udp.local_addr().context("Getting local_addr")?;
 
-    let (incoming_tx, incoming_rx) = bounded::<UdpPacket<Bytes>>(1);
-    let (outgoing_tx, mut outgoing_rx) = bounded::<UdpPacket<Bytes>>(5);
+    let (mut incoming_tx, incoming_rx) = channel::<UdpPacket<Bytes>>(1);
+    let (outgoing_tx, mut outgoing_rx) = channel::<UdpPacket<Bytes>>(5);
 
     let last_addr: Arc<Mutex<Option<SocketAddr>>> = Default::default();
 
@@ -63,7 +63,7 @@ pub async fn new_udp_relay(
                     .replace(src);
 
                 incoming_tx
-                    .send(UdpPacket::new_checked(buf.into())?)
+                    .feed(UdpPacket::new_checked(buf.into())?)
                     .await?;
             }
         });
@@ -88,7 +88,7 @@ mod tests {
     #[test]
     fn udp_relay_works() -> anyhow::Result<()> {
         block_on(async move {
-            let (relay_addr, tx, mut rx) = new_udp_relay(true).await?;
+            let (relay_addr, mut tx, mut rx) = new_udp_relay(true).await?;
 
             let client = bind_udp(true).await?;
 
@@ -121,7 +121,7 @@ mod tests {
 
             // Receiving
             let reply = b"hello, again!".as_ref();
-            tx.send(
+            tx.feed(
                 UdpRepr {
                     addr: &target_addr,
                     payload: reply,

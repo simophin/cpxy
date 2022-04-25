@@ -18,7 +18,7 @@ use crate::{
 };
 use anyhow::{anyhow, Context};
 use bytes::Bytes;
-use futures::{AsyncRead, AsyncReadExt, AsyncWrite, FutureExt, StreamExt};
+use futures::{AsyncRead, AsyncReadExt, AsyncWrite, FutureExt, SinkExt, StreamExt};
 
 use crate::{
     config::ClientConfig, handshake::Handshaker, proxy::protocol::ProxyRequest,
@@ -78,7 +78,7 @@ pub async fn serve_udp_proxy_conn(
 
 async fn serve_udp_relay_directly(
     v4: bool,
-    tx: Sender<Socks5UdpPacket<Bytes>>,
+    mut tx: Sender<Socks5UdpPacket<Bytes>>,
     mut rx: Receiver<Socks5UdpPacket<Bytes>>,
 ) -> anyhow::Result<()> {
     let socket = Arc::new(bind_udp(v4).await?);
@@ -120,7 +120,7 @@ async fn serve_udp_relay_directly(
 
             log::debug!("UDP -> relay: Packet(len={len}, from={from})",);
 
-            tx.send(
+            tx.feed(
                 Socks5UdpRepr {
                     addr: &from.into(),
                     payload: buf,
@@ -142,7 +142,7 @@ async fn serve_udp_relay_directly(
 }
 
 async fn copy_between_relay_and_stream(
-    tx: Sender<Socks5UdpPacket<Bytes>>,
+    mut tx: Sender<Socks5UdpPacket<Bytes>>,
     mut rx: Receiver<Socks5UdpPacket<Bytes>>,
     stream: impl AsyncRead + AsyncWrite + Unpin + Send + Sync + 'static,
     stats: Option<&UpstreamStatistics>,
@@ -164,7 +164,7 @@ async fn copy_between_relay_and_stream(
                 frag_no: 0,
             };
 
-            tx.send(repr.to_packet()?).await?;
+            tx.feed(repr.to_packet()?).await?;
         }
     });
 
@@ -204,7 +204,7 @@ async fn drain_socks(socks: &mut (impl AsyncRead + Unpin)) -> anyhow::Result<()>
 mod tests {
     use std::time::Duration;
 
-    use crate::rt::{block_on, mpsc::bounded, TimeoutExt};
+    use crate::rt::{block_on, mpsc::channel, TimeoutExt};
     use crate::socks5::Address;
     use crate::test::duplex;
     use crate::utils::VecExt;
@@ -214,8 +214,8 @@ mod tests {
     #[test]
     fn copy_relay_and_proxy_works() {
         block_on(async move {
-            let (relay_in_tx, relay_in_rx) = bounded(2);
-            let (relay_out_tx, mut relay_out_rx) = bounded(2);
+            let (mut relay_in_tx, relay_in_rx) = channel(2);
+            let (relay_out_tx, mut relay_out_rx) = channel(2);
 
             let (near_stream, far_stream) = duplex(10).await;
 
@@ -328,8 +328,8 @@ mod tests {
         block_on(async move {
             let server = bind_udp(true).await.unwrap();
             let dst = server.local_addr().unwrap();
-            let (relay_in_tx, relay_in_rx) = bounded(2);
-            let (relay_out_tx, mut relay_out_rx) = bounded(2);
+            let (mut relay_in_tx, relay_in_rx) = channel(2);
+            let (relay_out_tx, mut relay_out_rx) = channel(2);
 
             let _task = spawn(serve_udp_relay_directly(true, relay_out_tx, relay_in_rx));
 
@@ -359,7 +359,7 @@ mod tests {
             } in packets
             {
                 relay_in_tx
-                    .send(
+                    .feed(
                         Socks5UdpRepr {
                             addr: &dst.into(),
                             payload,

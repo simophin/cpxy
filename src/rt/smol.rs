@@ -86,7 +86,7 @@ pub mod net {
 }
 
 pub mod mpsc {
-    pub use smol::channel::*;
+    pub use futures::channel::mpsc::*;
 }
 
 pub mod fs {

@@ -4,6 +4,10 @@ use derive_more::Deref;
 use futures::Future;
 use pin_project_lite::pin_project;
 
+pub mod mpsc {
+    pub use futures::channel::mpsc::*;
+}
+
 pub fn spawn<T: Send + 'static>(fut: impl Future<Output = T> + Send + 'static) -> Task<T> {
     Task(tokio::spawn(fut))
 }
@@ -42,8 +46,6 @@ pub fn block_on<T>(f: impl Future<Output = T>) -> T {
 pub mod net;
 
 pub mod fs;
-
-pub mod mpsc;
 
 pin_project! {
     pub struct Timeout<T: Future> {
