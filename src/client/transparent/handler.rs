@@ -5,7 +5,7 @@ use crate::{
     io::bind_udp,
     proxy::protocol::ProxyRequest,
     rt::{
-        mpsc::{bounded, Sender, TrySendError},
+        mpsc::{channel, Sender, TrySendError},
         spawn, Task,
     },
     socks5::Address,
@@ -16,7 +16,7 @@ use futures::StreamExt;
 use futures_util::{select, FutureExt};
 
 use super::super::ClientStatistics;
-use super::utils::bind_transparent_udp;
+use super::utils::{bind_transparent_udp_for_reciving, bind_transparent_udp_for_sending};
 
 struct UdpSession {
     tx: Sender<Bytes>,
@@ -34,11 +34,11 @@ pub async fn serve_udp_transparent_proxy(
     config: Arc<ClientConfig>,
     stats: Arc<ClientStatistics>,
 ) -> anyhow::Result<Task<anyhow::Result<()>>> {
-    let mut socket = bind_transparent_udp(addr).context("Binding UDP socket")?;
+    let mut socket = bind_transparent_udp_for_reciving(addr).context("Binding UDP socket")?;
     log::info!("Started UDP transparent proxy at {addr}");
     Ok(spawn(async move {
         let mut sessions: HashMap<UdpSessionKey, UdpSession> = Default::default();
-        let (cleanup_tx, mut cleanup_rx) = bounded::<UdpSessionKey>(2);
+        let (cleanup_tx, mut cleanup_rx) = channel::<UdpSessionKey>(2);
 
         loop {
             let (buf, src, dst) = select! {
@@ -64,12 +64,12 @@ pub async fn serve_udp_transparent_proxy(
             match sessions.get_mut(&key) {
                 Some(s) => match s.tx.try_send(buf) {
                     Ok(_) => {}
-                    Err(TrySendError::Closed(_)) => {
+                    Err(v) if v.is_disconnected() => {
                         let key = UdpSessionKey { src, dst };
                         log::debug!("Session {key:?} closed");
                         sessions.remove(&key);
                     }
-                    Err(TrySendError::Full(_)) => {}
+                    Err(_) => {}
                 },
                 None => {
                     let session = UdpSession::new(
@@ -96,9 +96,14 @@ impl UdpSession {
         clean_up: Sender<UdpSessionKey>,
         initial_data: Bytes,
     ) -> Self {
-        let (tx, rx) = bounded(10);
+        let (tx, rx) = channel(10);
         let dst_addr: Address = dst.into();
         let _task = spawn(async move {
+            let req = ProxyRequest::UDP {
+                initial_dst: dst_addr.clone(),
+                initial_data: Cow::Borrowed(&initial_data),
+            };
+
             todo!()
             // let upstream = match request_best_upstream(
             //     &config,

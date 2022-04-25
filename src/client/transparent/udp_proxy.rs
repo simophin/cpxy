@@ -6,11 +6,9 @@ use futures::{select, FutureExt, Sink, Stream, StreamExt};
 use parking_lot::Mutex;
 
 use crate::rt::{
-    mpsc::{bounded, Receiver},
+    mpsc::{channel, Receiver},
     spawn, Task, TimeoutExt,
 };
-
-use super::utils::bind_transparent_udp;
 
 pub async fn serve_udp_on_dgram(
     upstream: impl Stream<Item = (Bytes, SocketAddr, SocketAddr)>
@@ -41,7 +39,7 @@ pub async fn serve_udp_on_dgram(
 
     let should_close_after_receive = dst.port() == 53;
     let last_upstream_addr = Arc::new(Mutex::new(None));
-    let (active_tx, mut active_rx) = bounded::<()>(5);
+    let (active_tx, mut active_rx) = channel::<()>(5);
 
     // SRC -> UPSTRAEM
     let task1: Task<anyhow::Result<()>> = {

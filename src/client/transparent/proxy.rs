@@ -4,15 +4,15 @@ use std::time::Duration;
 
 use anyhow::{bail, Context};
 use bytes::Bytes;
-use futures::{select, AsyncRead, AsyncReadExt, AsyncWrite, FutureExt, StreamExt};
+use futures::{select, AsyncRead, AsyncReadExt, AsyncWrite, FutureExt, SinkExt, StreamExt};
 
-use super::utils::bind_transparent_udp;
+use super::utils::bind_transparent_udp_for_sending;
 use crate::client::UpstreamStatistics;
 use crate::proxy::udp_stream::{PacketReader, PacketWriter};
 use crate::socks5::Address;
 
 use crate::rt::{
-    mpsc::{bounded, Receiver},
+    mpsc::{channel, Receiver},
     spawn, Task, TimeoutExt,
 };
 
@@ -25,18 +25,19 @@ pub async fn serve_udp_on_stream(
     idling_duration: Duration,
 ) -> anyhow::Result<()> {
     let (mut upstream_r, mut upstream_w) = upstream.split();
-    let (link_active_tx, mut link_active_rx) = bounded::<()>(10);
+    let (mut link_active_tx, mut link_active_rx) = channel::<()>(10);
     let should_close_after_receive = orig_dst.get_port() == 53;
 
     // Upstream -> UDP
     let rx_count = stats.map(|v| v.rx.clone()).unwrap_or_default();
     let task1: Task<anyhow::Result<()>> = {
-        let link_active_tx = link_active_tx.clone();
+        let mut link_active_tx = link_active_tx.clone();
         spawn(async move {
             let mut packet_reader = PacketReader::new();
             let mut sockets = HashMap::<Address<'static>, _>::new();
             loop {
                 let (buf, addr) = packet_reader.read(&mut upstream_r).await?;
+                let buf_len = buf.len();
                 let socket_addr = match addr.resolve().await?.next() {
                     Some(a) => a,
                     None => {
@@ -45,30 +46,27 @@ pub async fn serve_udp_on_stream(
                     }
                 };
 
-                let v = sockets.get(addr);
+                let v = sockets.get_mut(addr);
 
                 if v.is_none() {
-                    let socket = bind_transparent_udp(socket_addr).with_context(|| {
-                        format!("Creating transparent UDP socket on {socket_addr} for client {src}")
-                    })?;
-
-                    socket
-                        .send_dgram(&buf, socket_addr)
-                        .await
-                        .with_context(|| {
-                            format!("Sending datagram to {socket_addr} for client {src}")
+                    let mut socket =
+                        bind_transparent_udp_for_sending(socket_addr).with_context(|| {
+                            format!(
+                                "Creating transparent UDP socket on {socket_addr} for client {src}"
+                            )
                         })?;
+
+                    socket.feed((buf, socket_addr)).await.with_context(|| {
+                        format!("Sending datagram to {socket_addr} for client {src}")
+                    })?;
                     sockets.insert(addr.clone().into_owned(), socket);
                 } else {
-                    v.unwrap()
-                        .send_dgram(&buf, socket_addr)
-                        .await
-                        .with_context(|| {
-                            format!("Sending datagram to {socket_addr} for client {src}")
-                        })?;
+                    v.unwrap().feed((buf, socket_addr)).await.with_context(|| {
+                        format!("Sending datagram to {socket_addr} for client {src}")
+                    })?;
                 }
                 let _ = link_active_tx.try_send(());
-                rx_count.inc(buf.len());
+                rx_count.inc(buf_len);
             }
         })
     };
