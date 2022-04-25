@@ -12,7 +12,7 @@ pub trait AsyncStream: AsyncRead + AsyncWrite + Unpin + Send + Sync {}
 
 pub trait AsyncDgram:
     Stream<Item = (Bytes, SocketAddr)>
-    + Sink<(Bytes, SocketAddr), Error = anyhow::Error>
+    + Sink<(Bytes, SocketAddr), Error = std::io::Error>
     + Unpin
     + Send
     + Sync

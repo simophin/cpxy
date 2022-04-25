@@ -2,21 +2,21 @@ use std::{borrow::Cow, collections::HashMap, net::SocketAddr, sync::Arc, time::D
 
 use crate::{
     config::ClientConfig,
-    io::bind_udp,
+    protocol::Protocol,
     proxy::protocol::ProxyRequest,
     rt::{
-        mpsc::{channel, Sender, TrySendError},
+        mpsc::{channel, Sender},
         spawn, Task,
     },
     socks5::Address,
 };
 use anyhow::Context;
 use bytes::Bytes;
-use futures::StreamExt;
+use futures::{SinkExt, StreamExt};
 use futures_util::{select, FutureExt};
 
 use super::super::ClientStatistics;
-use super::utils::{bind_transparent_udp_for_reciving, bind_transparent_udp_for_sending};
+use super::utils::bind_transparent_udp_for_reciving;
 
 struct UdpSession {
     tx: Sender<Bytes>,
@@ -93,7 +93,7 @@ impl UdpSession {
         dst: SocketAddr,
         config: Arc<ClientConfig>,
         stats: Arc<ClientStatistics>,
-        clean_up: Sender<UdpSessionKey>,
+        mut clean_up: Sender<UdpSessionKey>,
         initial_data: Bytes,
     ) -> Self {
         let (tx, rx) = channel(10);
@@ -104,55 +104,38 @@ impl UdpSession {
                 initial_data: Cow::Borrowed(&initial_data),
             };
 
-            todo!()
-            // let upstream = match request_best_upstream(
-            //     &config,
-            //     &stats,
-            //     &dst_addr,
-            //     &ProxyRequest::UDP {
-            //         initial_dst: dst_addr.clone(),
-            //         initial_data: Cow::Borrowed(&initial_data),
-            //     },
-            // )
-            // .await
-            // {
-            //     Ok((_, stream, stats)) => Some((stream, stats)),
-            //     Err(err) => {
-            //         log::error!("Error requesting upstream: {err:?}");
-            //         None
-            //     }
-            // };
+            let mut upstreams = config.find_best_upstream(&req, &stats, &dst_addr);
+            let mut result = Ok(());
+            while let Some((name, upstream)) = upstreams.pop() {
+                log::debug!("Trying upstream {name} for UDP://{dst_addr}");
+                let dgram = match upstream
+                    .protocol
+                    .new_dgram_conn(&req)
+                    .await
+                    .with_context(|| format!("Creating upstream dgram for {req:?}"))
+                {
+                    Ok(v) => v,
+                    Err(e) => {
+                        result = Err(e.into());
+                        continue;
+                    }
+                };
 
-            // let result = if let Some((upstream, stats)) = upstream {
-            //     // Proxy through upstream
-            //     super::proxy::serve_udp_on_stream(
-            //         src,
-            //         dst_addr,
-            //         rx,
-            //         upstream,
-            //         stats,
-            //         Duration::from_secs(60),
-            //     )
-            //     .await
-            // } else if config.allow_direct(&dst_addr) {
-            //     // Direct connect
-            //     super::udp_proxy::serve_udp_on_dgram(
-            //         bind_udp(matches!(dst, SocketAddr::V4(_)))
-            //             .await
-            //             .with_context(|| format!("Binding direct socket for client {src}"))?,
-            //         src,
-            //         dst,
-            //         rx,
-            //         initial_data,
-            //         Duration::from_secs(60),
-            //     )
-            //     .await
-            // } else {
-            //     Ok(())
-            // };
+                result = super::udp_proxy::serve_udp_on_dgram(
+                    dgram,
+                    src,
+                    dst,
+                    rx,
+                    initial_data.clone(),
+                    Duration::from_secs(60),
+                )
+                .await
+                .with_context(|| format!("serving UDP://{dst_addr} on {name}"));
+                break;
+            }
 
-            // clean_up.send(UdpSessionKey { src, dst }).await?;
-            // result
+            clean_up.feed(UdpSessionKey { src, dst }).await?;
+            result
         });
 
         Self { tx, _task }

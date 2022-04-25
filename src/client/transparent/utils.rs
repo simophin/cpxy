@@ -178,7 +178,9 @@ impl Stream for TransparentUdpSocket {
         self: Pin<&mut Self>,
         cx: &mut std::task::Context<'_>,
     ) -> Poll<Option<Self::Item>> {
-        ready!(Pin::new(&self.0).poll_readable(cx));
+        if ready!(Pin::new(&self.0).poll_readable(cx)).is_err() {
+            return Poll::Ready(None);
+        }
         let mut buf = new_vec_for_udp();
         match recv_with_orig_dst(self.0.as_raw_fd(), &mut buf) {
             Ok((len, src, dst)) => {
@@ -194,58 +196,27 @@ impl Sink<(Bytes, SocketAddr)> for TransparentUdpSocket {
     type Error = std::io::Error;
 
     fn poll_ready(
-        self: Pin<&mut Self>,
+        mut self: Pin<&mut Self>,
         cx: &mut std::task::Context<'_>,
     ) -> Poll<Result<(), Self::Error>> {
         Pin::new(&mut self.0).poll_ready(cx)
     }
 
-    fn start_send(self: Pin<&mut Self>, item: (Bytes, SocketAddr)) -> Result<(), Self::Error> {
+    fn start_send(mut self: Pin<&mut Self>, item: (Bytes, SocketAddr)) -> Result<(), Self::Error> {
         Pin::new(&mut self.0).start_send(item)
     }
 
     fn poll_flush(
-        self: Pin<&mut Self>,
+        mut self: Pin<&mut Self>,
         cx: &mut std::task::Context<'_>,
     ) -> Poll<Result<(), Self::Error>> {
         Pin::new(&mut self.0).poll_flush(cx)
     }
 
     fn poll_close(
-        self: Pin<&mut Self>,
+        mut self: Pin<&mut Self>,
         cx: &mut std::task::Context<'_>,
     ) -> Poll<Result<(), Self::Error>> {
         Pin::new(&mut self.0).poll_close(cx)
     }
 }
-
-// impl DatagramSocket for TransparentUdpSocket {
-//     type RecvType = (Bytes, SocketAddr, SocketAddr);
-
-//     fn poll_recv(
-//         self: std::pin::Pin<&Self>,
-//         cx: &mut std::task::Context<'_>,
-//     ) -> Poll<std::io::Result<Self::RecvType>> {
-//         ready!(Pin::new(&self.0).poll_readable(cx))?;
-//         let mut buf = new_vec_for_udp();
-//         let (len, src, dst) = recv_with_orig_dst(self.0.as_raw_fd(), &mut buf)?;
-//         buf.set_len_uninit(len);
-//         Poll::Ready(Ok((buf.into(), src, dst)))
-//     }
-
-//     fn poll_send(
-//         self: std::pin::Pin<&Self>,
-//         cx: &mut std::task::Context<'_>,
-//         buf: &[u8],
-//         addr: SocketAddr,
-//     ) -> Poll<std::io::Result<usize>> {
-//         Pin::new(&self.0).poll_send(cx, buf, addr)
-//     }
-
-//     fn poll_send_ready(
-//         self: Pin<&Self>,
-//         cx: &mut std::task::Context<'_>,
-//     ) -> Poll<std::io::Result<()>> {
-//         Pin::new(&self.0).poll_writable(cx)
-//     }
-// }

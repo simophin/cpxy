@@ -60,19 +60,18 @@ pub async fn run_client(
         #[cfg(target_os = "linux")]
         {
             if let Some(addr) = config.udp_tproxy_address {
-                todo!()
-                // match super::transparent::serve_udp_transparent_proxy(
-                //     addr,
-                //     config.clone(),
-                //     stats.clone(),
-                // )
-                // .await
-                // {
-                //     Ok(task) => current_tasks.push(task),
-                //     Err(e) => {
-                //         log::error!("Error serving udp transparent proxy: {e:?}");
-                //     }
-                // }
+                match super::transparent::serve_udp_transparent_proxy(
+                    addr,
+                    config.clone(),
+                    stats.clone(),
+                )
+                .await
+                {
+                    Ok(task) => current_tasks.push(task),
+                    Err(e) => {
+                        log::error!("Error serving udp transparent proxy: {e:?}");
+                    }
+                }
             }
         }
 
