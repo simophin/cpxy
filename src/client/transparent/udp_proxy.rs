@@ -1,13 +1,13 @@
 use std::{collections::HashMap, net::SocketAddr, sync::Arc, time::Duration};
 
-use anyhow::{bail, Context};
+use anyhow::Context;
 use bytes::Bytes;
-use futures::{select, FutureExt, Sink, SinkExt, Stream, StreamExt};
+use futures::{future::ready, select, FutureExt, Sink, SinkExt, Stream, StreamExt};
 use parking_lot::Mutex;
 
-use crate::rt::{
-    mpsc::{channel, Receiver},
-    spawn, Task, TimeoutExt,
+use crate::{
+    io::{is_one_off_udp_query, Timer},
+    rt::{mpsc::Receiver, spawn, Task, TimeoutExt},
 };
 
 use super::utils::bind_transparent_udp_for_sending;
@@ -21,94 +21,89 @@ pub async fn serve_udp_on_dgram(
         + 'static,
     src: SocketAddr,
     dst: SocketAddr,
-    mut rx: Receiver<Bytes>,
+    rx: Receiver<Bytes>,
     initial_data: Bytes,
     timeout: Duration,
 ) -> anyhow::Result<()> {
-    if !initial_data.is_empty() {
-        upstream
-            .send((initial_data, dst))
+    upstream
+        .send((initial_data, dst))
+        .await
+        .with_context(|| format!("Sending initial data to {dst} for {src}"))?;
+
+    if is_one_off_udp_query(&dst.into()) {
+        let data = upstream
+            .next()
+            .timeout(timeout)
             .await
-            .with_context(|| format!("Sending initial data to {dst} for {src}"))?;
+            .context("Timeout waiting for one off query response")?
+            .context("Unexpected EOF from upstream")?;
+        return bind_transparent_udp_for_sending(dst)
+            .context("Binding TProxy for sending")?
+            .send(data)
+            .await
+            .context("Sending reply back to one off query");
     }
 
-    let (mut upstream_w, mut upstream_r) = upstream.split();
+    let (upstream_w, mut upstream_r) = upstream.split();
 
-    let should_close_after_receive = dst.port() == 53;
+    let timer = Timer::new(timeout);
     let last_upstream_addr = Arc::new(Mutex::new(None));
-    let (mut active_tx, mut active_rx) = channel::<()>(5);
 
     // SRC -> UPSTRAEM
-    let task1: Task<anyhow::Result<()>> = {
+    let upload_task = {
         let last_upstream_addr = last_upstream_addr.clone();
-        let mut active_tx = active_tx.clone();
-        spawn(async move {
-            while let Some(data) = rx.next().await {
-                let addr = last_upstream_addr.lock().unwrap_or(dst);
-                let _ = active_tx.try_send(());
-                upstream_w
-                    .send((data, addr))
-                    .await
-                    .with_context(|| format!("Sending dgram to {addr} from client {src}"))?;
-            }
-            Ok(())
-        })
+        let timer = timer.clone();
+
+        spawn(
+            rx.filter_map(move |data| {
+                ready(
+                    last_upstream_addr
+                        .lock()
+                        .map(|addr| anyhow::Result::Ok((data, addr))),
+                )
+            })
+            .inspect(move |_| timer.reset())
+            .forward(upstream_w),
+        )
     };
 
     // UPSTREAM -> SRC
-    let task2: Task<anyhow::Result<()>> = spawn(async move {
-        let mut sockets = HashMap::<SocketAddr, _>::new();
-        loop {
-            let (buf, from) = upstream_r
-                .next()
-                .await
-                .with_context(|| format!("Receiving datagram for client {src}"))?;
+    let download_task: Task<anyhow::Result<()>> = {
+        let timer = timer.clone();
+        spawn(async move {
+            let mut sockets = HashMap::<SocketAddr, _>::new();
+            loop {
+                let (buf, from) = upstream_r
+                    .next()
+                    .await
+                    .with_context(|| format!("Receiving datagram for client {src}"))?;
 
-            let _ = active_tx.try_send(());
-            last_upstream_addr.lock().replace(from);
+                timer.reset();
+                last_upstream_addr.lock().replace(from);
 
-            if should_close_after_receive {
-                bind_transparent_udp_for_sending(from)
-                    .with_context(|| {
+                let socket = sockets.get_mut(&from);
+                if socket.is_none() {
+                    let mut s = bind_transparent_udp_for_sending(from).with_context(|| {
                         format!("Binding returning socket on {from} for client {src}")
-                    })?
-                    .send((buf, src))
-                    .await
-                    .with_context(|| format!("Responding to {src}"))?;
-                break Ok(());
-            }
-
-            let socket = sockets.get_mut(&from);
-            if socket.is_none() {
-                let mut s = bind_transparent_udp_for_sending(from).with_context(|| {
-                    format!("Binding returning socket on {from} for client {src}")
-                })?;
-                s.send((buf, src))
-                    .await
-                    .with_context(|| format!("Responding to {src}"))?;
-                sockets.insert(from, s);
-            } else {
-                socket
-                    .unwrap()
-                    .send((buf, src))
-                    .await
-                    .with_context(|| format!("Responding to {src}"))?;
-            }
-        }
-    });
-
-    let mut task1 = task1.fuse();
-    let mut task2 = task2.fuse();
-
-    loop {
-        select! {
-            t1 = task1 => return t1,
-            t2 = task2 => return t2,
-            v = active_rx.next().timeout(timeout).fuse() => {
-                if v.is_none() {
-                    bail!("{src} Timeout");
+                    })?;
+                    s.send((buf, src))
+                        .await
+                        .with_context(|| format!("Responding to {src}"))?;
+                    sockets.insert(from, s);
+                } else {
+                    socket
+                        .unwrap()
+                        .send((buf, src))
+                        .await
+                        .with_context(|| format!("Responding to {src}"))?;
                 }
-            },
-        }
+            }
+        })
+    };
+
+    select! {
+        _ = upload_task.fuse() => Ok(()),
+        _ = download_task.fuse() => Ok(()),
+        _ = timer.fuse() => Ok(())
     }
 }

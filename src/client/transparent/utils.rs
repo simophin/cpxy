@@ -1,5 +1,4 @@
 use std::{
-    collections::HashMap,
     io::ErrorKind,
     mem::{size_of, MaybeUninit},
     net::{Ipv4Addr, Ipv6Addr, SocketAddr, SocketAddrV4, SocketAddrV6},
@@ -20,7 +19,6 @@ use libc::{
     c_int, c_void, size_t, sockaddr_in, sockaddr_in6, socklen_t, ssize_t, AF_INET, AF_INET6,
     IPV6_RECVORIGDSTADDR, IP_RECVORIGDSTADDR, SOL_IP, SOL_IPV6,
 };
-use pin_project_lite::pin_project;
 
 use crate::{
     io::UdpSocketExt,
@@ -189,7 +187,7 @@ impl Stream for TransparentUdpStream {
                 buf.set_len_uninit(len);
                 Poll::Ready(Some((buf.into(), src, dst)))
             }
-            Err(e) => Poll::Ready(None),
+            Err(_) => Poll::Ready(None),
         }
     }
 }
