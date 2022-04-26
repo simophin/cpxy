@@ -64,6 +64,12 @@ impl<T: AsRef<[u8]>> UdpPacket<T> {
     }
 }
 
+impl UdpPacket<Bytes> {
+    pub fn payload_bytes(&self) -> Bytes {
+        self.buf.slice(self.data_offset..)
+    }
+}
+
 pub struct UdpRepr<'a, T> {
     pub addr: &'a Address<'a>,
     pub payload: T,

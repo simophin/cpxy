@@ -1,11 +1,13 @@
+use std::collections::VecDeque;
 use std::io::ErrorKind;
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr};
 use std::pin::Pin;
-use std::task::{Context, Poll};
+use std::task::{Context, Poll, Waker};
 
 use bytes::Bytes;
 use futures::{ready, Sink, Stream};
 
+use crate::utils::{new_vec_for_udp, VecExt};
 use crate::{rt::net::UdpSocket, socks5::Address};
 
 pub async fn bind_udp(v4: bool) -> std::io::Result<UdpSocket> {
@@ -33,6 +35,7 @@ pub async fn send_to_addr(
 
 pub trait UdpSocketExt {
     fn is_v4(&self) -> bool;
+    fn to_sink_stream(self) -> UdpSocketSinkStream;
 }
 
 impl UdpSocketExt for UdpSocket {
@@ -42,78 +45,79 @@ impl UdpSocketExt for UdpSocket {
             _ => true,
         }
     }
+
+    fn to_sink_stream(self) -> UdpSocketSinkStream {
+        UdpSocketSinkStream {
+            socket: self,
+            buffer_waker: None,
+            buffers: Default::default(),
+        }
+    }
 }
 
-impl Stream for UdpSocket {
+pub struct UdpSocketSinkStream {
+    socket: UdpSocket,
+    buffers: VecDeque<(Bytes, SocketAddr)>,
+    buffer_waker: Option<Waker>,
+}
+
+impl Stream for UdpSocketSinkStream {
     type Item = (Bytes, SocketAddr);
 
     fn poll_next(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
-        todo!()
-    }
-}
+        match ready!(Pin::new(&self.socket).poll_readable(cx)) {
+            Ok(_) => {}
+            Err(_) => return Poll::Ready(None),
+        };
 
-impl Sink<(Bytes, SocketAddr)> for UdpSocket {
-    type Error = std::io::Error;
-
-    fn poll_ready(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
-        Poll::Ready(ready!(self.as_ref().poll_writable(cx)))
-    }
-
-    fn start_send(self: Pin<&mut Self>, item: (Bytes, SocketAddr)) -> Result<(), Self::Error> {
-        let (buf, addr) = item;
-        match self.try_send_to(&buf, addr)? {
-            Some(_) => Ok(()),
-            None => Err(std::io::Error::new(
-                ErrorKind::WouldBlock,
-                "Not ready to send",
-            )),
+        let mut buf = new_vec_for_udp();
+        match self.socket.try_recv_from(&mut buf) {
+            Ok(None) => Poll::Pending,
+            Ok(Some((len, addr))) => {
+                buf.set_len_uninit(len);
+                Poll::Ready(Some((buf.into(), addr)))
+            }
+            Err(_) => Poll::Ready(None),
         }
     }
+}
 
-    fn poll_flush(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
+const MAX_BUFFER_SIZE: usize = 10;
+
+impl Sink<(Bytes, SocketAddr)> for UdpSocketSinkStream {
+    type Error = std::io::Error;
+
+    fn poll_ready(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
+        if self.buffers.len() >= MAX_BUFFER_SIZE {
+            self.buffer_waker.replace(cx.waker().clone());
+            return Poll::Pending;
+        }
+        return Poll::Ready(Ok(()));
+    }
+
+    fn start_send(mut self: Pin<&mut Self>, item: (Bytes, SocketAddr)) -> Result<(), Self::Error> {
+        self.buffers.push_back(item);
+        Ok(())
+    }
+
+    fn poll_flush(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
+        ready!(Pin::new(&self.socket).poll_writable(cx))?;
+        while let Some((data, addr)) = self.buffers.front() {
+            match self.socket.try_send_to(data.as_ref(), *addr) {
+                Ok(_) => {
+                    let _ = self.buffers.pop_front();
+                }
+                Err(e) if e.kind() == ErrorKind::WouldBlock => return Poll::Pending,
+                Err(e) => return Poll::Ready(Err(e)),
+            }
+        }
+        if let Some(waker) = self.buffer_waker.take() {
+            waker.wake();
+        }
         Poll::Ready(Ok(()))
     }
 
-    fn poll_close(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
+    fn poll_close(self: Pin<&mut Self>, _: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
         Poll::Ready(Ok(()))
     }
 }
-
-// impl DatagramSocket for UdpSocket {
-//     type RecvType = (Bytes, SocketAddr);
-
-//     fn poll_recv(
-//         self: std::pin::Pin<&Self>,
-//         cx: &mut std::task::Context<'_>,
-//     ) -> Poll<std::io::Result<Self::RecvType>> {
-//         ready!(self.poll_readable(cx))?;
-//         let mut buf = new_vec_for_udp();
-//         let (len, addr) = match self.try_recv_from(&mut buf)? {
-//             Some(v) => v,
-//             None => return Poll::Pending,
-//         };
-//         buf.set_len_uninit(len);
-//         Poll::Ready(Ok((buf.into(), addr)))
-//     }
-
-//     fn poll_send(
-//         self: std::pin::Pin<&Self>,
-//         cx: &mut std::task::Context<'_>,
-//         buf: &[u8],
-//         addr: std::net::SocketAddr,
-//     ) -> Poll<std::io::Result<usize>> {
-//         ready!(self.poll_writable(cx))?;
-//         Poll::Ready(match self.try_send_to(buf, addr) {
-//             Ok(Some(v)) => Ok(v),
-//             Ok(None) => return Poll::Pending,
-//             Err(e) => Err(e),
-//         })
-//     }
-
-//     fn poll_send_ready(
-//         self: std::pin::Pin<&Self>,
-//         cx: &mut std::task::Context<'_>,
-//     ) -> Poll<std::io::Result<()>> {
-//         self.poll_writable(cx)
-//     }
-// }

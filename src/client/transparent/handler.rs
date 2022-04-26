@@ -134,7 +134,7 @@ impl UdpSession {
                 break;
             }
 
-            clean_up.feed(UdpSessionKey { src, dst }).await?;
+            clean_up.send(UdpSessionKey { src, dst }).await?;
             result
         });
 

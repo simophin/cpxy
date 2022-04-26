@@ -10,7 +10,7 @@ use std::{
 
 use anyhow::Context;
 use bytes::Bytes;
-use futures::{ready, Sink, Stream};
+use futures::{ready, Sink, Stream, StreamExt};
 use nix::sys::socket::{
     setsockopt, sockopt::IpTransparent, AddressFamily, SockFlag, SockProtocol, SockaddrIn,
     SockaddrIn6,
@@ -20,8 +20,10 @@ use libc::{
     c_int, c_void, size_t, sockaddr_in, sockaddr_in6, socklen_t, ssize_t, AF_INET, AF_INET6,
     IPV6_RECVORIGDSTADDR, IP_RECVORIGDSTADDR, SOL_IP, SOL_IPV6,
 };
+use pin_project_lite::pin_project;
 
 use crate::{
+    io::UdpSocketExt,
     rt::net::UdpSocket,
     utils::{new_vec_for_udp, VecExt},
 };
@@ -78,7 +80,7 @@ pub fn bind_transparent_udp_for_reciving(
     addr: SocketAddr,
 ) -> anyhow::Result<impl Stream<Item = (Bytes, SocketAddr, SocketAddr)> + Unpin + Send + Sync + Sized>
 {
-    Ok(TransparentUdpSocket(new_tsock(addr)?))
+    Ok(TransparentUdpStream(new_tsock(addr)?))
 }
 
 pub fn bind_transparent_udp_for_sending(
@@ -86,7 +88,7 @@ pub fn bind_transparent_udp_for_sending(
 ) -> anyhow::Result<
     impl Sink<(Bytes, SocketAddr), Error = std::io::Error> + Unpin + Send + Sync + Sized,
 > {
-    Ok(TransparentUdpSocket(new_tsock(addr)?))
+    Ok(new_tsock(addr)?.to_sink_stream().split().0)
 }
 
 fn recv_with_orig_dst(
@@ -169,9 +171,9 @@ extern "C" {
     ) -> ssize_t;
 }
 
-struct TransparentUdpSocket(UdpSocket);
+struct TransparentUdpStream(UdpSocket);
 
-impl Stream for TransparentUdpSocket {
+impl Stream for TransparentUdpStream {
     type Item = (Bytes, SocketAddr, SocketAddr);
 
     fn poll_next(
@@ -189,34 +191,5 @@ impl Stream for TransparentUdpSocket {
             }
             Err(e) => Poll::Ready(None),
         }
-    }
-}
-
-impl Sink<(Bytes, SocketAddr)> for TransparentUdpSocket {
-    type Error = std::io::Error;
-
-    fn poll_ready(
-        mut self: Pin<&mut Self>,
-        cx: &mut std::task::Context<'_>,
-    ) -> Poll<Result<(), Self::Error>> {
-        Pin::new(&mut self.0).poll_ready(cx)
-    }
-
-    fn start_send(mut self: Pin<&mut Self>, item: (Bytes, SocketAddr)) -> Result<(), Self::Error> {
-        Pin::new(&mut self.0).start_send(item)
-    }
-
-    fn poll_flush(
-        mut self: Pin<&mut Self>,
-        cx: &mut std::task::Context<'_>,
-    ) -> Poll<Result<(), Self::Error>> {
-        Pin::new(&mut self.0).poll_flush(cx)
-    }
-
-    fn poll_close(
-        mut self: Pin<&mut Self>,
-        cx: &mut std::task::Context<'_>,
-    ) -> Poll<Result<(), Self::Error>> {
-        Pin::new(&mut self.0).poll_close(cx)
     }
 }

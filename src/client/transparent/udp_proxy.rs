@@ -14,7 +14,7 @@ use super::utils::bind_transparent_udp_for_sending;
 
 pub async fn serve_udp_on_dgram(
     mut upstream: impl Stream<Item = (Bytes, SocketAddr)>
-        + Sink<(Bytes, SocketAddr), Error = std::io::Error>
+        + Sink<(Bytes, SocketAddr), Error = anyhow::Error>
         + Unpin
         + Send
         + Sync
@@ -27,7 +27,7 @@ pub async fn serve_udp_on_dgram(
 ) -> anyhow::Result<()> {
     if !initial_data.is_empty() {
         upstream
-            .feed((initial_data, dst))
+            .send((initial_data, dst))
             .await
             .with_context(|| format!("Sending initial data to {dst} for {src}"))?;
     }
@@ -47,7 +47,7 @@ pub async fn serve_udp_on_dgram(
                 let addr = last_upstream_addr.lock().unwrap_or(dst);
                 let _ = active_tx.try_send(());
                 upstream_w
-                    .feed((data, addr))
+                    .send((data, addr))
                     .await
                     .with_context(|| format!("Sending dgram to {addr} from client {src}"))?;
             }
@@ -72,7 +72,7 @@ pub async fn serve_udp_on_dgram(
                     .with_context(|| {
                         format!("Binding returning socket on {from} for client {src}")
                     })?
-                    .feed((buf, src))
+                    .send((buf, src))
                     .await
                     .with_context(|| format!("Responding to {src}"))?;
                 break Ok(());
@@ -83,14 +83,14 @@ pub async fn serve_udp_on_dgram(
                 let mut s = bind_transparent_udp_for_sending(from).with_context(|| {
                     format!("Binding returning socket on {from} for client {src}")
                 })?;
-                s.feed((buf, src))
+                s.send((buf, src))
                     .await
                     .with_context(|| format!("Responding to {src}"))?;
                 sockets.insert(from, s);
             } else {
                 socket
                     .unwrap()
-                    .feed((buf, src))
+                    .send((buf, src))
                     .await
                     .with_context(|| format!("Responding to {src}"))?;
             }

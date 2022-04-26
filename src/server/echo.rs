@@ -39,7 +39,7 @@ pub async fn serve_tcp(
             break;
         }
         buf.set_len_uninit(len);
-        tx.feed(buf.into()).await?;
+        tx.send(buf.into()).await?;
     }
 
     task.await

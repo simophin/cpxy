@@ -1,76 +1,46 @@
-use std::{
-    net::SocketAddr,
-    sync::{Arc, Mutex},
-};
+use std::{net::SocketAddr, sync::Arc};
 
 use anyhow::{anyhow, Context};
 use bytes::Bytes;
-use futures::{SinkExt, StreamExt};
+use futures::{future::ready, Sink, SinkExt, Stream, StreamExt};
+use parking_lot::Mutex;
 
 use crate::{
-    io::bind_udp,
-    rt::mpsc::{channel, Receiver, Sender},
-    rt::{spawn, Task},
-    socks5::UdpPacket,
-    utils::{new_vec_for_udp, VecExt},
+    io::{bind_udp, UdpSocketExt},
+    socks5::{UdpPacket, UdpRepr},
 };
 
 pub async fn new_udp_relay(
     v4: bool,
 ) -> anyhow::Result<(
     SocketAddr,
-    Sender<UdpPacket<Bytes>>,
-    Receiver<UdpPacket<Bytes>>,
+    impl Sink<UdpPacket<Bytes>, Error = anyhow::Error> + Unpin,
+    impl Stream<Item = UdpPacket<Bytes>> + Unpin,
 )> {
-    let udp = Arc::new(bind_udp(v4).await?);
+    let udp = bind_udp(v4).await?;
     let bound_addr = udp.local_addr().context("Getting local_addr")?;
 
-    let (mut incoming_tx, incoming_rx) = channel::<UdpPacket<Bytes>>(1);
-    let (outgoing_tx, mut outgoing_rx) = channel::<UdpPacket<Bytes>>(5);
+    let (sink, stream) = udp.to_sink_stream().split();
 
-    let last_addr: Arc<Mutex<Option<SocketAddr>>> = Default::default();
-
-    {
-        let udp = udp.clone();
+    let last_addr = Arc::new(Mutex::new(None));
+    let sink = {
         let last_addr = last_addr.clone();
-        let task: Task<anyhow::Result<()>> = spawn(async move {
-            loop {
-                let pkt = outgoing_rx.next().await.context("Waiting for packet")?;
-                let dst = last_addr
-                    .lock()
-                    .map_err(|_| anyhow!("Unable to lock last_addr"))?
-                    .as_ref()
-                    .map(|a| a.clone());
-
-                if let Some(dst) = dst {
-                    udp.send_to(pkt.inner().as_ref(), dst).await?;
-                }
-            }
-        });
-        task.detach();
-    }
-
-    {
-        let task: Task<anyhow::Result<()>> = spawn(async move {
-            loop {
-                let mut buf = new_vec_for_udp();
-                let (len, src) = udp.recv_from(&mut buf).await?;
-                buf.set_len_uninit(len);
-
+        sink.with(move |pkt: UdpPacket<Bytes>| {
+            ready(
                 last_addr
                     .lock()
-                    .map_err(|_| anyhow!("Unable to lock last_addr"))?
-                    .replace(src);
+                    .ok_or_else(|| anyhow!("No last address"))
+                    .map(|addr| (pkt.into_inner(), addr)),
+            )
+        })
+    };
 
-                incoming_tx
-                    .feed(UdpPacket::new_checked(buf.into())?)
-                    .await?;
-            }
-        });
-        task.detach();
-    }
+    let stream = stream.filter_map(move |(data, addr)| {
+        last_addr.lock().replace(addr);
+        ready(UdpPacket::new_checked(data).ok())
+    });
 
-    Ok((bound_addr, outgoing_tx, incoming_rx))
+    Ok((bound_addr, Box::pin(sink), Box::pin(stream)))
 }
 
 #[cfg(test)]
@@ -82,6 +52,7 @@ mod tests {
     use crate::rt::{block_on, TimeoutExt};
 
     use crate::socks5::{Address, UdpRepr};
+    use crate::utils::{new_vec_for_udp, VecExt};
 
     use super::*;
 
@@ -121,7 +92,7 @@ mod tests {
 
             // Receiving
             let reply = b"hello, again!".as_ref();
-            tx.feed(
+            tx.send(
                 UdpRepr {
                     addr: &target_addr,
                     payload: reply,
@@ -134,7 +105,7 @@ mod tests {
             let mut buf = new_vec_for_udp();
             let (len, _) = client
                 .recv_from(&mut buf)
-                .timeout(Duration::from_secs(1))
+                .timeout(Duration::from_secs(2))
                 .await
                 .unwrap()?;
             buf.set_len_uninit(len);

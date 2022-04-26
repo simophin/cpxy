@@ -56,12 +56,12 @@ pub async fn serve_udp_on_stream(
                             )
                         })?;
 
-                    socket.feed((buf, socket_addr)).await.with_context(|| {
+                    socket.send((buf, socket_addr)).await.with_context(|| {
                         format!("Sending datagram to {socket_addr} for client {src}")
                     })?;
                     sockets.insert(addr.clone().into_owned(), socket);
                 } else {
-                    v.unwrap().feed((buf, socket_addr)).await.with_context(|| {
+                    v.unwrap().send((buf, socket_addr)).await.with_context(|| {
                         format!("Sending datagram to {socket_addr} for client {src}")
                     })?;
                 }
