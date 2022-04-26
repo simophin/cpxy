@@ -1,15 +1,20 @@
 use std::{borrow::Cow, time::Duration};
 
-use crate::{protocol::Protocol, utils::new_vec_uninitialised};
+use crate::{
+    io::{is_one_off_udp_query, Timer},
+    protocol::Protocol,
+    utils::new_vec_uninitialised,
+};
 use anyhow::{anyhow, Context};
 use futures::{select, AsyncRead, AsyncReadExt, AsyncWrite, FutureExt, SinkExt, StreamExt};
+use smol_timeout::TimeoutExt;
 
 use crate::{
     config::ClientConfig, handshake::Handshaker, proxy::protocol::ProxyRequest, rt::spawn,
     socks5::UdpRepr as Socks5UdpRepr, udp_relay::new_udp_relay,
 };
 
-use super::{ClientStatistics, UpstreamStatistics};
+use super::ClientStatistics;
 
 const UDP_IDLING_TIMEOUT: Duration = Duration::from_secs(60);
 
@@ -20,7 +25,7 @@ pub async fn serve_udp_proxy_conn(
     mut stream: impl AsyncRead + AsyncWrite + Unpin + Send + Sync + 'static,
     handshaker: Handshaker,
 ) -> anyhow::Result<()> {
-    let (relay_addr, tx, mut rx) = match new_udp_relay(is_v4).await {
+    let (relay_addr, mut tx, mut rx) = match new_udp_relay(is_v4).await {
         Ok(v) => v,
         Err(e) => {
             log::error!("Error creating UDP relay: {e:?}");
@@ -44,39 +49,77 @@ pub async fn serve_udp_proxy_conn(
 
     while let Some((name, upstream)) = upstreams.pop() {
         log::debug!("Trying upstream {name} for {req:?}");
-        let (upstream_sink, upstream_stream) = match upstream.protocol.new_dgram_conn(&req).await {
-            Ok(v) => v,
-            Err(e) => {
-                last_error.replace(e);
-                continue;
+        let (upstream_sink, mut upstream_stream) =
+            match upstream.protocol.new_dgram_conn(&req).await {
+                Ok(v) => v,
+                Err(e) => {
+                    last_error.replace(e.into());
+                    continue;
+                }
             }
+            .split();
+
+        if is_one_off_udp_query(&addr) {
+            match upstream_stream.next().timeout(UDP_IDLING_TIMEOUT).await {
+                None => {
+                    last_error.replace(anyhow!("Timeout waiting for response"));
+                    break;
+                }
+                Some(None) => {
+                    last_error.replace(anyhow!("Unexpected EOF while waiting for response"));
+                    break;
+                }
+                Some(Some((data, addr))) => {
+                    tx.send(
+                        Socks5UdpRepr {
+                            addr: &addr.into(),
+                            payload: data,
+                            frag_no: 0,
+                        }
+                        .to_packet()?,
+                    )
+                    .await?;
+                }
+            };
+
+            return Ok(());
         }
-        .split();
 
-        let upload_task = spawn(
-            rx.filter_map(|pkt| async move {
-                let addr = pkt.addr().resolve().await.ok()?.next()?;
-                Some(Ok((pkt.payload_bytes(), addr)))
-            })
-            .forward(upstream_sink),
-        );
+        let timer = Timer::new(UDP_IDLING_TIMEOUT);
 
-        let download_task = spawn(
-            upstream_stream
-                .map(|(data, addr)| {
-                    Socks5UdpRepr {
-                        addr: &addr.into(),
-                        frag_no: 0,
-                        payload: data,
-                    }
-                    .to_packet()
-                })
-                .forward(tx.sink_map_err(|e| anyhow::Error::from(e))),
-        );
+        let upload_task = {
+            let timer = timer.clone();
+            spawn(
+                rx.inspect(move |_| timer.reset())
+                    .filter_map(|pkt| async move {
+                        let addr = pkt.addr().resolve().await.ok()?.next()?;
+                        Some(Ok((pkt.payload_bytes(), addr)))
+                    })
+                    .forward(upstream_sink),
+            )
+        };
+
+        let download_task = {
+            let timer = timer.clone();
+            spawn(
+                upstream_stream
+                    .map(|(data, addr)| {
+                        Socks5UdpRepr {
+                            addr: &addr.into(),
+                            frag_no: 0,
+                            payload: data,
+                        }
+                        .to_packet()
+                    })
+                    .inspect(move |_| timer.reset())
+                    .forward(tx.sink_map_err(|e| anyhow::Error::from(e))),
+            )
+        };
 
         return select! {
             _ = upload_task.fuse() => Ok(()),
             _ = download_task.fuse() => Ok(()),
+            _ = timer.fuse() => Ok(()),
             v = drain_socks(&mut stream).fuse() => v,
         };
     }

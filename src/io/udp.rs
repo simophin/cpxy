@@ -33,6 +33,10 @@ pub async fn send_to_addr(
     }
 }
 
+pub fn is_one_off_udp_query(dst: &Address<'_>) -> bool {
+    dst.get_port() == 53
+}
+
 pub trait UdpSocketExt {
     fn is_v4(&self) -> bool;
     fn to_sink_stream(self) -> UdpSocketSinkStream;
