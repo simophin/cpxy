@@ -10,12 +10,23 @@ pub mod tcpman;
 
 pub trait AsyncStream: AsyncRead + AsyncWrite + Unpin + Send + Sync {}
 
+impl<T: AsyncRead + AsyncWrite + Unpin + Send + Sync> AsyncStream for T {}
+
 pub trait AsyncDgram:
     Stream<Item = (Bytes, SocketAddr)>
     + Sink<(Bytes, SocketAddr), Error = anyhow::Error>
     + Unpin
     + Send
     + Sync
+{
+}
+
+impl<T> AsyncDgram for T where
+    T: Stream<Item = (Bytes, SocketAddr)>
+        + Sink<(Bytes, SocketAddr), Error = anyhow::Error>
+        + Unpin
+        + Send
+        + Sync
 {
 }
 

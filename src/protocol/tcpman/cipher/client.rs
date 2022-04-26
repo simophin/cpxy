@@ -60,7 +60,7 @@ pub async fn connect(
     send_strategy: EncryptionStrategy,
     recv_strategy: EncryptionStrategy,
     mut initial_data: impl AsMut<[u8]> + Send,
-) -> anyhow::Result<impl AsyncRead + AsyncWrite + Unpin> {
+) -> anyhow::Result<impl AsyncRead + AsyncWrite + Unpin + Send + Sync + 'static> {
     let (cipher_type, wr_cipher, key, iv) = super::suite::pick_cipher();
     let mut wr_cipher = send_strategy.wrap_cipher(wr_cipher);
 

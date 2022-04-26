@@ -1,7 +1,6 @@
 // pub mod bench_client;
 mod broadcast;
 mod buf;
-mod cipher;
 mod client;
 mod counter;
 mod fetch;

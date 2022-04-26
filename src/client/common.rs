@@ -17,7 +17,6 @@ pub async fn serve_stream_based_conn(
     handshaker: Handshaker,
 ) -> anyhow::Result<()> {
     let mut upstreams = config.find_best_upstream(&proxy_request, stats, &dst);
-
     let mut last_error = None;
 
     while let Some((name, config)) = upstreams.pop() {
