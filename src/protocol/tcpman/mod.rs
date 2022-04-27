@@ -21,8 +21,8 @@ use super::{AsyncStream, BoxedSink, BoxedStream, Protocol};
 
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
 pub struct TcpMan {
-    address: Address<'static>,
-    ssl: bool,
+    pub address: Address<'static>,
+    pub ssl: bool,
 }
 
 impl TcpMan {

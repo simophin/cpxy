@@ -1,13 +1,10 @@
-use std::sync::Arc;
-
 use crate::{
     io::{bind_udp, send_to_addr, UdpSocketExt},
     protocol::tcpman::dgram::{create_udp_sink, create_udp_stream},
-    rt::{spawn, Task},
-    utils::{new_vec_for_udp, race, VecExt},
+    rt::spawn,
 };
 use anyhow::Context;
-use futures::{select, AsyncRead, AsyncReadExt, AsyncWrite, FutureExt, SinkExt, StreamExt};
+use futures::{select, AsyncRead, AsyncReadExt, AsyncWrite, FutureExt, StreamExt};
 
 use crate::{
     proxy::protocol::ProxyResult, rt::net::UdpSocket, socks5::Address,
@@ -93,69 +90,62 @@ pub async fn serve_udp_proxy_conn(
     }
 }
 
-// #[cfg(test)]
-// mod tests {
-//     use std::time::Duration;
+#[cfg(test)]
+mod tests {
+    use crate::protocol::tcpman::udp_stream::{PacketReader, PacketWriter};
+    use crate::rt::block_on;
 
-//     use crate::proxy::udp::write_packet_async;
-//     use crate::rt::{block_on, TimeoutExt};
+    use crate::{
+        test::{duplex, echo_udp_server},
+        utils::read_bincode_lengthed_async,
+    };
 
-//     use crate::{
-//         test::{duplex, echo_udp_server},
-//         utils::read_bincode_lengthed_async,
-//     };
+    use super::*;
 
-//     use super::*;
+    #[test]
+    fn serve_udp_proxy_conn_works() -> anyhow::Result<()> {
+        block_on(async move {
+            let (_udp_task, server_addr) = echo_udp_server().await;
 
-//     async fn read_packet(r: &mut (impl AsyncRead + Unpin + Send + Sync)) -> Packet<Buf> {
-//         Packet::read_async(r)
-//             .timeout(Duration::from_secs(1))
-//             .await
-//             .unwrap()
-//             .unwrap()
-//     }
+            let (mut near, far) = duplex(10).await;
 
-//     #[test]
-//     fn serve_udp_proxy_conn_works() -> anyhow::Result<()> {
-//         block_on(async move {
-//             let (_udp_task, server_addr) = echo_udp_server().await;
+            let initial_data = b"hello, world";
 
-//             let (mut near, far) = duplex(10).await;
+            let _task = spawn(serve_udp_proxy_conn(
+                true,
+                far,
+                initial_data,
+                server_addr.into(),
+            ));
 
-//             let initial_data = b"hello, world";
+            // Must have received ProxyGranted
+            let result: ProxyResult = read_bincode_lengthed_async(&mut near).await?;
+            assert!(matches!(
+                result,
+                ProxyResult::Granted {
+                    bound_address: None,
+                    solved_addresses: None
+                }
+            ));
 
-//             let _task = spawn(serve_udp_proxy_conn(
-//                 true,
-//                 far,
-//                 initial_data,
-//                 server_addr.into(),
-//             ));
+            let mut reader = PacketReader::new();
+            // Must have received echo-ed data
 
-//             // Must have received ProxyGranted
-//             let result: ProxyResult = read_bincode_lengthed_async(&mut near).await?;
-//             assert!(matches!(
-//                 result,
-//                 ProxyResult::Granted {
-//                     bound_address: None,
-//                     solved_addresses: None
-//                 }
-//             ));
+            let (payload, addr) = reader.read(&mut near).await?;
+            assert_eq!(server_addr.port(), addr.get_port());
+            assert_eq!(initial_data, payload.as_ref());
 
-//             // Must have received echo-ed data
-//             let pkt = read_packet(&mut near).await;
-//             assert_eq!(server_addr.port(), pkt.addr().unwrap().get_port());
-//             assert_eq!(initial_data, pkt.payload());
+            let payload = b"second payload!";
+            let mut writer = PacketWriter::new();
+            writer
+                .write(&mut near, &server_addr.into(), payload)
+                .await?;
 
-//             let payload = b"second payload!";
-//             write_packet_async(&mut near, Some(&server_addr.into()), payload)
-//                 .await
-//                 .unwrap();
+            let (data, addr) = reader.read(&mut near).await?;
+            assert_eq!(addr, &server_addr.into());
+            assert_eq!(payload, data.as_ref());
 
-//             let pkt = read_packet(&mut near).await;
-//             assert_eq!(pkt.addr(), None);
-//             assert_eq!(pkt.payload(), payload);
-
-//             Ok(())
-//         })
-//     }
-// }
+            Ok(())
+        })
+    }
+}

@@ -184,18 +184,13 @@ impl Handshaker {
         bound_address: Option<SocketAddr>,
     ) -> anyhow::Result<()> {
         match (self.0, bound_address) {
-            (HandshakeType::Socks5, Some(bound_address)) => {
+            (HandshakeType::Socks5, bound_address) => {
                 ClientConnRequest::respond(
                     stream,
                     ConnStatusCode::GRANTED,
-                    &Address::IP(bound_address),
+                    &bound_address.map(|a| a.into()).unwrap_or_default(),
                 )
                 .await
-            }
-            (HandshakeType::Socks5, None) => {
-                ClientConnRequest::respond(stream, ConnStatusCode::FAILED, &Address::default())
-                    .await?;
-                bail!("Bound address is required for socks5")
             }
             (HandshakeType::Socks4, Some(SocketAddr::V4(addr))) => {
                 respond_socks4(stream, &addr, SOCKS4_REPLY_GRANTED).await
