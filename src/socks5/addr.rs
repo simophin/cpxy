@@ -118,6 +118,11 @@ impl<'a> Address<'a> {
         }
     }
 
+    pub async fn resolve_first(&self) -> std::io::Result<Option<SocketAddr>> {
+        let mut addresses = self.resolve().await?;
+        Ok(addresses.next())
+    }
+
     pub fn parse(mut buf: &'a [u8]) -> Result<Option<(usize, Self)>, ParseError> {
         let mut position = 1;
         match buf.get_u8() {

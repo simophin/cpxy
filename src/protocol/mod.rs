@@ -8,6 +8,7 @@ use crate::{proxy::protocol::ProxyRequest, socks5::Address};
 
 pub mod direct;
 pub mod tcpman;
+pub mod udpman;
 
 pub trait AsyncStream: AsyncRead + AsyncWrite + Unpin + Send + Sync {}
 

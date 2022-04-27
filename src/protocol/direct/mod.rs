@@ -4,13 +4,18 @@ use crate::io::{bind_udp, connect_tcp, send_to_addr, UdpSocketExt};
 use crate::protocol::{AsyncStream, BoxedSink, BoxedStream};
 use crate::proxy::protocol::ProxyRequest;
 use crate::socks5::Address;
-use anyhow::{bail, Context};
-use futures_util::StreamExt;
+use anyhow::{anyhow, bail, Context};
+use async_trait::async_trait;
+use bytes::Bytes;
+use futures_util::{SinkExt, StreamExt};
+use serde::{Deserialize, Serialize};
 use std::net::SocketAddr;
 use std::time::{Duration, Instant};
 
+#[derive(Clone, Debug, Serialize, Deserialize, Eq, PartialEq)]
 pub struct Direct;
 
+#[async_trait]
 impl Protocol for Direct {
     fn supports(&self, req: &ProxyRequest<'_>) -> bool {
         match req {
@@ -51,7 +56,19 @@ impl Protocol for Direct {
                     .context("Sending initial data")?;
 
                 let (sink, stream) = socket.to_sink_stream().split();
-                Ok((Box::new(sink), Box::new(stream)))
+                Ok((
+                    Box::new(Box::pin(sink.with(
+                        |(data, addr): (Bytes, Address<'static>)| async move {
+                            Ok((
+                                data,
+                                addr.resolve_first()
+                                    .await?
+                                    .ok_or_else(|| anyhow!("Unable to resolve {addr}"))?,
+                            ))
+                        },
+                    ))),
+                    Box::new(Box::pin(stream.map(|(data, addr)| (data, addr.into())))),
+                ))
             }
             _ => bail!("Unsupported datagram connection for {req:?}"),
         }

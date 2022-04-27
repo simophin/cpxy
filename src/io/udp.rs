@@ -1,11 +1,15 @@
 use std::collections::VecDeque;
+use std::future::ready;
 use std::io::ErrorKind;
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr};
 use std::pin::Pin;
+use std::sync::Arc;
 use std::task::{Context, Poll, Waker};
 
 use bytes::Bytes;
 use futures::{ready, Sink, Stream};
+use futures_util::{SinkExt, StreamExt};
+use parking_lot::Mutex;
 
 use crate::utils::{new_vec_for_udp, VecExt};
 use crate::{rt::net::UdpSocket, socks5::Address};
@@ -63,6 +67,29 @@ pub struct UdpSocketSinkStream {
     socket: UdpSocket,
     buffers: VecDeque<(Bytes, SocketAddr)>,
     buffer_waker: Option<Waker>,
+}
+
+impl UdpSocketSinkStream {
+    pub fn to_connected(
+        self,
+        dst: SocketAddr,
+    ) -> (
+        impl Sink<Bytes, Error = std::io::Error> + Unpin + Send + 'static,
+        impl Stream<Item = Bytes> + Unpin + Send + 'static,
+    ) {
+        let last_addr = Arc::new(Mutex::new(dst));
+        let (sink, stream) = self.split();
+        let sink = {
+            let last_addr = last_addr.clone();
+            sink.with(move |b: Bytes| ready(Ok((b, *last_addr.lock()))))
+        };
+
+        let stream = stream
+            .inspect(move |(data, addr)| *last_addr.lock() = *addr)
+            .map(|(data, _)| data);
+
+        (Box::pin(sink), Box::pin(stream))
+    }
 }
 
 impl Stream for UdpSocketSinkStream {
