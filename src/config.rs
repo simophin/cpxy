@@ -14,7 +14,7 @@ use crate::abp::{adblock_list_engine, gfw_list_engine};
 use crate::client::ClientStatistics;
 use crate::geoip::{find_geoip, CountryCode};
 use crate::pattern::Pattern;
-use crate::protocol::{AsyncDgram, AsyncStream, Protocol};
+use crate::protocol::{AsyncStream, BoxedSink, BoxedStream, Protocol};
 use crate::proxy::protocol::ProxyRequest;
 use crate::socks5::Address;
 
@@ -117,7 +117,10 @@ impl Protocol for UpstreamProtocol {
             UpstreamProtocol::TcpMan(p) => p.new_stream_conn(req).await,
         }
     }
-    async fn new_dgram_conn(&self, req: &ProxyRequest<'_>) -> anyhow::Result<Box<dyn AsyncDgram>> {
+    async fn new_dgram_conn(
+        &self,
+        req: &ProxyRequest<'_>,
+    ) -> anyhow::Result<(BoxedSink, BoxedStream)> {
         match self {
             UpstreamProtocol::TcpMan(p) => p.new_dgram_conn(req).await,
         }
@@ -207,7 +210,9 @@ impl Default for ClientConfig {
         Self {
             socks5_address: default_socks5_address(),
             socks5_udp_host: default_socks5_udp_host(),
-            ..Default::default()
+            upstreams: Default::default(),
+            fwmark: None,
+            udp_tproxy_address: None,
         }
     }
 }

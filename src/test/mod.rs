@@ -25,7 +25,7 @@ use crate::{
     config::{ClientConfig, UpstreamConfig},
     fetch::fetch_http_with_proxy,
     rt::net::{TcpListener, TcpStream},
-    server::run_server,
+    // server::run_server,
     socks5::Address,
 };
 
@@ -135,7 +135,10 @@ pub async fn run_test_server() -> (Task<()>, SocketAddr) {
     let listener = bind_tcp(&Default::default()).await.unwrap();
     let addr = listener.local_addr().unwrap();
     (
-        spawn(async move { run_server(listener).await.unwrap() }),
+        spawn(async move {
+            todo!()
+            // run_server(listener).await.unwrap()
+        }),
         addr,
     )
 }

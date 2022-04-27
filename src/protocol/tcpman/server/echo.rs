@@ -2,10 +2,7 @@ use bytes::Bytes;
 use futures::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt, SinkExt, StreamExt};
 
 use crate::{
-    proxy::{
-        protocol::ProxyResult,
-        udp_stream::{PacketReader, PacketWriter},
-    },
+    proxy::protocol::ProxyResult,
     rt::{mpsc::channel, spawn, Task},
     utils::{new_vec_for_udp, write_bincode_lengthed_async, VecExt},
 };
@@ -57,17 +54,18 @@ pub async fn serve_udp(
     )
     .await?;
 
-    let (mut r, mut w) = stream.split();
-    let mut packet_stream = PacketReader::new();
+    // let (mut r, mut w) = stream.split();
+    // let mut packet_stream = PacketReader::new();
 
     // let (tx, mut rx) = bounded(10);
     // let task: Task<anyhow::Result<()>> = spawn(async move {
 
     // });
 
-    let mut packet_writer = PacketWriter::new();
-    loop {
-        let (pkt, addr) = packet_stream.read(&mut r).await?;
-        packet_writer.write(&mut w, &addr, pkt.as_ref()).await?;
-    }
+    // let mut packet_writer = PacketWriter::new();
+    // loop {
+    // let (pkt, addr) = packet_stream.read(&mut r).await?;
+    // packet_writer.write(&mut w, &addr, pkt.as_ref()).await?;
+    // }
+    todo!()
 }

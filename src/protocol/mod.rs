@@ -1,10 +1,10 @@
-use std::{net::SocketAddr, time::Duration};
+use std::time::Duration;
 
 use async_trait::async_trait;
 use bytes::Bytes;
 use futures::{AsyncRead, AsyncWrite, Sink, Stream};
 
-use crate::proxy::protocol::ProxyRequest;
+use crate::{proxy::protocol::ProxyRequest, socks5::Address};
 
 pub mod tcpman;
 
@@ -12,23 +12,8 @@ pub trait AsyncStream: AsyncRead + AsyncWrite + Unpin + Send + Sync {}
 
 impl<T: AsyncRead + AsyncWrite + Unpin + Send + Sync> AsyncStream for T {}
 
-pub trait AsyncDgram:
-    Stream<Item = (Bytes, SocketAddr)>
-    + Sink<(Bytes, SocketAddr), Error = anyhow::Error>
-    + Unpin
-    + Send
-    + Sync
-{
-}
-
-impl<T> AsyncDgram for T where
-    T: Stream<Item = (Bytes, SocketAddr)>
-        + Sink<(Bytes, SocketAddr), Error = anyhow::Error>
-        + Unpin
-        + Send
-        + Sync
-{
-}
+pub type BoxedSink = Box<dyn Sink<(Bytes, Address<'static>), Error = anyhow::Error> + Send + Unpin>;
+pub type BoxedStream = Box<dyn Stream<Item = (Bytes, Address<'static>)> + Send + Unpin>;
 
 #[async_trait]
 pub trait Protocol {
@@ -39,5 +24,8 @@ pub trait Protocol {
         req: &ProxyRequest<'_>,
     ) -> anyhow::Result<(Box<dyn AsyncStream>, Duration)>;
 
-    async fn new_dgram_conn(&self, req: &ProxyRequest<'_>) -> anyhow::Result<Box<dyn AsyncDgram>>;
+    async fn new_dgram_conn(
+        &self,
+        req: &ProxyRequest<'_>,
+    ) -> anyhow::Result<(BoxedSink, BoxedStream)>;
 }

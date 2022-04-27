@@ -33,7 +33,7 @@ pub struct PacketReader {
 }
 
 async fn read_vec(
-    input: &mut (impl AsyncRead + Unpin + Send + Sync),
+    input: &mut (impl AsyncRead + Unpin + Send),
     len: usize,
 ) -> std::io::Result<Vec<u8>> {
     let mut payload = new_vec_uninitialised(len);
@@ -56,7 +56,7 @@ impl PacketReader {
 
     pub async fn read(
         &mut self,
-        input: &mut (impl AsyncRead + Unpin + Send + Sync),
+        input: &mut (impl AsyncRead + Unpin + Send),
     ) -> anyhow::Result<(Bytes, &Address<'static>)> {
         let mut hdrs = [0u8; 3];
         input
@@ -148,7 +148,7 @@ impl PacketWriter {
 
     pub async fn write(
         &mut self,
-        out: &mut (impl AsyncWrite + Unpin + Send + Sync),
+        out: &mut (impl AsyncWrite + Unpin + Send),
         addr: &Address<'_>,
         payload: &[u8],
     ) -> anyhow::Result<usize> {

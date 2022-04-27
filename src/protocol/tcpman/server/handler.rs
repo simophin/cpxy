@@ -11,10 +11,9 @@ use crate::utils::read_bincode_lengthed_async;
 
 pub async fn serve_client(
     v4: bool,
-    mut stream: impl AsyncRead + AsyncWrite + Unpin + Send + Sync + 'static,
+    stream: impl AsyncRead + AsyncWrite + Unpin + Send + Sync + 'static,
 ) -> anyhow::Result<()> {
-    //TODO
-    // let mut stream = crate::cipher::server::listen(stream).await?;
+    let mut stream = super::super::cipher::server::listen(stream).await?;
     let req: ProxyRequest = read_bincode_lengthed_async(&mut stream).await?;
     log::debug!("Receive client request: {req:?}");
 

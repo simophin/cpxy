@@ -13,25 +13,21 @@ use crate::{
 use super::utils::bind_transparent_udp_for_sending;
 
 pub async fn serve_udp_on_dgram(
-    mut upstream: impl Stream<Item = (Bytes, SocketAddr)>
-        + Sink<(Bytes, SocketAddr), Error = anyhow::Error>
-        + Unpin
-        + Send
-        + Sync
-        + 'static,
+    mut upstream_sink: impl Sink<(Bytes, SocketAddr), Error = anyhow::Error> + Unpin + Send + 'static,
+    mut upstream_stream: impl Stream<Item = (Bytes, SocketAddr)> + Unpin + Send + 'static,
     src: SocketAddr,
     dst: SocketAddr,
     rx: Receiver<Bytes>,
     initial_data: Bytes,
     timeout: Duration,
 ) -> anyhow::Result<()> {
-    upstream
+    upstream_sink
         .send((initial_data, dst))
         .await
         .with_context(|| format!("Sending initial data to {dst} for {src}"))?;
 
     if is_one_off_udp_query(&dst.into()) {
-        let data = upstream
+        let data = upstream_stream
             .next()
             .timeout(timeout)
             .await
@@ -43,8 +39,6 @@ pub async fn serve_udp_on_dgram(
             .await
             .context("Sending reply back to one off query");
     }
-
-    let (upstream_w, mut upstream_r) = upstream.split();
 
     let timer = Timer::new(timeout);
     let last_upstream_addr = Arc::new(Mutex::new(None));
@@ -63,7 +57,7 @@ pub async fn serve_udp_on_dgram(
                 )
             })
             .inspect(move |_| timer.reset())
-            .forward(upstream_w),
+            .forward(upstream_sink),
         )
     };
 
@@ -73,7 +67,7 @@ pub async fn serve_udp_on_dgram(
         spawn(async move {
             let mut sockets = HashMap::<SocketAddr, _>::new();
             loop {
-                let (buf, from) = upstream_r
+                let (buf, from) = upstream_stream
                     .next()
                     .await
                     .with_context(|| format!("Receiving datagram for client {src}"))?;

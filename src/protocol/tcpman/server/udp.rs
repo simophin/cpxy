@@ -1,20 +1,16 @@
 use std::sync::Arc;
 
 use crate::{
-    io::{bind_udp, send_to_addr},
+    io::{bind_udp, send_to_addr, UdpSocketExt},
+    protocol::tcpman::dgram::{create_udp_sink, create_udp_stream},
     rt::{spawn, Task},
     utils::{new_vec_for_udp, race, VecExt},
 };
 use anyhow::Context;
-use futures::{AsyncRead, AsyncReadExt, AsyncWrite, FutureExt};
+use futures::{select, AsyncRead, AsyncReadExt, AsyncWrite, FutureExt, SinkExt, StreamExt};
 
 use crate::{
-    proxy::{
-        protocol::ProxyResult,
-        udp_stream::{PacketReader, PacketWriter},
-    },
-    rt::net::UdpSocket,
-    socks5::Address,
+    proxy::protocol::ProxyResult, rt::net::UdpSocket, socks5::Address,
     utils::write_bincode_lengthed_async,
 };
 
@@ -22,8 +18,8 @@ async fn prepare_socket(
     v4: bool,
     initial_data: impl AsRef<[u8]> + Send,
     initial_dst: &Address<'static>,
-) -> anyhow::Result<Arc<UdpSocket>> {
-    let socket = Arc::new(bind_udp(v4).await?);
+) -> anyhow::Result<UdpSocket> {
+    let socket = bind_udp(v4).await?;
 
     send_to_addr(&socket, initial_data.as_ref(), &initial_dst)
         .await
@@ -42,67 +38,59 @@ pub async fn serve_udp_proxy_conn(
     initial_data: impl AsRef<[u8]> + Send,
     initial_dst: Address<'static>,
 ) -> anyhow::Result<()> {
-    let socket = match prepare_socket(v4, initial_data, &initial_dst).await {
-        Ok(v) => {
-            write_bincode_lengthed_async(
-                &mut stream,
-                &ProxyResult::Granted {
-                    bound_address: None,
-                    solved_addresses: None,
-                },
-            )
-            .await?;
-            v
-        }
-        Err(e) => {
-            write_bincode_lengthed_async(
-                &mut stream,
-                &ProxyResult::ErrGeneric { msg: e.to_string() },
-            )
-            .await?;
-            return Err(e);
-        }
-    };
-
-    let close_on_receive = initial_dst.get_port() == 53;
-
-    let (mut stream_r, mut stream_w) = stream.split();
-
-    let task1: Task<anyhow::Result<()>> = {
-        let socket = socket.clone();
-        spawn(async move {
-            let mut packet_reader = PacketReader::new_with_initial_addr(initial_dst);
-
-            loop {
-                let (buf, addr) = packet_reader.read(&mut stream_r).await?;
-                log::debug!("Sending payload(len={}) to {addr}", buf.as_ref().len());
-                send_to_addr(&socket, buf.as_ref(), addr).await?;
-            }
-        })
-    };
-
-    let task2: Task<anyhow::Result<()>> = spawn(async move {
-        let mut packet_writer = PacketWriter::new();
-        loop {
-            let mut buf = new_vec_for_udp();
-            let (len, from) = socket.recv_from(&mut buf).await?;
-            buf.set_len_uninit(len);
-
-            let written = packet_writer
-                .write(&mut stream_w, &from.into(), &buf)
+    let (upstream_sink, upstream_stream) =
+        match prepare_socket(v4, initial_data, &initial_dst).await {
+            Ok(v) => {
+                write_bincode_lengthed_async(
+                    &mut stream,
+                    &ProxyResult::Granted {
+                        bound_address: None,
+                        solved_addresses: None,
+                    },
+                )
                 .await?;
-            log::debug!(
-                "Received {len} bytes from UDP://{from}, written {written} bytes back to TCP stream"
-            );
-
-            if close_on_receive {
-                log::debug!("Closing because of DNS request");
-                break Ok(());
+                v.to_sink_stream().split()
             }
-        }
-    });
+            Err(e) => {
+                write_bincode_lengthed_async(
+                    &mut stream,
+                    &ProxyResult::ErrGeneric { msg: e.to_string() },
+                )
+                .await?;
+                return Err(e);
+            }
+        };
 
-    race(task1.fuse(), task2.fuse()).await
+    let (stream_r, stream_w) = stream.split();
+
+    let udp_sink = create_udp_sink(stream_w);
+    let udp_stream = create_udp_stream(stream_r);
+
+    let upload_task = spawn(
+        udp_stream
+            .filter_map(|(buf, addr)| async move {
+                match addr.resolve().await {
+                    Ok(mut list) => match list.next() {
+                        Some(v) => Some(anyhow::Result::Ok((buf, v))),
+                        None => None,
+                    },
+                    Err(e) => {
+                        log::error!("Unable to resolve {addr}: {e:?}");
+                        Some(Err(e))
+                    }
+                }
+            })
+            .forward(upstream_sink),
+    );
+
+    let download_task = upstream_stream
+        .map(|(data, addr)| anyhow::Result::Ok((data, Address::from(addr))))
+        .forward(udp_sink);
+
+    select! {
+        _ = upload_task.fuse() => Ok(()),
+        _ = download_task.fuse() => Ok(()),
+    }
 }
 
 // #[cfg(test)]

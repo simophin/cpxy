@@ -56,8 +56,7 @@ pub async fn serve_udp_proxy_conn(
                     last_error.replace(e.into());
                     continue;
                 }
-            }
-            .split();
+            };
 
         if is_one_off_udp_query(&addr) {
             match upstream_stream.next().timeout(UDP_IDLING_TIMEOUT).await {
@@ -92,8 +91,7 @@ pub async fn serve_udp_proxy_conn(
             spawn(
                 rx.inspect(move |_| timer.reset())
                     .filter_map(|pkt| async move {
-                        let addr = pkt.addr().resolve().await.ok()?.next()?;
-                        Some(Ok((pkt.payload_bytes(), addr)))
+                        Some(Ok((pkt.payload_bytes(), pkt.addr().into_owned())))
                     })
                     .forward(upstream_sink),
             )

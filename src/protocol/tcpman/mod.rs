@@ -1,16 +1,23 @@
 mod cipher;
+mod dgram;
+pub mod server;
+mod udp_stream;
 
 use std::time::{Duration, Instant};
 
 use anyhow::{bail, Context};
 use async_trait::async_trait;
+use futures::AsyncReadExt;
 use serde::{Deserialize, Serialize};
 
 use crate::{fetch::connect_http, proxy::protocol::ProxyRequest, socks5::Address, url::HttpUrl};
 
-use self::cipher::{client::connect, strategy::EncryptionStrategy};
+use self::{
+    cipher::{client::connect, strategy::EncryptionStrategy},
+    dgram::{create_udp_sink, create_udp_stream},
+};
 
-use super::{AsyncDgram, AsyncStream, Protocol};
+use super::{AsyncStream, BoxedSink, BoxedStream, Protocol};
 
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
 pub struct TcpMan {
@@ -18,21 +25,11 @@ pub struct TcpMan {
     ssl: bool,
 }
 
-#[async_trait]
-impl Protocol for TcpMan {
-    fn supports(&self, _: &ProxyRequest<'_>) -> bool {
-        true
-    }
-
-    async fn new_stream_conn(
+impl TcpMan {
+    async fn send_request(
         &self,
         req: &ProxyRequest<'_>,
-    ) -> anyhow::Result<(Box<dyn AsyncStream>, Duration)> {
-        match req {
-            ProxyRequest::TCP { .. } | ProxyRequest::HTTP { .. } => {}
-            _ => bail!("Invalid request {req:?} for streaming"),
-        }
-
+    ) -> anyhow::Result<(impl AsyncStream, Duration)> {
         let start = Instant::now();
 
         let stream = connect_http(self.ssl, &self.address)
@@ -54,20 +51,39 @@ impl Protocol for TcpMan {
         .context("Connect encryption")?;
 
         let duration = start.elapsed();
-        Ok((Box::new(stream), duration))
+        Ok((stream, duration))
+    }
+}
+
+#[async_trait]
+impl Protocol for TcpMan {
+    fn supports(&self, _: &ProxyRequest<'_>) -> bool {
+        true
     }
 
-    async fn new_dgram_conn(&self, req: &ProxyRequest<'_>) -> anyhow::Result<Box<dyn AsyncDgram>> {
+    async fn new_stream_conn(
+        &self,
+        req: &ProxyRequest<'_>,
+    ) -> anyhow::Result<(Box<dyn AsyncStream>, Duration)> {
         match req {
-            ProxyRequest::TCP { dst } => todo!(),
-            ProxyRequest::UDP {
-                initial_dst,
-                initial_data,
-            } => todo!(),
-            ProxyRequest::DNS { domains } => todo!(),
-            ProxyRequest::HTTP { dst, https, req } => todo!(),
-            ProxyRequest::EchoTestTcp => todo!(),
-            ProxyRequest::EchoTestUdp => todo!(),
+            ProxyRequest::TCP { .. } | ProxyRequest::HTTP { .. } => {}
+            _ => bail!("Invalid request {req:?} for streaming"),
+        };
+
+        let (stream, latency) = self.send_request(req).await?;
+        Ok((Box::new(stream), latency))
+    }
+
+    async fn new_dgram_conn(
+        &self,
+        req: &ProxyRequest<'_>,
+    ) -> anyhow::Result<(BoxedSink, BoxedStream)> {
+        if !matches!(req, ProxyRequest::UDP { .. }) {
+            bail!("Unsupported request type for dgram conn: {req:?}");
         }
+
+        let (stream, _) = self.send_request(req).await?;
+        let (r, w) = stream.split();
+        Ok((Box::new(create_udp_sink(w)), Box::new(create_udp_stream(r))))
     }
 }

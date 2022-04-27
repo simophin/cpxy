@@ -12,7 +12,7 @@ use crate::{
 };
 use anyhow::Context;
 use bytes::Bytes;
-use futures::{SinkExt, StreamExt};
+use futures::{future::ready, SinkExt, StreamExt};
 use futures_util::{select, FutureExt};
 
 use super::super::ClientStatistics;
@@ -108,7 +108,7 @@ impl UdpSession {
             let mut result = Ok(());
             while let Some((name, upstream)) = upstreams.pop() {
                 log::debug!("Trying upstream {name} for UDP://{dst_addr}");
-                let dgram = match upstream
+                let (sink, stream) = match upstream
                     .protocol
                     .new_dgram_conn(&req)
                     .await
@@ -122,7 +122,13 @@ impl UdpSession {
                 };
 
                 result = super::udp_proxy::serve_udp_on_dgram(
-                    dgram,
+                    sink.with(|(buf, addr)| ready(anyhow::Result::Ok((buf, Address::from(addr))))),
+                    stream.filter_map(|(buf, addr)| {
+                        ready(match addr {
+                            Address::IP(addr) => Some((buf, addr)),
+                            _ => None,
+                        })
+                    }),
                     src,
                     dst,
                     rx,
