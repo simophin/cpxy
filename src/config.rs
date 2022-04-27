@@ -99,6 +99,7 @@ const fn default_upstream_enabled() -> bool {
 #[serde(tag = "type")]
 pub enum UpstreamProtocol {
     TcpMan(super::protocol::tcpman::TcpMan),
+    Direct(super::protocol::direct::Direct),
 }
 
 #[async_trait]
@@ -106,6 +107,7 @@ impl Protocol for UpstreamProtocol {
     fn supports(&self, req: &ProxyRequest<'_>) -> bool {
         match self {
             UpstreamProtocol::TcpMan(p) => p.supports(req),
+            UpstreamProtocol::Direct(p) => p.supports(req),
         }
     }
 
@@ -115,6 +117,7 @@ impl Protocol for UpstreamProtocol {
     ) -> anyhow::Result<(Box<dyn AsyncStream>, Duration)> {
         match self {
             UpstreamProtocol::TcpMan(p) => p.new_stream_conn(req).await,
+            UpstreamProtocol::Direct(p) => p.new_stream_conn(req).await,
         }
     }
     async fn new_dgram_conn(
@@ -123,6 +126,7 @@ impl Protocol for UpstreamProtocol {
     ) -> anyhow::Result<(BoxedSink, BoxedStream)> {
         match self {
             UpstreamProtocol::TcpMan(p) => p.new_dgram_conn(req).await,
+            UpstreamProtocol::Direct(p) => p.new_dgram_conn(req).await,
         }
     }
 }

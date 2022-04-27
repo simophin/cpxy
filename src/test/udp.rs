@@ -19,11 +19,13 @@ fn test_udp() {
 
         let mut socks5_client = TcpStream::connect(client_addr).await.unwrap();
 
-        let relay_addr = send_socks5_request(&mut socks5_client, &echo_server_addr.into(), true)
-            .timeout(TIMEOUT)
-            .await
-            .unwrap()
-            .unwrap();
+        let mut relay_addr =
+            send_socks5_request(&mut socks5_client, &echo_server_addr.into(), true)
+                .timeout(TIMEOUT)
+                .await
+                .unwrap()
+                .unwrap();
+        set_ip_local_address(&mut relay_addr);
 
         let socket = bind_udp(true).await.unwrap();
 

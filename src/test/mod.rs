@@ -8,7 +8,7 @@ use std::{
 use crate::{
     config::UpstreamProtocol,
     io::{bind_tcp, bind_udp, connect_tcp},
-    protocol::tcpman::{TcpMan, server::run_server},
+    protocol::tcpman::{server::run_server, TcpMan},
     rt::{block_on, spawn, Task},
 };
 use anyhow::bail;
@@ -49,16 +49,32 @@ pub async fn duplex(
     (client, server)
 }
 
+pub fn set_ip_local(addr: &mut SocketAddr) {
+    match addr {
+        SocketAddr::V4(a) => a.set_ip(Ipv4Addr::new(127, 0, 0, 1)),
+        SocketAddr::V6(a) => a.set_ip("::1".parse().unwrap()),
+    }
+}
+
+pub fn set_ip_local_address(addr: &mut Address<'_>) {
+    match addr {
+        Address::IP(a) => set_ip_local(a),
+        _ => {}
+    }
+}
+
 pub async fn create_http_server() -> (TcpListener, String) {
     let listener = bind_tcp(&"127.0.0.1:0".parse().unwrap()).await.unwrap();
 
-    let addr = listener.local_addr().unwrap();
+    let mut addr = listener.local_addr().unwrap();
+    set_ip_local(&mut addr);
     (listener, format!("http://{addr}"))
 }
 
 pub async fn echo_tcp_server() -> (Task<()>, SocketAddr) {
     let socket = bind_tcp(&Default::default()).await.unwrap();
-    let addr = socket.local_addr().unwrap();
+    let mut addr = socket.local_addr().unwrap();
+    set_ip_local(&mut addr);
     (
         spawn(async move {
             loop {
@@ -97,7 +113,8 @@ pub async fn echo_udp_server() -> (Task<()>, SocketAddr) {
 
 pub async fn run_test_client(upstream_address: SocketAddr) -> (Task<()>, SocketAddr) {
     let listener = bind_tcp(&Default::default()).await.unwrap();
-    let addr = listener.local_addr().unwrap();
+    let mut addr = listener.local_addr().unwrap();
+    set_ip_local(&mut addr);
 
     (
         {
@@ -134,7 +151,8 @@ pub async fn run_test_client(upstream_address: SocketAddr) -> (Task<()>, SocketA
 
 pub async fn run_test_server() -> (Task<()>, SocketAddr) {
     let listener = bind_tcp(&Default::default()).await.unwrap();
-    let addr = listener.local_addr().unwrap();
+    let mut addr = listener.local_addr().unwrap();
+    set_ip_local(&mut addr);
     (
         spawn(async move { run_server(listener).await.unwrap() }),
         addr,

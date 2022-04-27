@@ -57,11 +57,6 @@ impl TcpStreamExt for TcpStream {
             _ => Some(addr),
         }
     }
-
-    #[cfg(not(unix))]
-    fn get_original_dst(&self) -> Option<SocketAddr> {
-        None
-    }
 }
 
 pub async fn connect_tcp(a: &Address<'_>) -> std::io::Result<TcpStream> {

@@ -42,7 +42,10 @@ pub async fn serve_stream_based_conn(
                 stats.update_upstream(name, latency);
                 return copy_duplex(stream, upstream, tx, rx).await;
             }
-            Err(err) => last_error.replace(err),
+            Err(err) => {
+                log::error!("Error connecting to upstream: {name}: {err:?}");
+                last_error.replace(err)
+            }
         };
     }
 

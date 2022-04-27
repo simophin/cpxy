@@ -1,7 +1,7 @@
 use anyhow::{anyhow, Context};
 use bytes::{Buf, BufMut};
 use futures::io::copy;
-use futures::{select, AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt, Future, FutureExt};
+use futures::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt, Future, FutureExt};
 use pin_project_lite::pin_project;
 use serde::{de::DeserializeOwned, Serialize};
 use std::marker::PhantomData;

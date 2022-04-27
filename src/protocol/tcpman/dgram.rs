@@ -10,8 +10,12 @@ use crate::{
 
 pub fn create_udp_stream(
     mut r: impl AsyncRead + Unpin + Send,
+    initial_address: Option<Address<'_>>,
 ) -> impl Stream<Item = (Bytes, Address<'static>)> + Unpin + Send {
-    let mut reader = PacketReader::new();
+    let mut reader = match initial_address {
+        Some(a) => PacketReader::new_with_initial_addr(a.into_owned()),
+        None => PacketReader::new(),
+    };
 
     Box::pin(stream! {
         while let Ok((data, addr)) = reader.read(&mut r).await {
@@ -28,7 +32,7 @@ pub fn create_udp_sink(
         let mut writer = PacketWriter::new();
         while let Some((data, addr)) = rx.next().await {
             if let Err(e) = writer.write(&mut w, &addr, &data).await {
-                log::error!("Erorr writing packet: {e:?}");
+                log::error!("Error writing packet: {e:?}");
                 break;
             }
         }

@@ -6,6 +6,7 @@ use futures::{AsyncRead, AsyncWrite, Sink, Stream};
 
 use crate::{proxy::protocol::ProxyRequest, socks5::Address};
 
+pub mod direct;
 pub mod tcpman;
 
 pub trait AsyncStream: AsyncRead + AsyncWrite + Unpin + Send + Sync {}

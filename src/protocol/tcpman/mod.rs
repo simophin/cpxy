@@ -10,10 +10,12 @@ use async_trait::async_trait;
 use futures::AsyncReadExt;
 use serde::{Deserialize, Serialize};
 
+use crate::proxy::protocol::ProxyResult;
+use crate::utils::{read_bincode_lengthed_async, write_bincode_lengthed};
 use crate::{fetch::connect_http, proxy::protocol::ProxyRequest, socks5::Address, url::HttpUrl};
 
 use self::{
-    cipher::{client::connect, strategy::EncryptionStrategy},
+    cipher::strategy::EncryptionStrategy,
     dgram::{create_udp_sink, create_udp_stream},
 };
 
@@ -36,7 +38,9 @@ impl TcpMan {
             .await
             .with_context(|| format!("Connecting to {}", self.address))?;
 
-        let stream = connect(
+        let mut initial_data = Vec::new();
+        write_bincode_lengthed(&mut initial_data, req)?;
+        let mut stream = cipher::client::connect(
             &HttpUrl {
                 is_https: self.ssl,
                 address: self.address.clone(),
@@ -45,13 +49,18 @@ impl TcpMan {
             stream,
             EncryptionStrategy::pick_send(req, self.ssl),
             EncryptionStrategy::pick_receive(req),
-            serde_json::to_vec(req).context("Serialising proxy req")?,
+            initial_data,
         )
         .await
         .context("Connect encryption")?;
 
-        let duration = start.elapsed();
-        Ok((stream, duration))
+        match read_bincode_lengthed_async(&mut stream)
+            .await
+            .context("Reading proxy response")?
+        {
+            ProxyResult::Granted { .. } => Ok((stream, start.elapsed())),
+            v => Err(v.into()),
+        }
     }
 }
 
@@ -84,6 +93,9 @@ impl Protocol for TcpMan {
 
         let (stream, _) = self.send_request(req).await?;
         let (r, w) = stream.split();
-        Ok((Box::new(create_udp_sink(w)), Box::new(create_udp_stream(r))))
+        Ok((
+            Box::new(create_udp_sink(w)),
+            Box::new(create_udp_stream(r, None)),
+        ))
     }
 }

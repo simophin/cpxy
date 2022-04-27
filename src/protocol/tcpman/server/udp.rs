@@ -61,7 +61,7 @@ pub async fn serve_udp_proxy_conn(
     let (stream_r, stream_w) = stream.split();
 
     let udp_sink = create_udp_sink(stream_w);
-    let udp_stream = create_udp_stream(stream_r);
+    let udp_stream = create_udp_stream(stream_r, Some(initial_dst));
 
     let upload_task = spawn(
         udp_stream
@@ -81,7 +81,7 @@ pub async fn serve_udp_proxy_conn(
     );
 
     let download_task = upstream_stream
-        .map(|(data, addr)| anyhow::Result::Ok((data, Address::from(addr))))
+        .map(|(data, addr)| Ok((data, Address::from(addr))))
         .forward(udp_sink);
 
     select! {

@@ -46,7 +46,6 @@ pub fn pick_cipher() -> (
 
     key = vec![0u8; 32];
     iv = vec![0u8; 12];
-    log::info!("Use Chacha20 cipher");
     cipher_type = 1;
     rand::thread_rng().fill(key.as_mut_slice());
     rand::thread_rng().fill(iv.as_mut_slice());

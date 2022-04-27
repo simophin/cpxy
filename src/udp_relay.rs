@@ -7,7 +7,7 @@ use parking_lot::Mutex;
 
 use crate::{
     io::{bind_udp, UdpSocketExt},
-    socks5::{UdpPacket, UdpRepr},
+    socks5::UdpPacket,
 };
 
 pub async fn new_udp_relay(
@@ -52,6 +52,7 @@ mod tests {
     use crate::rt::{block_on, TimeoutExt};
 
     use crate::socks5::{Address, UdpRepr};
+    use crate::test::set_ip_local;
     use crate::utils::{new_vec_for_udp, VecExt};
 
     use super::*;
@@ -59,7 +60,8 @@ mod tests {
     #[test]
     fn udp_relay_works() -> anyhow::Result<()> {
         block_on(async move {
-            let (relay_addr, mut tx, mut rx) = new_udp_relay(true).await?;
+            let (mut relay_addr, mut tx, mut rx) = new_udp_relay(true).await?;
+            set_ip_local(&mut relay_addr);
 
             let client = bind_udp(true).await?;
 
