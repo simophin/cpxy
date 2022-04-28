@@ -1,3 +1,4 @@
+use std::pin::Pin;
 use std::time::Duration;
 
 use async_trait::async_trait;
@@ -14,8 +15,8 @@ pub trait AsyncStream: AsyncRead + AsyncWrite + Unpin + Send + Sync {}
 
 impl<T: AsyncRead + AsyncWrite + Unpin + Send + Sync> AsyncStream for T {}
 
-pub type BoxedSink = Box<dyn Sink<(Bytes, Address<'static>), Error = anyhow::Error> + Send + Unpin>;
-pub type BoxedStream = Box<dyn Stream<Item = (Bytes, Address<'static>)> + Send + Unpin>;
+pub type BoxedSink = Pin<Box<dyn Sink<(Bytes, Address<'static>), Error = anyhow::Error> + Send>>;
+pub type BoxedStream = Pin<Box<dyn Stream<Item = (Bytes, Address<'static>)> + Send>>;
 
 #[async_trait]
 pub trait Protocol {

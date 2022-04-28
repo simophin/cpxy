@@ -53,6 +53,7 @@ tokio = { version = "1", features = ["full"], optional = true }
 parking_lot = "0"
 async-trait = "0"
 async-stream = "0"
+orion = "0"
 
 [dev-dependencies]
 maplit = "1"

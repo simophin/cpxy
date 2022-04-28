@@ -94,8 +94,8 @@ impl Protocol for TcpMan {
         let (stream, _) = self.send_request(req).await?;
         let (r, w) = stream.split();
         Ok((
-            Box::new(create_udp_sink(w)),
-            Box::new(create_udp_stream(r, None)),
+            Box::pin(create_udp_sink(w)),
+            Box::pin(create_udp_stream(r, None)),
         ))
     }
 }
