@@ -1,26 +1,49 @@
-use std::{collections::BTreeMap, net::SocketAddr, sync::Arc};
+use std::{
+    collections::BTreeMap,
+    net::SocketAddr,
+    sync::{Arc, Weak},
+    time::Duration,
+};
 
 use super::proto::{BytesRef, Message};
-use crate::rt::{
-    mpsc::{channel, Sender, TrySendError},
-    spawn, Task,
+use crate::{
+    io::{bind_udp, is_one_off_udp_query, UdpSocketExt},
+    rt::{
+        mpsc::{channel, Sender},
+        net::UdpSocket,
+        spawn, Task, TimeoutExt,
+    },
+    utils::race,
 };
+use anyhow::{bail, Context};
 use bytes::Bytes;
-use futures::{Sink, Stream, StreamExt};
+use futures::{select, FutureExt, Sink, SinkExt, Stream, StreamExt};
 use num_traits::PrimInt;
 use parking_lot::{Mutex, RwLock};
+use scopeguard::defer;
+
+pub async fn serve_socket(socket: UdpSocket) -> anyhow::Result<()> {
+    let (sink, stream) = socket.to_sink_stream().split();
+    serve(
+        sink.sink_map_err(anyhow::Error::from).with(
+            |(data, addr): (Message<'static>, SocketAddr)| async move {
+                Ok((data.to_bytes()?, addr))
+            },
+        ),
+        Box::pin(stream.filter_map(|(data, addr)| async move {
+            Some((Message::parse(data).ok()?, addr))
+        })),
+    ).await
+}
 
 pub async fn serve(
-    sink: impl Sink<(Message<'static>, SocketAddr), Error = anyhow::Error>
-        + Clone
-        + Unpin
-        + Send
-        + 'static,
+    sink: impl Sink<(Message<'static>, SocketAddr), Error = anyhow::Error> + Send + 'static,
     mut stream: impl Stream<Item = (Message<'static>, SocketAddr)> + Unpin + Send + 'static,
 ) -> anyhow::Result<()> {
-    let mut connections: Arc<RwLock<BTreeMap<u16, Conn>>> = Default::default();
+    let connections: Arc<RwLock<BTreeMap<u16, Conn>>> = Default::default();
+    let (sink_tx, sink_rx) = channel::<(Message<'static>, SocketAddr)>(20);
 
-    let _task1 = {
+    let task1 = {
         let connections = connections.clone();
         spawn(async move {
             while let Some((msg, from)) = stream.next().await {
@@ -40,7 +63,15 @@ pub async fn serve(
                                 continue;
                             }
                         };
-                        let conn = match Conn::new(uuid, initial_data, dst, conn_id, sink.clone()) {
+                        let conn = match Conn::new(
+                            uuid,
+                            initial_data,
+                            from,
+                            dst,
+                            conn_id,
+                            sink_tx.clone(),
+                            Arc::downgrade(&connections),
+                        ) {
                             Ok(v) => v,
                             Err(e) => {
                                 log::error!("Unable to create connection for client {from}: {e:?}");
@@ -79,22 +110,109 @@ pub async fn serve(
         })
     };
 
-    todo!()
+    let task2 = spawn(
+        sink_rx
+            .map(|a| {
+                log::debug!("Sending Message({:?}) to {}", a.0, a.1);
+                Ok(a)
+            })
+            .forward(sink),
+    );
+    select! {
+        _ = task1.fuse() => Ok(()),
+        v = task2.fuse() => v,
+    }
 }
 
 struct Conn {
     incoming_tx: Mutex<Sender<Bytes>>,
+    _task: Task<anyhow::Result<()>>,
 }
 
 impl Conn {
     pub fn new(
         uuid: BytesRef<'static>,
         initial_data: BytesRef<'static>,
+        src: SocketAddr,
         dst: SocketAddr,
         conn_id: u16,
-        sink: impl Sink<(Message<'static>, SocketAddr), Error = anyhow::Error> + Unpin + Send + 'static,
+        mut outgoing_tx: Sender<(Message<'static>, SocketAddr)>,
+        connections: Weak<RwLock<BTreeMap<u16, Conn>>>,
     ) -> anyhow::Result<Self> {
-        todo!()
+        log::debug!("Created UDP Connection(id = {conn_id}), src = {src}, dst = {dst}");
+        let (incoming_tx, incoming_rx) = channel(10);
+        let _task = spawn(async move {
+            defer! {
+                if let Some(conns) = connections.upgrade() {
+                    log::debug!("UDP Conn(id={conn_id}) deleted");
+                    let _ = conns.write().remove(&conn_id);
+                }
+            }
+
+            let upstream = bind_udp(matches!(dst, SocketAddr::V4(_))).await?;
+            upstream
+                .send_to(initial_data.as_ref(), dst)
+                .await
+                .with_context(|| format!("Sending initial data {dst}"))?;
+
+            // Try to receive initial message within 500ms
+            let initial_reply = match upstream
+                .recv_bytes_from()
+                .timeout(Duration::from_millis(500))
+                .await
+            {
+                None => None,
+                Some(Ok(v)) => Some(v),
+                Some(Err(e)) => bail!("Error receiving initial data: {e:?}"),
+            };
+
+            // Send Establish message
+            outgoing_tx
+                .send((
+                    Message::Establish {
+                        uuid: uuid.into(),
+                        conn_id,
+                        initial_reply,
+                    },
+                    src,
+                ))
+                .await
+                .context("Sending established message")?;
+
+            if is_one_off_udp_query(&dst.into()) {
+                return Ok(());
+            }
+
+            let (upstream_sink, upstream_stream) = upstream.to_sink_stream().split();
+
+            let upload_task = spawn(
+                incoming_rx
+                    .map(move |data| Ok((data, dst)))
+                    .forward(upstream_sink.sink_map_err(anyhow::Error::from)),
+            );
+
+            let download_task = spawn(
+                upstream_stream
+                    .map(move |(data, addr)| {
+                        Ok((
+                            Message::Data {
+                                conn_id: None,
+                                addr: if addr == dst { None } else { Some(addr) },
+                                payload: BytesRef::Bytes(data),
+                            },
+                            src,
+                        ))
+                    })
+                    .forward(outgoing_tx.sink_map_err(anyhow::Error::from)),
+            );
+
+            race(upload_task, download_task).await
+        });
+
+        Ok(Self {
+            incoming_tx: Mutex::new(incoming_tx),
+            _task,
+        })
     }
 }
 

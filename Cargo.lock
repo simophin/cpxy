@@ -403,6 +403,7 @@ dependencies = [
  "rand",
  "regex",
  "rust-embed",
+ "scopeguard",
  "serde",
  "serde_json",
  "serde_with",

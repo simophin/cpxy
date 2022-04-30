@@ -54,9 +54,9 @@ impl PacketReader {
         }
     }
 
-    pub async fn read<'a>(
+    pub async fn read<'a, 'b: 'a>(
         &'a mut self,
-        input: &mut (impl AsyncRead + Unpin + Send),
+        input: &'b mut (impl AsyncRead + Unpin + Send),
     ) -> anyhow::Result<(Bytes, &'a Address<'static>)> {
         let mut hdrs = [0u8; 3];
         input

@@ -4,7 +4,7 @@ use crate::io::{bind_udp, connect_tcp, send_to_addr, UdpSocketExt};
 use crate::protocol::{AsyncStream, BoxedSink, BoxedStream};
 use crate::proxy::protocol::ProxyRequest;
 use crate::socks5::Address;
-use anyhow::{anyhow, bail, Context};
+use anyhow::{bail, Context};
 use async_trait::async_trait;
 use bytes::Bytes;
 use futures_util::{SinkExt, StreamExt};

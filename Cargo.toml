@@ -54,6 +54,7 @@ parking_lot = "0"
 async-trait = "0"
 async-stream = "0"
 orion = "0"
+scopeguard = "1"
 
 [dev-dependencies]
 maplit = "1"

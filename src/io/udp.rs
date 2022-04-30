@@ -56,7 +56,7 @@ impl UdpSocketExt for UdpSocket {
 
     fn to_sink_stream(self) -> UdpSocketSinkStream {
         UdpSocketSinkStream {
-            socket: self,
+            socket: Arc::new(self),
             buffer_waker: None,
             buffers: Default::default(),
         }
@@ -64,9 +64,19 @@ impl UdpSocketExt for UdpSocket {
 }
 
 pub struct UdpSocketSinkStream {
-    socket: UdpSocket,
+    socket: Arc<UdpSocket>,
     buffers: VecDeque<(Bytes, SocketAddr)>,
     buffer_waker: Option<Waker>,
+}
+
+impl Clone for UdpSocketSinkStream {
+    fn clone(&self) -> Self {
+        Self {
+            socket: self.socket.clone(),
+            buffers: Default::default(),
+            buffer_waker: None,
+        }
+    }
 }
 
 impl UdpSocketSinkStream {
@@ -96,7 +106,7 @@ impl Stream for UdpSocketSinkStream {
     type Item = (Bytes, SocketAddr);
 
     fn poll_next(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
-        match ready!(Pin::new(&self.socket).poll_readable(cx)) {
+        match ready!(Pin::new(self.socket.as_ref()).poll_readable(cx)) {
             Ok(_) => {}
             Err(_) => return Poll::Ready(None),
         };
@@ -132,7 +142,7 @@ impl Sink<(Bytes, SocketAddr)> for UdpSocketSinkStream {
     }
 
     fn poll_flush(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
-        ready!(Pin::new(&self.socket).poll_writable(cx))?;
+        ready!(Pin::new(self.socket.as_ref()).poll_writable(cx))?;
         while let Some((data, addr)) = self.buffers.front() {
             match self.socket.try_send_to(data.as_ref(), *addr) {
                 Ok(_) => {
@@ -150,5 +160,38 @@ impl Sink<(Bytes, SocketAddr)> for UdpSocketSinkStream {
 
     fn poll_close(self: Pin<&mut Self>, _: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
         Poll::Ready(Ok(()))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::rt::{block_on, TimeoutExt};
+    use crate::test::echo_udp_server;
+    use std::time::Duration;
+
+    #[test]
+    fn sink_stream_works() {
+        block_on(async move {
+            let (_task, echo_addr) = echo_udp_server().await;
+
+            let (mut sink, mut stream) = bind_udp(matches!(echo_addr, SocketAddr::V4(_)))
+                .await
+                .unwrap()
+                .to_sink_stream()
+                .split();
+
+            let data = Bytes::from_static(b"hello, world");
+            sink.send((data.clone(), echo_addr)).await.unwrap();
+
+            let (reply, from) = stream
+                .next()
+                .timeout(Duration::from_secs(1))
+                .await
+                .unwrap()
+                .unwrap();
+            assert_eq!(reply, data);
+            assert_eq!(from.port(), echo_addr.port());
+        });
     }
 }
