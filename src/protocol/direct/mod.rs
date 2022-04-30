@@ -59,12 +59,7 @@ impl Protocol for Direct {
                 Ok((
                     Box::pin(
                         sink.with(|(data, addr): (Bytes, Address<'static>)| async move {
-                            Ok((
-                                data,
-                                addr.resolve_first()
-                                    .await?
-                                    .ok_or_else(|| anyhow!("Unable to resolve {addr}"))?,
-                            ))
+                            Ok((data, addr.resolve_first().await?))
                         }),
                     ),
                     Box::pin(stream.map(|(data, addr)| (data, addr.into()))),

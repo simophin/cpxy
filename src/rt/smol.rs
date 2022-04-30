@@ -1,6 +1,7 @@
 pub use smol::{block_on, spawn, Executor, Task, Timer};
 
 pub mod net {
+    use bytes::Bytes;
     use std::{
         io::ErrorKind,
         net::SocketAddr,
@@ -9,6 +10,7 @@ pub mod net {
         task::{Context, Poll},
     };
 
+    use crate::utils::{new_vec_for_udp, VecExt};
     use derive_more::Deref;
     pub use smol::net::{AsyncToSocketAddrs, TcpListener, TcpStream};
     use smol::Async;
@@ -50,6 +52,13 @@ pub mod net {
         #[inline]
         pub fn poll_writable(self: Pin<&Self>, cx: &mut Context<'_>) -> Poll<std::io::Result<()>> {
             self.s.poll_writable(cx)
+        }
+
+        pub async fn recv_bytes_from(&self) -> std::io::Result<(Bytes, SocketAddr)> {
+            let mut buf = new_vec_for_udp();
+            let (len, addr) = self.recv_from(&mut buf).await?;
+            buf.set_len_uninit(len);
+            Ok((buf.into(), addr))
         }
 
         pub fn try_recv_from(

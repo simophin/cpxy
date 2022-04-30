@@ -11,6 +11,9 @@ use tokio::{
     net::{ToSocketAddrs, UdpSocket as TokioUdpSocket},
 };
 
+use crate::utils::{new_vec_for_udp, VecExt};
+use bytes::Bytes;
+
 pub struct UdpSocket(TokioUdpSocket);
 
 impl UdpSocket {
@@ -32,6 +35,13 @@ impl UdpSocket {
 
     pub fn poll_writable(self: Pin<&Self>, cx: &mut Context) -> Poll<std::io::Result<()>> {
         self.0.poll_send_ready(cx)
+    }
+
+    pub async fn recv_bytes_from(&self) -> std::io::Result<(Bytes, SocketAddr)> {
+        let mut buf = new_vec_for_udp();
+        let (len, addr) = self.recv_bytes(&mut buf).await?;
+        buf.set_len_uninit(len);
+        Ok((buf.into(), addr))
     }
 
     #[inline]

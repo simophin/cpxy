@@ -118,9 +118,11 @@ impl<'a> Address<'a> {
         }
     }
 
-    pub async fn resolve_first(&self) -> std::io::Result<Option<SocketAddr>> {
+    pub async fn resolve_first(&self) -> anyhow::Result<SocketAddr> {
         let mut addresses = self.resolve().await?;
-        Ok(addresses.next())
+        addresses
+            .next()
+            .ok_or_else(|| anyhow::anyhow!("Unable to resolve {self}"))
     }
 
     pub fn parse(mut buf: &'a [u8]) -> Result<Option<(usize, Self)>, ParseError> {

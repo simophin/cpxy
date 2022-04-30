@@ -85,7 +85,7 @@ impl UdpSocketSinkStream {
         };
 
         let stream = stream
-            .inspect(move |(data, addr)| *last_addr.lock() = *addr)
+            .inspect(move |(_, addr)| *last_addr.lock() = *addr)
             .map(|(data, _)| data);
 
         (Box::pin(sink), Box::pin(stream))
