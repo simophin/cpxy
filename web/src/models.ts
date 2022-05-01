@@ -3,7 +3,7 @@
 export interface TcpManConfig {
     type: "tcpman";
     address: string;
-    tls: boolean;
+    ssl: boolean;
     allows_udp: boolean;
 }
 

@@ -31,8 +31,8 @@ export function optional(next?: FindError): FindError {
 export const validAddress: FindError = (value) => {
     const [host, port] = value.trim().split(':');
     const portNum = parseInt(port);
-    if (portNum === NaN || portNum <= 0 || portNum >= 65536) {
-        return `Port ${port} is invalid`;
+    if (isNaN(portNum) || portNum <= 0 || portNum >= 65536) {
+        return `Port number in "${value}" is invalid`;
     }
 
     if (host.length === 0) {

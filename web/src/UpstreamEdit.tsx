@@ -1,11 +1,10 @@
-import { Button, Dialog, DialogActions, DialogContent, DialogTitle, FormControl, FormControlLabel, FormGroup, InputLabel, MenuItem, Select, Stack, Switch, TextField } from "@mui/material"
+import { Button, Dialog, DialogActions, DialogContent, DialogTitle, FormControl, FormControlLabel, MenuItem, Stack, Switch, TextField } from "@mui/material";
+import { forwardRef, useImperativeHandle, useRef, useState } from "react";
 import { BASE_URL } from "./config";
-import { ClientConfig, DirectConfig, ProtocolConfig, TcpManConfig, UdpManConfig, UpstreamConfig, UpstreamUpdate } from "./models"
-import _ from 'lodash';
-import useHttp from "./useHttp";
-import { FindError, mandatory, useEditState, validAddress } from "./useEditState";
+import { ClientConfig, ProtocolConfig, TcpManConfig, UdpManConfig, UpstreamUpdate } from "./models";
 import { transformRule } from "./trafficRules";
-import { useEffect, useState } from "react";
+import { FindError, mandatory, useEditState, validAddress } from "./useEditState";
+import useHttp from "./useHttp";
 
 type Props = {
     editing: string | undefined,
@@ -23,21 +22,23 @@ function uniqueUpstreamName(editing: string | undefined, config: ClientConfig): 
     }
 }
 
-function UdpManConfigEdit({ initial, onChanged }: {
+interface Validator {
+    validate(): ProtocolConfig;
+}
+
+const UdpManConfigEdit = forwardRef(({ initial }: {
     initial?: UdpManConfig,
-    onChanged: (c: UdpManConfig) => unknown
-}) {
+}, ref) => {
     const address = useEditState(initial?.address ?? '', mandatory('Address', validAddress));
 
-    const addressValue = address.value;
-    useEffect(() => {
-        if (address.validate()) {
-            onChanged({
+    useImperativeHandle(ref, () => ({
+        validate(): UdpManConfig {
+            return {
                 type: 'udpman',
-                address: addressValue,
-            })
+                address: address.validate(),
+            }
         }
-    }, [addressValue]);
+    }), [address]);
 
     return <TextField
         value={address.value}
@@ -47,27 +48,23 @@ function UdpManConfigEdit({ initial, onChanged }: {
         helperText={address.error}
         onChange={v => address.setValue(v.currentTarget.value)}
     />;
-}
+});
 
-function TcpManConfigEdit({ initial, onChanged }: {
-    initial?: TcpManConfig,
-    onChanged: (c: TcpManConfig) => unknown,
-}) {
+const TcpManConfigEdit = forwardRef(({ initial }: { initial?: TcpManConfig }, ref) => {
     const address = useEditState(initial?.address ?? '', mandatory('Address', validAddress));
-    const [tls, setTls] = useState(initial?.tls === true);
+    const [ssl, setSsl] = useState(initial?.ssl === true);
     const [allowsUdp, setAllowsUdp] = useState(initial?.allows_udp === true);
 
-    const addressValue = address.value;
-    useEffect(() => {
-        if (address.validate()) {
-            onChanged({
+    useImperativeHandle(ref, () => ({
+        validate(): TcpManConfig {
+            return {
                 type: 'tcpman',
-                address: addressValue,
-                tls,
+                address: address.validate(),
+                ssl,
                 allows_udp: allowsUdp,
-            })
+            };
         }
-    }, [addressValue, tls, allowsUdp]);
+    }), [address, allowsUdp]);
 
     return <>
         <TextField
@@ -83,8 +80,8 @@ function TcpManConfigEdit({ initial, onChanged }: {
             <FormControl>
                 <FormControlLabel
                     control={<Switch
-                        checked={tls}
-                        onChange={v => setTls(v.currentTarget.checked)}
+                        checked={ssl}
+                        onChange={v => setSsl(v.currentTarget.checked)}
                     />}
                     labelPlacement='start'
                     label="TLS" />
@@ -103,7 +100,8 @@ function TcpManConfigEdit({ initial, onChanged }: {
             </FormControl>
         </div>
     </>;
-}
+});
+
 
 export default function UpstreamEdit({ onChanged, onCancelled, editing, current_config }: Props) {
     const existing = editing ? current_config.upstreams[editing] : undefined;
@@ -114,15 +112,22 @@ export default function UpstreamEdit({ onChanged, onCancelled, editing, current_
     const priority = useEditState(existing?.priority?.toString() ?? '0', mandatory('Priority'));
     const request = useHttp(`${BASE_URL}/api/upstream`, { headers: { "Content-Type": "application/json" } });
 
-    const [protoType, setProtoType] = useState<ProtocolConfig['type']>();
-    const [protoConfig, setProtoConfig] = useState<ProtocolConfig>();
+    const [protoType, setProtoType] = useState<ProtocolConfig['type'] | undefined>(existing?.protocol?.type);
+
+    const validatorRef = useRef<Validator>();
 
     const handleSave = async () => {
-        if (!protoConfig) {
-            return;
-        }
-
         try {
+            let protocol: ProtocolConfig | undefined;
+            if (protoType !== 'direct') {
+                protocol = validatorRef.current?.validate();
+                if (!protocol) {
+                    return;
+                }
+            } else {
+                protocol = { 'type': 'direct' };
+            }
+
             const update: UpstreamUpdate = {
                 old_name: editing,
                 name: name.validate(),
@@ -131,7 +136,7 @@ export default function UpstreamEdit({ onChanged, onCancelled, editing, current_
                     accept: accept.validate(),
                     reject: reject.validate(),
                     priority: parseInt(priority.validate()),
-                    protocol: protoConfig,
+                    protocol,
                 }
             };
 
@@ -151,10 +156,6 @@ export default function UpstreamEdit({ onChanged, onCancelled, editing, current_
         }
     };
 
-    useEffect(() => {
-        setProtoConfig(undefined);
-    }, [protoType]);
-
     return <Dialog open={true} onClose={onCancelled} fullWidth disableEscapeKeyDown>
         <DialogTitle>
             {editing && `Edit "${editing}"`}
@@ -172,22 +173,24 @@ export default function UpstreamEdit({ onChanged, onCancelled, editing, current_
                     helperText={name.error}
                     onChange={v => name.setValue(v.currentTarget.value)}
                 />
+                <TextField
+                    value={protoType}
+                    select
+                    label='Protocol'
+                    onChange={v => setProtoType(v.target.value as any)}
+                    margin='dense'>
+                    <MenuItem value={'tcpman'}>TCPMan</MenuItem>
+                    <MenuItem value={'udpman'}>UDPMan</MenuItem>
+                    <MenuItem value={'direct'}>Direct</MenuItem>
+                </TextField>
 
-                <FormControl fullWidth>
-                    <InputLabel>Protocol</InputLabel>
-                    <Select onChange={e => setProtoType(e.target.value as any)}
-                        value={protoConfig?.type}>
-                        <MenuItem value={'tcpman'}>TCPMan</MenuItem>
-                        <MenuItem value={'udpman'}>UDPMan</MenuItem>
-                        <MenuItem value={'direct'}>Direct</MenuItem>
-                    </Select>
-                </FormControl>
+                {protoType === 'tcpman' && <TcpManConfigEdit
+                    ref={validatorRef}
+                    initial={existing?.protocol?.type === 'tcpman' ? existing?.protocol : undefined} />}
 
-                {protoType === 'tcpman' && <TcpManConfigEdit onChanged={setProtoConfig}
-                    initial={protoConfig?.type === 'tcpman' ? protoConfig : undefined} />}
-
-                {protoType === 'udpman' && <UdpManConfigEdit onChanged={setProtoConfig}
-                    initial={protoConfig?.type === 'udpman' ? protoConfig : undefined} />}
+                {protoType === 'udpman' && <UdpManConfigEdit
+                    ref={validatorRef}
+                    initial={existing?.protocol?.type === 'udpman' ? existing?.protocol : undefined} />}
 
                 <TextField
                     value={accept.value}
@@ -225,7 +228,7 @@ export default function UpstreamEdit({ onChanged, onCancelled, editing, current_
         <DialogActions>
             <Button onClick={onCancelled} disabled={request.loading}>Cancel</Button>
             {editing && <Button onClick={handleDelete} disabled={request.loading} color='error' variant='contained'>Delete</Button>}
-            <Button onClick={handleSave} variant='contained' disabled={request.loading || !protoConfig}>
+            <Button onClick={handleSave} variant='contained' disabled={request.loading}>
                 {request.loading ? 'Saving' : 'Save'}
             </Button>
         </DialogActions>
