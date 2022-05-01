@@ -127,6 +127,7 @@ pub async fn run_test_client(upstream_address: SocketAddr) -> (Task<()>, SocketA
                             protocol: UpstreamProtocol::TcpMan(TcpMan {
                                 address: Address::IP(upstream_address),
                                 ssl: false,
+                                allows_udp: true,
                             }),
                             accept: Default::default(),
                             reject: Default::default(),

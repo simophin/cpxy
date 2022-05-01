@@ -1,11 +1,11 @@
-import { Button, Dialog, DialogActions, DialogContent, DialogTitle, FormControl, FormControlLabel, FormGroup, Stack, Switch, TextField } from "@mui/material"
+import { Button, Dialog, DialogActions, DialogContent, DialogTitle, FormControl, FormControlLabel, FormGroup, InputLabel, MenuItem, Select, Stack, Switch, TextField } from "@mui/material"
 import { BASE_URL } from "./config";
-import { ClientConfig, UpstreamUpdate } from "./models"
+import { ClientConfig, DirectConfig, ProtocolConfig, TcpManConfig, UdpManConfig, UpstreamConfig, UpstreamUpdate } from "./models"
 import _ from 'lodash';
 import useHttp from "./useHttp";
 import { FindError, mandatory, useEditState, validAddress } from "./useEditState";
 import { transformRule } from "./trafficRules";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
 type Props = {
     editing: string | undefined,
@@ -23,27 +23,115 @@ function uniqueUpstreamName(editing: string | undefined, config: ClientConfig): 
     }
 }
 
+function UdpManConfigEdit({ initial, onChanged }: {
+    initial?: UdpManConfig,
+    onChanged: (c: UdpManConfig) => unknown
+}) {
+    const address = useEditState(initial?.address ?? '', mandatory('Address', validAddress));
+
+    const addressValue = address.value;
+    useEffect(() => {
+        if (address.validate()) {
+            onChanged({
+                type: 'udpman',
+                address: addressValue,
+            })
+        }
+    }, [addressValue]);
+
+    return <TextField
+        value={address.value}
+        label='Address'
+        margin='dense'
+        error={!!address.error}
+        helperText={address.error}
+        onChange={v => address.setValue(v.currentTarget.value)}
+    />;
+}
+
+function TcpManConfigEdit({ initial, onChanged }: {
+    initial?: TcpManConfig,
+    onChanged: (c: TcpManConfig) => unknown,
+}) {
+    const address = useEditState(initial?.address ?? '', mandatory('Address', validAddress));
+    const [tls, setTls] = useState(initial?.tls === true);
+    const [allowsUdp, setAllowsUdp] = useState(initial?.allows_udp === true);
+
+    const addressValue = address.value;
+    useEffect(() => {
+        if (address.validate()) {
+            onChanged({
+                type: 'tcpman',
+                address: addressValue,
+                tls,
+                allows_udp: allowsUdp,
+            })
+        }
+    }, [addressValue, tls, allowsUdp]);
+
+    return <>
+        <TextField
+            value={address.value}
+            label='Address'
+            margin='dense'
+            error={!!address.error}
+            helperText={address.error}
+            onChange={v => address.setValue(v.currentTarget.value)}
+        />
+
+        <div>
+            <FormControl>
+                <FormControlLabel
+                    control={<Switch
+                        checked={tls}
+                        onChange={v => setTls(v.currentTarget.checked)}
+                    />}
+                    labelPlacement='start'
+                    label="TLS" />
+            </FormControl>
+        </div>
+
+        <div>
+            <FormControl>
+                <FormControlLabel
+                    control={<Switch
+                        checked={allowsUdp}
+                        onChange={v => setAllowsUdp(v.currentTarget.checked)}
+                    />}
+                    labelPlacement='start'
+                    label="Allows UDP" />
+            </FormControl>
+        </div>
+    </>;
+}
+
 export default function UpstreamEdit({ onChanged, onCancelled, editing, current_config }: Props) {
     const existing = editing ? current_config.upstreams[editing] : undefined;
     const name = useEditState(editing ?? '', mandatory('Name', uniqueUpstreamName(editing, current_config)));
-    const address = useEditState(existing?.address ?? '', mandatory('Address', validAddress));
-    const [tls, setTls] = useState(existing?.tls === true);
+
     const accept = useEditState(existing?.accept?.join('\n') ?? '', undefined, transformRule);
     const reject = useEditState(existing?.reject?.join('\n') ?? '', undefined, transformRule);
     const priority = useEditState(existing?.priority?.toString() ?? '0', mandatory('Priority'));
     const request = useHttp(`${BASE_URL}/api/upstream`, { headers: { "Content-Type": "application/json" } });
+
+    const [protoType, setProtoType] = useState<ProtocolConfig['type']>();
+    const [protoConfig, setProtoConfig] = useState<ProtocolConfig>();
+
     const handleSave = async () => {
+        if (!protoConfig) {
+            return;
+        }
+
         try {
             const update: UpstreamUpdate = {
                 old_name: editing,
                 name: name.validate(),
                 config: {
                     enabled: existing?.enabled ?? true,
-                    tls,
-                    address: address.validate(),
                     accept: accept.validate(),
                     reject: reject.validate(),
                     priority: parseInt(priority.validate()),
+                    protocol: protoConfig,
                 }
             };
 
@@ -63,6 +151,10 @@ export default function UpstreamEdit({ onChanged, onCancelled, editing, current_
         }
     };
 
+    useEffect(() => {
+        setProtoConfig(undefined);
+    }, [protoType]);
+
     return <Dialog open={true} onClose={onCancelled} fullWidth disableEscapeKeyDown>
         <DialogTitle>
             {editing && `Edit "${editing}"`}
@@ -81,27 +173,21 @@ export default function UpstreamEdit({ onChanged, onCancelled, editing, current_
                     onChange={v => name.setValue(v.currentTarget.value)}
                 />
 
-                <TextField
-                    value={address.value}
-                    label='Address'
-                    margin='dense'
-                    error={!!address.error}
-                    helperText={address.error}
-                    onChange={v => address.setValue(v.currentTarget.value)}
-                />
+                <FormControl fullWidth>
+                    <InputLabel>Protocol</InputLabel>
+                    <Select onChange={e => setProtoType(e.target.value as any)}
+                        value={protoConfig?.type}>
+                        <MenuItem value={'tcpman'}>TCPMan</MenuItem>
+                        <MenuItem value={'udpman'}>UDPMan</MenuItem>
+                        <MenuItem value={'direct'}>Direct</MenuItem>
+                    </Select>
+                </FormControl>
 
-                <div>
-                    <FormControl>
-                        <FormControlLabel
-                            control={<Switch
-                                checked={tls}
-                                onChange={v => setTls(v.currentTarget.checked)}
-                            />}
-                            labelPlacement='start'
-                            label="TLS" />
-                    </FormControl>
-                </div>
+                {protoType === 'tcpman' && <TcpManConfigEdit onChanged={setProtoConfig}
+                    initial={protoConfig?.type === 'tcpman' ? protoConfig : undefined} />}
 
+                {protoType === 'udpman' && <UdpManConfigEdit onChanged={setProtoConfig}
+                    initial={protoConfig?.type === 'udpman' ? protoConfig : undefined} />}
 
                 <TextField
                     value={accept.value}
@@ -139,7 +225,7 @@ export default function UpstreamEdit({ onChanged, onCancelled, editing, current_
         <DialogActions>
             <Button onClick={onCancelled} disabled={request.loading}>Cancel</Button>
             {editing && <Button onClick={handleDelete} disabled={request.loading} color='error' variant='contained'>Delete</Button>}
-            <Button onClick={handleSave} variant='contained' disabled={request.loading}>
+            <Button onClick={handleSave} variant='contained' disabled={request.loading || !protoConfig}>
                 {request.loading ? 'Saving' : 'Save'}
             </Button>
         </DialogActions>

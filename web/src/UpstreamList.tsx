@@ -105,6 +105,12 @@ export default function UpstreamList({ showSettings, onSettingsClosed }: { showS
         return _.sortBy(_.map(configData?.upstreams, (value, name) => ({ value, name })), ({ value, name }) => name)
             .map(({ value, name }) => {
                 const stats = statsData?.upstreams?.[name];
+                let title;
+                switch (value.protocol.type) {
+                    case 'tcpman': title = value.protocol.address; break;
+                    case 'udpman': title = value.protocol.address; break;
+                    case 'direct': title = 'Direct'; break;
+                }
                 return <ListItem
                     key={name}>
                     <ListItemIcon>
@@ -117,7 +123,7 @@ export default function UpstreamList({ showSettings, onSettingsClosed }: { showS
                         primary={
                             <>{name}{stats && formatStatistics(stats)}</>
                         }
-                        secondary={value.address} />
+                        secondary={title} />
 
                 </ListItem >;
             });

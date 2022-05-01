@@ -26,6 +26,7 @@ use super::{AsyncStream, BoxedSink, BoxedStream, Protocol, Stats};
 pub struct TcpMan {
     pub address: Address<'static>,
     pub ssl: bool,
+    pub allows_udp: bool,
 }
 
 impl TcpMan {
@@ -73,8 +74,11 @@ impl TcpMan {
 
 #[async_trait]
 impl Protocol for TcpMan {
-    fn supports(&self, _: &ProxyRequest<'_>) -> bool {
-        true
+    fn supports(&self, req: &ProxyRequest<'_>) -> bool {
+        match (req, self.allows_udp) {
+            (ProxyRequest::DNS { .. }, false) => false,
+            _ => true,
+        }
     }
 
     async fn new_stream_conn(

@@ -1,11 +1,29 @@
 
+
+export interface TcpManConfig {
+    type: "tcpman";
+    address: string;
+    tls: boolean;
+    allows_udp: boolean;
+}
+
+export interface UdpManConfig {
+    type: "udpman";
+    address: string;
+}
+
+export interface DirectConfig {
+    type: "direct";
+}
+
+export type ProtocolConfig = TcpManConfig | UdpManConfig | DirectConfig;
+
 export type UpstreamConfig = {
-    address: string,
-    tls: boolean,
-    accept: string[],
-    reject: string[],
-    priority: number,
-    enabled: boolean,
+    protocol: ProtocolConfig,
+    accept: string[];
+    reject: string[];
+    priority: number;
+    enabled: boolean;
 }
 
 export type ClientConfig = {
@@ -14,8 +32,6 @@ export type ClientConfig = {
     fwmark?: number,
     udp_tproxy_address?: string,
     upstreams: { [name: string]: UpstreamConfig },
-    direct_accept: string[],
-    direct_reject: string[],
 }
 
 export type UpstreamStatistics = {

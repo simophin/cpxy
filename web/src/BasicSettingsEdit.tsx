@@ -2,8 +2,7 @@ import { Button, Dialog, DialogActions, DialogContent, DialogTitle, Stack, TextF
 import { useEffect } from "react";
 import { BASE_URL } from "./config";
 import { ClientConfig } from "./models";
-import { transformRule } from "./trafficRules";
-import { FindError, mandatory, optional, useEditState, validAddress } from "./useEditState";
+import { mandatory, optional, useEditState, validAddress } from "./useEditState";
 import useHttp from "./useHttp";
 import useSnackbar from "./useSnackbar";
 
@@ -23,7 +22,7 @@ function formatDate(str: string | undefined) {
 }
 
 function isValidFwmark(value: string): string | undefined {
-    const n = parseInt(value);
+    parseInt(value);
     return undefined;
 }
 
@@ -34,8 +33,6 @@ function transformFwmark(text: string): number {
 export default function BasicSettingsEdit({ onSaved, onCancelled, current_config }: Props) {
     const address = useEditState(current_config.socks5_address ?? '', mandatory('Address', validAddress))
     const udpHost = useEditState(current_config.socks5_udp_host ?? '', mandatory('UDP host'));
-    const accept = useEditState(current_config.direct_accept?.join('\n') ?? '', undefined, transformRule);
-    const reject = useEditState(current_config.direct_reject?.join('\n') ?? '', undefined, transformRule);
     const fwmark = useEditState<number>(current_config.fwmark?.toString() ?? '', optional(isValidFwmark), transformFwmark);
     const udpTProxyAddress = useEditState(current_config.udp_tproxy_address ?? '', optional(validAddress));
     const request = useHttp(`${BASE_URL}/api/config`, { headers: { "Content-Type": "application/json" } });
@@ -70,15 +67,13 @@ export default function BasicSettingsEdit({ onSaved, onCancelled, current_config
         try {
             let config: ClientConfig = {
                 ...current_config,
-                direct_accept: accept.validate(),
-                direct_reject: reject.validate(),
                 socks5_address: address.validate(),
                 socks5_udp_host: udpHost.validate(),
                 fwmark: fwmark.validate(),
                 udp_tproxy_address: udpTProxyAddress.validate(),
             };
 
-            if (config.udp_tproxy_address?.length == 0) {
+            if (config.udp_tproxy_address?.length === 0) {
                 delete config.udp_tproxy_address;
             }
 
@@ -122,23 +117,6 @@ export default function BasicSettingsEdit({ onSaved, onCancelled, current_config
                     fullWidth
                     variant='outlined'
                 />
-                <TextField
-                    value={accept.value}
-                    label='Direct accept rules'
-                    margin='dense'
-                    multiline
-                    error={!!accept.error}
-                    helperText={accept.error}
-                    onChange={v => accept.setValue(v.currentTarget.value)} />
-
-                <TextField
-                    value={reject.value}
-                    label='Direct reject rules'
-                    margin='dense'
-                    multiline
-                    error={!!reject.error}
-                    helperText={reject.error}
-                    onChange={v => reject.setValue(v.currentTarget.value)} />
                 <TextField
                     label='SOCKS5 UDP Host'
                     helperText={udpHost.error}
