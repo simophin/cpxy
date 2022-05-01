@@ -15,12 +15,12 @@ use super::ClientStatistics;
 pub async fn serve_stream_based_conn(
     dst: Address<'_>,
     proxy_request: &ProxyRequest<'_>,
-    config: &ClientConfig,
+    client_config: &ClientConfig,
     stats: &ClientStatistics,
     mut stream: impl AsyncRead + AsyncWrite + Unpin + Send + Sync,
     handshaker: Handshaker,
 ) -> anyhow::Result<()> {
-    let mut upstreams = config.find_best_upstream(&proxy_request, stats, &dst);
+    let mut upstreams = client_config.find_best_upstream(&proxy_request, stats, &dst);
     let mut last_error = None;
 
     while let Some((name, config)) = upstreams.pop() {
@@ -37,7 +37,7 @@ pub async fn serve_stream_based_conn(
 
         match config
             .protocol
-            .new_stream_conn(&proxy_request, &protocol_stats)
+            .new_stream_conn(&proxy_request, &protocol_stats, client_config.fwmark)
             .await
             .with_context(|| format!("Requesting new streaming connection from {name}"))
         {

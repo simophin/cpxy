@@ -10,7 +10,7 @@ use async_trait::async_trait;
 use futures::AsyncReadExt;
 use serde::{Deserialize, Serialize};
 
-use crate::io::AsyncStreamCounter;
+use crate::io::{AsyncStreamCounter, TcpStreamExt};
 use crate::proxy::protocol::ProxyResult;
 use crate::utils::{read_bincode_lengthed_async, write_bincode_lengthed};
 use crate::{fetch::connect_http, proxy::protocol::ProxyRequest, socks5::Address, url::HttpUrl};
@@ -33,12 +33,17 @@ impl TcpMan {
         &self,
         req: &ProxyRequest<'_>,
         stats: &Stats,
+        fwmark: Option<u32>,
     ) -> anyhow::Result<(impl AsyncStream, Duration)> {
         let start = Instant::now();
 
         let stream = connect_http(self.ssl, &self.address)
             .await
             .with_context(|| format!("Connecting to {}", self.address))?;
+
+        if let Some(m) = fwmark {
+            stream.inner().set_sock_mark(m)?;
+        }
 
         let mut initial_data = Vec::new();
         write_bincode_lengthed(&mut initial_data, req)?;
@@ -76,13 +81,14 @@ impl Protocol for TcpMan {
         &self,
         req: &ProxyRequest<'_>,
         stats: &Stats,
+        fwmark: Option<u32>,
     ) -> anyhow::Result<(Box<dyn AsyncStream>, Duration)> {
         match req {
             ProxyRequest::TCP { .. } | ProxyRequest::HTTP { .. } => {}
             _ => bail!("Invalid request {req:?} for streaming"),
         };
 
-        let (stream, latency) = self.send_request(req, stats).await?;
+        let (stream, latency) = self.send_request(req, stats, fwmark).await?;
         Ok((Box::new(stream), latency))
     }
 
@@ -90,12 +96,13 @@ impl Protocol for TcpMan {
         &self,
         req: &ProxyRequest<'_>,
         stats: &Stats,
+        fwmark: Option<u32>,
     ) -> anyhow::Result<(BoxedSink, BoxedStream)> {
         if !matches!(req, ProxyRequest::UDP { .. }) {
             bail!("Unsupported request type for dgram conn: {req:?}");
         }
 
-        let (stream, _) = self.send_request(req, stats).await?;
+        let (stream, _) = self.send_request(req, stats, fwmark).await?;
         let (r, w) = stream.split();
         Ok((
             Box::pin(create_udp_sink(w)),

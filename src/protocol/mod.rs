@@ -33,11 +33,13 @@ pub trait Protocol {
         &self,
         req: &ProxyRequest<'_>,
         stats: &Stats,
+        fwmark: Option<u32>,
     ) -> anyhow::Result<(Box<dyn AsyncStream>, Duration)>;
 
     async fn new_dgram_conn(
         &self,
         req: &ProxyRequest<'_>,
         stats: &Stats,
+        fwmark: Option<u32>,
     ) -> anyhow::Result<(BoxedSink, BoxedStream)>;
 }

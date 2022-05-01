@@ -54,6 +54,7 @@ pub async fn serve(
                         uuid,
                         initial_data,
                         dst,
+                        initial_data_nonce: None,
                     } => {
                         let mut map = connections.write();
                         let conn_id = match find_available_conn_id(&map) {
@@ -199,6 +200,7 @@ impl Conn {
                                 conn_id: None,
                                 addr: if addr == dst { None } else { Some(addr) },
                                 payload: BytesRef::Bytes(data),
+                                enc_nonce: None,
                             },
                             src,
                         ))

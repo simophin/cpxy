@@ -38,6 +38,7 @@ fn serve_works() {
                     initial_data: Cow::Borrowed(data),
                 },
                 &Default::default(),
+                None,
             )
             .await
             .unwrap();

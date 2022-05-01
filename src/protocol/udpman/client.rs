@@ -30,6 +30,7 @@ impl Protocol for UdpMan {
         &self,
         _: &ProxyRequest<'_>,
         _: &Stats,
+        _: Option<u32>,
     ) -> anyhow::Result<(Box<dyn AsyncStream>, Duration)> {
         bail!("UDPMan only supports UDP connection")
     }
@@ -38,6 +39,7 @@ impl Protocol for UdpMan {
         &self,
         req: &ProxyRequest<'_>,
         stats: &Stats,
+        _: Option<u32>,
     ) -> anyhow::Result<(BoxedSink, BoxedStream)> {
         let (tx, rx) = (stats.tx.clone(), stats.rx.clone());
         match req {
@@ -56,6 +58,7 @@ impl Protocol for UdpMan {
                     uuid: proto::BytesRef::Ref(uuid.as_ref()),
                     initial_data: proto::BytesRef::Ref(initial_data.as_ref()),
                     dst: initial_dst,
+                    initial_data_nonce: None,
                 }
                 .to_bytes()?;
                 tx.inc(connect_msg.len());
@@ -106,6 +109,7 @@ impl Protocol for UdpMan {
                                                         Ok(proto::Message::Data {
                                                             conn_id: Some(conn_id),
                                                             addr: None,
+                                                            enc_nonce: None,
                                                             payload: proto::BytesRef::Bytes(data),
                                                         })
                                                     })

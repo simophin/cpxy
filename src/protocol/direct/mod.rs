@@ -1,6 +1,8 @@
 use super::{Protocol, Stats};
 use crate::fetch::connect_http;
-use crate::io::{bind_udp, connect_tcp, send_to_addr, AsyncStreamCounter, UdpSocketExt};
+use crate::io::{
+    bind_udp, connect_tcp, send_to_addr, AsyncStreamCounter, TcpStreamExt, UdpSocketExt,
+};
 use crate::protocol::{AsyncStream, BoxedSink, BoxedStream};
 use crate::proxy::protocol::ProxyRequest;
 use crate::socks5::Address;
@@ -28,23 +30,32 @@ impl Protocol for Direct {
         &self,
         req: &ProxyRequest<'_>,
         stats: &Stats,
+        fwmark: Option<u32>,
     ) -> anyhow::Result<(Box<dyn AsyncStream>, Duration)> {
         let start = Instant::now();
         match req {
-            ProxyRequest::TCP { dst } => Ok((
-                Box::new(AsyncStreamCounter::new(
-                    connect_tcp(dst).await?,
-                    stats.rx.clone(),
-                    stats.tx.clone(),
-                )),
-                start.elapsed(),
-            )),
+            ProxyRequest::TCP { dst } => {
+                let stream = connect_tcp(dst).await?;
+                if let Some(fwmark) = fwmark {
+                    stream.set_sock_mark(fwmark)?;
+                }
+
+                Ok((
+                    Box::new(AsyncStreamCounter::new(
+                        stream,
+                        stats.rx.clone(),
+                        stats.tx.clone(),
+                    )),
+                    start.elapsed(),
+                ))
+            }
             ProxyRequest::HTTP { https, dst, req } => {
-                let mut stream = AsyncStreamCounter::new(
-                    connect_http(*https, dst).await?,
-                    stats.rx.clone(),
-                    stats.tx.clone(),
-                );
+                let stream = connect_http(*https, dst).await?;
+                if let Some(mark) = fwmark {
+                    stream.inner().set_sock_mark(mark)?;
+                }
+                let mut stream =
+                    AsyncStreamCounter::new(stream, stats.rx.clone(), stats.tx.clone());
                 req.to_async_writer(&mut stream).await?;
                 Ok((Box::new(stream), start.elapsed()))
             }
@@ -56,6 +67,7 @@ impl Protocol for Direct {
         &self,
         req: &ProxyRequest<'_>,
         stats: &Stats,
+        _: Option<u32>,
     ) -> anyhow::Result<(BoxedSink, BoxedStream)> {
         match req {
             ProxyRequest::UDP {

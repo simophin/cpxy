@@ -5,12 +5,11 @@ use enum_primitive_derive::Primitive;
 use futures::{Sink, SinkExt, Stream, StreamExt};
 use lazy_static::lazy_static;
 use num_traits::FromPrimitive;
-use orion::aead;
 use orion::aead::SecretKey;
-use serde::de::DeserializeOwned;
-use serde::Serialize;
 use std::io::Write;
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr};
+
+type Nonce = u16;
 
 #[derive(Debug, PartialEq, Eq)]
 pub enum BytesRef<'a> {
@@ -23,6 +22,7 @@ pub enum Message<'a> {
     Connect {
         uuid: BytesRef<'a>,
         initial_data: BytesRef<'a>,
+        initial_data_nonce: Option<Nonce>,
         dst: SocketAddr,
     },
 
@@ -36,6 +36,7 @@ pub enum Message<'a> {
         conn_id: Option<u16>,
         addr: Option<SocketAddr>,
         payload: BytesRef<'a>,
+        enc_nonce: Option<Nonce>,
     },
 }
 
@@ -52,6 +53,7 @@ enum MessageType {
 enum MessageFlags {
     Connect {
         is_ipv6: bool,
+        has_nonce: bool,
     },
     Establish {
         has_reply: bool,
@@ -61,6 +63,7 @@ enum MessageFlags {
         has_conn_id: bool,
         has_addr: bool,
         addr_in_ipv6: bool,
+        has_nonce: bool,
     },
 }
 
@@ -72,6 +75,7 @@ impl TryFrom<u8> for MessageFlags {
             match MessageType::from_u8(value >> 5).context("Parsing message type")? {
                 MessageType::Connect => Self::Connect {
                     is_ipv6: value & 0x1 != 0,
+                    has_nonce: (value >> 1) & 0x1 != 0,
                 },
                 MessageType::Establish => Self::Establish {
                     has_reply: value & 0x1 != 0,
@@ -81,6 +85,7 @@ impl TryFrom<u8> for MessageFlags {
                     has_conn_id: value & 0x1 != 0,
                     has_addr: (value >> 1) & 0x1 != 0,
                     addr_in_ipv6: (value >> 2) & 0x1 != 0,
+                    has_nonce: (value >> 3) & 0x1 != 0,
                 },
             },
         )
@@ -90,12 +95,15 @@ impl TryFrom<u8> for MessageFlags {
 impl Into<u8> for MessageFlags {
     fn into(self) -> u8 {
         match self {
-            MessageFlags::Connect { is_ipv6 } => {
-                let mut flag = 0;
+            MessageFlags::Connect { is_ipv6, has_nonce } => {
+                let mut flags = 0;
                 if is_ipv6 {
-                    flag |= 1;
+                    flags |= 1;
                 }
-                ((MessageType::Connect as u8) << 5) | flag
+                if has_nonce {
+                    flags |= 1 << 1;
+                }
+                ((MessageType::Connect as u8) << 5) | flags
             }
             MessageFlags::Establish {
                 has_reply,
@@ -114,6 +122,7 @@ impl Into<u8> for MessageFlags {
                 has_conn_id,
                 has_addr,
                 addr_in_ipv6,
+                has_nonce,
             } => {
                 let mut flags = 0;
                 if has_conn_id {
@@ -124,6 +133,9 @@ impl Into<u8> for MessageFlags {
                 }
                 if addr_in_ipv6 {
                     flags |= 1 << 2;
+                }
+                if has_nonce {
+                    flags |= 1 << 3;
                 }
                 ((MessageType::Data as u8) << 5) | flags
             }
@@ -194,13 +206,20 @@ impl<'a> Message<'a> {
         check_remaining!(b, 1, "MessageType");
         let flags = MessageFlags::try_from(b.get_u8()).context("Unknown message type")?;
         match flags {
-            MessageFlags::Connect { is_ipv6 } => {
+            MessageFlags::Connect { is_ipv6, has_nonce } => {
                 let uuid = parse_uuid(&mut b)?;
                 let dst = parse_socket_addr(&mut b, !is_ipv6)?;
+                let initial_data_nonce = if has_nonce {
+                    check_remaining!(b, 2, "Nonce");
+                    Some(b.get_u16())
+                } else {
+                    None
+                };
 
                 Ok(Self::Connect {
                     uuid: BytesRef::Bytes(uuid),
                     initial_data: BytesRef::Bytes(b),
+                    initial_data_nonce,
                     dst,
                 })
             }
@@ -230,6 +249,7 @@ impl<'a> Message<'a> {
                 has_conn_id,
                 has_addr,
                 addr_in_ipv6,
+                has_nonce,
             } => {
                 let conn_id = if has_conn_id {
                     Some(parse_conn_id(&mut b)?)
@@ -243,10 +263,18 @@ impl<'a> Message<'a> {
                     None
                 };
 
+                let nonce = if has_nonce {
+                    check_remaining!(b, 2, "Enc nonce");
+                    Some(b.get_u16())
+                } else {
+                    None
+                };
+
                 Ok(Self::Data {
                     conn_id,
                     addr,
                     payload: BytesRef::Bytes(b),
+                    enc_nonce: nonce,
                 })
             }
         }
@@ -258,15 +286,20 @@ impl<'a> Message<'a> {
                 uuid,
                 initial_data,
                 dst,
+                initial_data_nonce,
             } => {
                 w.write_u8(
                     MessageFlags::Connect {
                         is_ipv6: matches!(dst, SocketAddr::V6(_)),
+                        has_nonce: initial_data_nonce.is_some(),
                     }
                     .into(),
                 )?;
                 write_uuid(w, uuid)?;
                 write_socket_addr(w, dst)?;
+                if let Some(nonce) = initial_data_nonce {
+                    w.write_u16::<BigEndian>(*nonce)?;
+                }
                 w.write_all(initial_data.as_ref())?;
             }
             Message::Establish {
@@ -292,12 +325,14 @@ impl<'a> Message<'a> {
                 conn_id,
                 addr,
                 payload,
+                enc_nonce,
             } => {
                 w.write_u8(
                     MessageFlags::Data {
                         has_conn_id: conn_id.is_some(),
                         has_addr: addr.is_some(),
                         addr_in_ipv6: matches!(addr, Some(SocketAddr::V6(_))),
+                        has_nonce: enc_nonce.is_some(),
                     }
                     .into(),
                 )?;
@@ -308,6 +343,10 @@ impl<'a> Message<'a> {
 
                 if let Some(addr) = addr {
                     write_socket_addr(w, addr)?;
+                }
+
+                if let Some(nonce) = enc_nonce {
+                    w.write_u16::<BigEndian>(*nonce)?;
                 }
 
                 w.write_all(payload.as_ref())?;
@@ -367,21 +406,13 @@ impl Into<Bytes> for BytesRef<'static> {
     }
 }
 
+#[allow(dead_code)]
 fn secret_key() -> &'static SecretKey {
     lazy_static! {
         static ref KEY: SecretKey =
             SecretKey::from_slice(b"=DW5<W;FJ;nPMA`&6cCpzm7jJNp3`J4a").unwrap();
     }
     &KEY
-}
-
-pub fn encrypt_control_message(msg: &impl Serialize) -> anyhow::Result<Vec<u8>> {
-    Ok(aead::seal(secret_key(), &serde_json::to_vec(msg)?)?)
-}
-
-pub fn decrypt_control_message<T: DeserializeOwned>(msg: &[u8]) -> anyhow::Result<T> {
-    let msg = aead::open(secret_key(), msg)?;
-    Ok(serde_json::from_slice(&msg)?)
 }
 
 #[cfg(test)]
@@ -407,12 +438,14 @@ mod tests {
         test_message(Message::Connect {
             uuid: BytesRef::Bytes(Bytes::from_static(b"uuid")),
             initial_data: BytesRef::Bytes(Bytes::from_static(b"hello, world")),
+            initial_data_nonce: Some(12),
             dst: "1.2.3.4:90".parse().unwrap(),
         });
 
         test_message(Message::Connect {
             uuid: BytesRef::Bytes(Bytes::from_static(b"uuid")),
             initial_data: BytesRef::Bytes(Bytes::from_static(b"hello, world")),
+            initial_data_nonce: None,
             dst: "[::1]:90".parse().unwrap(),
         });
 
@@ -437,12 +470,14 @@ mod tests {
         test_message(Message::Data {
             conn_id: Some(456),
             payload: BytesRef::Bytes(Bytes::from_static(b"hello, world")),
+            enc_nonce: Some(12),
             addr: None,
         });
 
         test_message(Message::Data {
             conn_id: Some(456),
             payload: BytesRef::Bytes(Bytes::from_static(b"hello, world")),
+            enc_nonce: Some(12),
             addr: Some("1.2.3.4:80".parse().unwrap()),
         });
 
@@ -450,24 +485,28 @@ mod tests {
             conn_id: Some(456),
             payload: BytesRef::Bytes(Bytes::from_static(b"hello, world")),
             addr: Some("[::1]:80".parse().unwrap()),
+            enc_nonce: None,
         });
 
         test_message(Message::Data {
             conn_id: None,
             payload: BytesRef::Bytes(Bytes::from_static(b"hello, world")),
             addr: None,
+            enc_nonce: None,
         });
 
         test_message(Message::Data {
             conn_id: None,
             payload: BytesRef::Bytes(Bytes::from_static(b"hello, world")),
             addr: Some("1.2.3.4:80".parse().unwrap()),
+            enc_nonce: Some(12),
         });
 
         test_message(Message::Data {
             conn_id: None,
             payload: BytesRef::Bytes(Bytes::from_static(b"hello, world")),
             addr: Some("[::1]:80".parse().unwrap()),
+            enc_nonce: Some(12),
         });
     }
 }

@@ -115,20 +115,22 @@ impl Protocol for UpstreamProtocol {
         &self,
         req: &ProxyRequest<'_>,
         stats: &Stats,
+        fwmark: Option<u32>,
     ) -> anyhow::Result<(Box<dyn AsyncStream>, Duration)> {
         match self {
-            UpstreamProtocol::TcpMan(p) => p.new_stream_conn(req, stats).await,
-            UpstreamProtocol::Direct(p) => p.new_stream_conn(req, stats).await,
+            UpstreamProtocol::TcpMan(p) => p.new_stream_conn(req, stats, fwmark).await,
+            UpstreamProtocol::Direct(p) => p.new_stream_conn(req, stats, fwmark).await,
         }
     }
     async fn new_dgram_conn(
         &self,
         req: &ProxyRequest<'_>,
         stats: &Stats,
+        fwmark: Option<u32>,
     ) -> anyhow::Result<(BoxedSink, BoxedStream)> {
         match self {
-            UpstreamProtocol::TcpMan(p) => p.new_dgram_conn(req, stats).await,
-            UpstreamProtocol::Direct(p) => p.new_dgram_conn(req, stats).await,
+            UpstreamProtocol::TcpMan(p) => p.new_dgram_conn(req, stats, fwmark).await,
+            UpstreamProtocol::Direct(p) => p.new_dgram_conn(req, stats, fwmark).await,
         }
     }
 }

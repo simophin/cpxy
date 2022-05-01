@@ -1,6 +1,6 @@
 mod client;
 mod proto;
-mod server;
+pub mod server;
 mod stream;
 #[cfg(test)]
 mod test;

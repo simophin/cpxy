@@ -18,7 +18,7 @@ pub mod socks5;
 mod stream;
 mod tls;
 pub mod url;
-mod utils;
+pub mod utils;
 mod ws;
 
 #[cfg(target_os = "android")]

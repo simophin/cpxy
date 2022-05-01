@@ -2,9 +2,9 @@ use anyhow::Context;
 use clap::{Parser, Subcommand};
 use proxy::controller::run_controller;
 use proxy::io::bind_tcp;
-use proxy::protocol::tcpman::server::run_server;
+use proxy::protocol::{tcpman, udpman};
 use proxy::rt;
-// use proxy::server::run_server;
+use proxy::rt::net::UdpSocket;
 use proxy::socks5::Address;
 use std::net::{IpAddr, SocketAddr};
 use std::path::Path;
@@ -27,9 +27,12 @@ enum Command {
         /// The address to listen on
         #[clap(default_value = "0.0.0.0", long)]
         host: IpAddr,
-        /// The HTTP port to listen on
+        /// The TCPMan port to listen on
         #[clap(default_value_t = 80, long)]
-        port: u16,
+        tcp_port: u16,
+        /// The UDPMan port to listen on
+        #[clap(default_value_t = 3000, long)]
+        udp_port: u16,
     },
 
     #[clap()]
@@ -62,13 +65,26 @@ fn main() -> anyhow::Result<()> {
 
         let Cli { cmd } = Cli::parse();
         match cmd {
-            Command::Server { host, port } => {
-                let addr = SocketAddr::new(host, port);
-                log::info!("Start server at {addr}");
-                run_server(
-                    bind_tcp(&Address::IP(addr))
-                        .await
-                        .context("Binding server socket")?,
+            Command::Server {
+                host,
+                tcp_port,
+                udp_port,
+            } => {
+                let tcp_addr = SocketAddr::new(host, tcp_port);
+                let udp_addr = SocketAddr::new(host, udp_port);
+                log::info!("Start server at TCPMan://{tcp_addr}, UDPMan://{udp_addr}");
+
+                let tcp_man_server_socket = bind_tcp(&Address::IP(tcp_addr))
+                    .await
+                    .context("Binding TCPMan server socket")?;
+
+                let udp_man_server_socket = UdpSocket::bind(udp_addr)
+                    .await
+                    .context("Binding UDPMan server socket")?;
+
+                proxy::utils::race(
+                    tcpman::server::run_server(tcp_man_server_socket),
+                    udpman::server::serve_socket(udp_man_server_socket),
                 )
                 .await
             }

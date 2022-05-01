@@ -51,7 +51,11 @@ pub async fn serve_udp_proxy_conn(
         log::debug!("Trying upstream {name} for {req:?}");
         let (upstream_sink, mut upstream_stream) = match upstream
             .protocol
-            .new_dgram_conn(&req, &stats.get_protocol_stats(name).unwrap_or_default())
+            .new_dgram_conn(
+                &req,
+                &stats.get_protocol_stats(name).unwrap_or_default(),
+                c.fwmark,
+            )
             .await
         {
             Ok(v) => v,
