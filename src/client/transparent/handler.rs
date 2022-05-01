@@ -110,7 +110,7 @@ impl UdpSession {
                 log::debug!("Trying upstream {name} for UDP://{dst_addr}");
                 let (sink, stream) = match upstream
                     .protocol
-                    .new_dgram_conn(&req)
+                    .new_dgram_conn(&req, &stats.get_protocol_stats(name).unwrap_or_default())
                     .await
                     .with_context(|| format!("Creating upstream dgram for {req:?}"))
                 {

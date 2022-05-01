@@ -32,10 +32,13 @@ fn serve_works() {
         // Initial response
         let data = b"hello, world";
         let (mut dgram_sink, mut dgram_stream) = protocol
-            .new_dgram_conn(&ProxyRequest::UDP {
-                initial_dst: echo_server_addr.into(),
-                initial_data: Cow::Borrowed(data),
-            })
+            .new_dgram_conn(
+                &ProxyRequest::UDP {
+                    initial_dst: echo_server_addr.into(),
+                    initial_data: Cow::Borrowed(data),
+                },
+                &Default::default(),
+            )
             .await
             .unwrap();
         let timeout = Duration::from_secs(100);

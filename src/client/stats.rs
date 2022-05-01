@@ -6,7 +6,7 @@ use std::{
 
 use serde::{Deserialize, Serialize};
 
-use crate::{config::ClientConfig, counter::Counter};
+use crate::{config::ClientConfig, counter::Counter, protocol::Stats};
 
 #[derive(Default, Serialize, Deserialize, Debug, Clone)]
 pub struct UpstreamStatistics {
@@ -39,5 +39,12 @@ impl ClientStatistics {
                 .set(UNIX_EPOCH.elapsed().unwrap().as_secs() as usize);
             stats.last_latency.set(latency.as_millis() as usize);
         }
+    }
+
+    pub fn get_protocol_stats(&self, name: &str) -> Option<Stats> {
+        self.upstreams.get(name).map(|s| Stats {
+            rx: s.rx.clone(),
+            tx: s.tx.clone(),
+        })
     }
 }

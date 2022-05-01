@@ -49,14 +49,17 @@ pub async fn serve_udp_proxy_conn(
 
     while let Some((name, upstream)) = upstreams.pop() {
         log::debug!("Trying upstream {name} for {req:?}");
-        let (upstream_sink, mut upstream_stream) =
-            match upstream.protocol.new_dgram_conn(&req).await {
-                Ok(v) => v,
-                Err(e) => {
-                    last_error.replace(e.into());
-                    continue;
-                }
-            };
+        let (upstream_sink, mut upstream_stream) = match upstream
+            .protocol
+            .new_dgram_conn(&req, &stats.get_protocol_stats(name).unwrap_or_default())
+            .await
+        {
+            Ok(v) => v,
+            Err(e) => {
+                last_error.replace(e.into());
+                continue;
+            }
+        };
 
         if is_one_off_udp_query(&addr) {
             match upstream_stream.next().timeout(UDP_IDLING_TIMEOUT).await {

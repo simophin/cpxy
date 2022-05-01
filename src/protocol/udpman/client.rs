@@ -1,4 +1,4 @@
-use super::super::Protocol;
+use super::super::{Protocol, Stats};
 use super::proto;
 use crate::io::{bind_udp, UdpSocketExt};
 use crate::protocol::{AsyncStream, BoxedSink, BoxedStream};
@@ -29,6 +29,7 @@ impl Protocol for UdpMan {
     async fn new_stream_conn(
         &self,
         _: &ProxyRequest<'_>,
+        _: &Stats,
     ) -> anyhow::Result<(Box<dyn AsyncStream>, Duration)> {
         bail!("UDPMan only supports UDP connection")
     }
@@ -36,7 +37,9 @@ impl Protocol for UdpMan {
     async fn new_dgram_conn(
         &self,
         req: &ProxyRequest<'_>,
+        stats: &Stats,
     ) -> anyhow::Result<(BoxedSink, BoxedStream)> {
+        let (tx, rx) = (stats.tx.clone(), stats.rx.clone());
         match req {
             ProxyRequest::UDP {
                 initial_dst,
@@ -49,16 +52,15 @@ impl Protocol for UdpMan {
                 // Send connect message
                 let uuid = Uuid::new_v4();
                 let initial_dst = initial_dst.resolve_first().await?;
+                let connect_msg = proto::Message::Connect {
+                    uuid: proto::BytesRef::Ref(uuid.as_ref()),
+                    initial_data: proto::BytesRef::Ref(initial_data.as_ref()),
+                    dst: initial_dst,
+                }
+                .to_bytes()?;
+                tx.inc(connect_msg.len());
                 upstream
-                    .send_to(
-                        &proto::Message::Connect {
-                            uuid: proto::BytesRef::Ref(uuid.as_ref()),
-                            initial_data: proto::BytesRef::Ref(initial_data.as_ref()),
-                            dst: initial_dst,
-                        }
-                        .to_bytes()?,
-                        upstream_addr,
-                    )
+                    .send_to(&connect_msg, upstream_addr)
                     .await
                     .with_context(|| {
                         format!("Sending connect message to upstream {}", self.addr)
@@ -71,8 +73,11 @@ impl Protocol for UdpMan {
                     upstream.to_sink_stream().to_connected(upstream_addr);
 
                 let (msg_sink, msg_stream) = proto::new_message_sink_stream(
-                    upstream_sink.sink_map_err(anyhow::Error::from),
-                    upstream_stream,
+                    upstream_sink.with(move |b: Bytes| {
+                        tx.inc(b.len());
+                        ready(Ok(b))
+                    }),
+                    upstream_stream.inspect(move |data| rx.inc(data.len())),
                 );
 
                 let mut outgoing_rx = Some(outgoing_rx);

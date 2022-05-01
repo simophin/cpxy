@@ -10,6 +10,7 @@ use async_trait::async_trait;
 use futures::AsyncReadExt;
 use serde::{Deserialize, Serialize};
 
+use crate::io::AsyncStreamCounter;
 use crate::proxy::protocol::ProxyResult;
 use crate::utils::{read_bincode_lengthed_async, write_bincode_lengthed};
 use crate::{fetch::connect_http, proxy::protocol::ProxyRequest, socks5::Address, url::HttpUrl};
@@ -19,7 +20,7 @@ use self::{
     dgram::{create_udp_sink, create_udp_stream},
 };
 
-use super::{AsyncStream, BoxedSink, BoxedStream, Protocol};
+use super::{AsyncStream, BoxedSink, BoxedStream, Protocol, Stats};
 
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
 pub struct TcpMan {
@@ -31,6 +32,7 @@ impl TcpMan {
     async fn send_request(
         &self,
         req: &ProxyRequest<'_>,
+        stats: &Stats,
     ) -> anyhow::Result<(impl AsyncStream, Duration)> {
         let start = Instant::now();
 
@@ -46,7 +48,7 @@ impl TcpMan {
                 address: self.address.clone(),
                 path: Default::default(),
             },
-            stream,
+            AsyncStreamCounter::new(stream, stats.rx.clone(), stats.tx.clone()),
             EncryptionStrategy::pick_send(req, self.ssl),
             EncryptionStrategy::pick_receive(req),
             initial_data,
@@ -73,25 +75,27 @@ impl Protocol for TcpMan {
     async fn new_stream_conn(
         &self,
         req: &ProxyRequest<'_>,
+        stats: &Stats,
     ) -> anyhow::Result<(Box<dyn AsyncStream>, Duration)> {
         match req {
             ProxyRequest::TCP { .. } | ProxyRequest::HTTP { .. } => {}
             _ => bail!("Invalid request {req:?} for streaming"),
         };
 
-        let (stream, latency) = self.send_request(req).await?;
+        let (stream, latency) = self.send_request(req, stats).await?;
         Ok((Box::new(stream), latency))
     }
 
     async fn new_dgram_conn(
         &self,
         req: &ProxyRequest<'_>,
+        stats: &Stats,
     ) -> anyhow::Result<(BoxedSink, BoxedStream)> {
         if !matches!(req, ProxyRequest::UDP { .. }) {
             bail!("Unsupported request type for dgram conn: {req:?}");
         }
 
-        let (stream, _) = self.send_request(req).await?;
+        let (stream, _) = self.send_request(req, stats).await?;
         let (r, w) = stream.split();
         Ok((
             Box::pin(create_udp_sink(w)),

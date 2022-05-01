@@ -2,8 +2,12 @@ use anyhow::{anyhow, Context};
 use futures::{AsyncRead, AsyncWrite};
 
 use crate::{
-    config::ClientConfig, handshake::Handshaker, protocol::Protocol, proxy::protocol::ProxyRequest,
-    socks5::Address, utils::copy_duplex,
+    config::ClientConfig,
+    handshake::Handshaker,
+    protocol::{Protocol, Stats},
+    proxy::protocol::ProxyRequest,
+    socks5::Address,
+    utils::copy_duplex,
 };
 
 use super::ClientStatistics;
@@ -22,9 +26,18 @@ pub async fn serve_stream_based_conn(
     while let Some((name, config)) = upstreams.pop() {
         log::debug!("Trying {proxy_request:?} on {name}");
 
+        let protocol_stats = stats
+            .upstreams
+            .get(name)
+            .map(|s| Stats {
+                tx: s.tx.clone(),
+                rx: s.rx.clone(),
+            })
+            .unwrap_or_default();
+
         match config
             .protocol
-            .new_stream_conn(&proxy_request)
+            .new_stream_conn(&proxy_request, &protocol_stats)
             .await
             .with_context(|| format!("Requesting new streaming connection from {name}"))
         {
@@ -34,13 +47,8 @@ pub async fn serve_stream_based_conn(
                     .await
                     .context("Responding OK to handshaker")?;
                 log::debug!("{proxy_request:?} connected on {name}");
-                let (tx, rx) = match stats.upstreams.get(name) {
-                    Some(s) => (Some(s.tx.clone()), Some(s.rx.clone())),
-                    None => (None, None),
-                };
-
                 stats.update_upstream(name, latency);
-                return copy_duplex(stream, upstream, tx, rx).await;
+                return copy_duplex(stream, upstream, None, None).await;
             }
             Err(err) => {
                 log::error!("Error connecting to upstream: {name}: {err:?}");

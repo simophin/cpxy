@@ -14,7 +14,7 @@ use crate::abp::{adblock_list_engine, gfw_list_engine};
 use crate::client::ClientStatistics;
 use crate::geoip::{find_geoip, CountryCode};
 use crate::pattern::Pattern;
-use crate::protocol::{AsyncStream, BoxedSink, BoxedStream, Protocol};
+use crate::protocol::{AsyncStream, BoxedSink, BoxedStream, Protocol, Stats};
 use crate::proxy::protocol::ProxyRequest;
 use crate::socks5::Address;
 
@@ -114,19 +114,21 @@ impl Protocol for UpstreamProtocol {
     async fn new_stream_conn(
         &self,
         req: &ProxyRequest<'_>,
+        stats: &Stats,
     ) -> anyhow::Result<(Box<dyn AsyncStream>, Duration)> {
         match self {
-            UpstreamProtocol::TcpMan(p) => p.new_stream_conn(req).await,
-            UpstreamProtocol::Direct(p) => p.new_stream_conn(req).await,
+            UpstreamProtocol::TcpMan(p) => p.new_stream_conn(req, stats).await,
+            UpstreamProtocol::Direct(p) => p.new_stream_conn(req, stats).await,
         }
     }
     async fn new_dgram_conn(
         &self,
         req: &ProxyRequest<'_>,
+        stats: &Stats,
     ) -> anyhow::Result<(BoxedSink, BoxedStream)> {
         match self {
-            UpstreamProtocol::TcpMan(p) => p.new_dgram_conn(req).await,
-            UpstreamProtocol::Direct(p) => p.new_dgram_conn(req).await,
+            UpstreamProtocol::TcpMan(p) => p.new_dgram_conn(req, stats).await,
+            UpstreamProtocol::Direct(p) => p.new_dgram_conn(req, stats).await,
         }
     }
 }

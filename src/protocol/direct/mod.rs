@@ -1,6 +1,6 @@
-use super::Protocol;
-use crate::fetch::send_http;
-use crate::io::{bind_udp, connect_tcp, send_to_addr, UdpSocketExt};
+use super::{Protocol, Stats};
+use crate::fetch::connect_http;
+use crate::io::{bind_udp, connect_tcp, send_to_addr, AsyncStreamCounter, UdpSocketExt};
 use crate::protocol::{AsyncStream, BoxedSink, BoxedStream};
 use crate::proxy::protocol::ProxyRequest;
 use crate::socks5::Address;
@@ -27,14 +27,27 @@ impl Protocol for Direct {
     async fn new_stream_conn(
         &self,
         req: &ProxyRequest<'_>,
+        stats: &Stats,
     ) -> anyhow::Result<(Box<dyn AsyncStream>, Duration)> {
         let start = Instant::now();
         match req {
-            ProxyRequest::TCP { dst } => Ok((Box::new(connect_tcp(dst).await?), start.elapsed())),
-            ProxyRequest::HTTP { https, dst, req } => Ok((
-                Box::new(send_http(*https, dst, req).await?),
+            ProxyRequest::TCP { dst } => Ok((
+                Box::new(AsyncStreamCounter::new(
+                    connect_tcp(dst).await?,
+                    stats.rx.clone(),
+                    stats.tx.clone(),
+                )),
                 start.elapsed(),
             )),
+            ProxyRequest::HTTP { https, dst, req } => {
+                let mut stream = AsyncStreamCounter::new(
+                    connect_http(*https, dst).await?,
+                    stats.rx.clone(),
+                    stats.tx.clone(),
+                );
+                req.to_async_writer(&mut stream).await?;
+                Ok((Box::new(stream), start.elapsed()))
+            }
             _ => bail!("Unsupported stream connection for {req:?}"),
         }
     }
@@ -42,6 +55,7 @@ impl Protocol for Direct {
     async fn new_dgram_conn(
         &self,
         req: &ProxyRequest<'_>,
+        stats: &Stats,
     ) -> anyhow::Result<(BoxedSink, BoxedStream)> {
         match req {
             ProxyRequest::UDP {
@@ -56,13 +70,17 @@ impl Protocol for Direct {
                     .context("Sending initial data")?;
 
                 let (sink, stream) = socket.to_sink_stream().split();
+                let tx = stats.tx.clone();
+                let rx = stats.rx.clone();
                 Ok((
-                    Box::pin(
-                        sink.with(|(data, addr): (Bytes, Address<'static>)| async move {
-                            Ok((data, addr.resolve_first().await?))
-                        }),
-                    ),
-                    Box::pin(stream.map(|(data, addr)| (data, addr.into()))),
+                    Box::pin(sink.with(move |(data, addr): (Bytes, Address<'static>)| {
+                        tx.inc(data.len());
+                        async move { Ok((data, addr.resolve_first().await?)) }
+                    })),
+                    Box::pin(stream.map(move |(data, addr)| {
+                        rx.inc(data.len());
+                        (data, addr.into())
+                    })),
                 ))
             }
             _ => bail!("Unsupported datagram connection for {req:?}"),
