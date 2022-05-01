@@ -2,7 +2,7 @@ use anyhow::anyhow;
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
-use std::fmt::{Display, Formatter};
+use std::fmt::{Debug, Display, Formatter};
 use std::net::{IpAddr, Ipv4Addr, SocketAddr};
 use std::str::FromStr;
 use std::time::{Duration, UNIX_EPOCH};
@@ -14,7 +14,9 @@ use crate::abp::{adblock_list_engine, gfw_list_engine};
 use crate::client::ClientStatistics;
 use crate::geoip::{find_geoip, CountryCode};
 use crate::pattern::Pattern;
-use crate::protocol::{AsyncStream, BoxedSink, BoxedStream, Protocol, Stats};
+use crate::protocol::{
+    direct, tcpman, udpman, AsyncStream, BoxedSink, BoxedStream, Protocol, Stats,
+};
 use crate::proxy::protocol::ProxyRequest;
 use crate::socks5::Address;
 
@@ -98,41 +100,14 @@ const fn default_upstream_enabled() -> bool {
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
 #[serde(tag = "type")]
 pub enum UpstreamProtocol {
-    TcpMan(super::protocol::tcpman::TcpMan),
-    Direct(super::protocol::direct::Direct),
-}
+    #[serde(rename = "udpman")]
+    UdpMan(udpman::UdpMan),
 
-#[async_trait]
-impl Protocol for UpstreamProtocol {
-    fn supports(&self, req: &ProxyRequest<'_>) -> bool {
-        match self {
-            UpstreamProtocol::TcpMan(p) => p.supports(req),
-            UpstreamProtocol::Direct(p) => p.supports(req),
-        }
-    }
+    #[serde(rename = "tcpman")]
+    TcpMan(tcpman::TcpMan),
 
-    async fn new_stream_conn(
-        &self,
-        req: &ProxyRequest<'_>,
-        stats: &Stats,
-        fwmark: Option<u32>,
-    ) -> anyhow::Result<(Box<dyn AsyncStream>, Duration)> {
-        match self {
-            UpstreamProtocol::TcpMan(p) => p.new_stream_conn(req, stats, fwmark).await,
-            UpstreamProtocol::Direct(p) => p.new_stream_conn(req, stats, fwmark).await,
-        }
-    }
-    async fn new_dgram_conn(
-        &self,
-        req: &ProxyRequest<'_>,
-        stats: &Stats,
-        fwmark: Option<u32>,
-    ) -> anyhow::Result<(BoxedSink, BoxedStream)> {
-        match self {
-            UpstreamProtocol::TcpMan(p) => p.new_dgram_conn(req, stats, fwmark).await,
-            UpstreamProtocol::Direct(p) => p.new_dgram_conn(req, stats, fwmark).await,
-        }
-    }
+    #[serde(rename = "direct")]
+    Direct(direct::Direct),
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -278,5 +253,42 @@ impl ClientConfig {
 
         upstreams.sort_by_key(|(_, _, score)| *score);
         upstreams.into_iter().map(|(n, c, _)| (n, c)).collect()
+    }
+}
+
+#[async_trait]
+impl Protocol for UpstreamProtocol {
+    fn supports(&self, req: &ProxyRequest<'_>) -> bool {
+        match self {
+            UpstreamProtocol::UdpMan(p) => p.supports(req),
+            UpstreamProtocol::TcpMan(p) => p.supports(req),
+            UpstreamProtocol::Direct(p) => p.supports(req),
+        }
+    }
+
+    async fn new_stream_conn(
+        &self,
+        req: &ProxyRequest<'_>,
+        stats: &Stats,
+        fwmark: Option<u32>,
+    ) -> anyhow::Result<(Box<dyn AsyncStream>, Duration)> {
+        match self {
+            UpstreamProtocol::UdpMan(p) => p.new_stream_conn(req, stats, fwmark).await,
+            UpstreamProtocol::TcpMan(p) => p.new_stream_conn(req, stats, fwmark).await,
+            UpstreamProtocol::Direct(p) => p.new_stream_conn(req, stats, fwmark).await,
+        }
+    }
+
+    async fn new_dgram_conn(
+        &self,
+        req: &ProxyRequest<'_>,
+        stats: &Stats,
+        fwmark: Option<u32>,
+    ) -> anyhow::Result<(BoxedSink, BoxedStream)> {
+        match self {
+            UpstreamProtocol::UdpMan(p) => p.new_dgram_conn(req, stats, fwmark).await,
+            UpstreamProtocol::TcpMan(p) => p.new_dgram_conn(req, stats, fwmark).await,
+            UpstreamProtocol::Direct(p) => p.new_dgram_conn(req, stats, fwmark).await,
+        }
     }
 }

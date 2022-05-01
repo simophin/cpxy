@@ -9,6 +9,7 @@ use async_trait::async_trait;
 use bytes::Bytes;
 use futures::StreamExt;
 use futures_util::SinkExt;
+use serde::{Deserialize, Serialize};
 use std::future::ready;
 use std::net::SocketAddr;
 use std::time::Duration;
@@ -16,6 +17,7 @@ use uuid::Uuid;
 
 use crate::rt::{mpsc::channel, spawn};
 
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
 pub struct UdpMan {
     pub addr: Address<'static>,
 }
