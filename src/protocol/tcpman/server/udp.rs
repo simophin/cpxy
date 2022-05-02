@@ -4,7 +4,9 @@ use crate::{
     rt::spawn,
 };
 use anyhow::Context;
-use futures::{select, AsyncRead, AsyncReadExt, AsyncWrite, FutureExt, StreamExt};
+use futures::{
+    select, AsyncRead, AsyncReadExt, AsyncWrite, FutureExt, SinkExt, StreamExt, TryStreamExt,
+};
 
 use crate::{
     proxy::protocol::ProxyResult, rt::net::UdpSocket, socks5::Address,
@@ -65,23 +67,24 @@ pub async fn serve_udp_proxy_conn(
 
     let upload_task = spawn(
         udp_stream
-            .filter_map(|(buf, addr)| async move {
-                match addr.resolve().await {
-                    Ok(mut list) => match list.next() {
-                        Some(v) => Some(anyhow::Result::Ok((buf, v))),
-                        None => None,
-                    },
-                    Err(e) => {
-                        log::error!("Unable to resolve {addr}: {e:?}");
-                        Some(Err(e))
-                    }
-                }
+            .filter_map(|item| async move {
+                let (buf, addr) = match item {
+                    Ok(v) => v,
+                    Err(e) => return Some(Err(e)),
+                };
+
+                let addr = match addr.resolve_first().await {
+                    Ok(v) => v,
+                    Err(e) => return Some(Err(e)),
+                };
+
+                Some(Ok((buf, addr)))
             })
-            .forward(upstream_sink),
+            .forward(upstream_sink.sink_map_err(anyhow::Error::from)),
     );
 
     let download_task = upstream_stream
-        .map(|(data, addr)| Ok((data, Address::from(addr))))
+        .map_ok(|(data, addr)| (data, Address::from(addr)))
         .forward(udp_sink);
 
     select! {

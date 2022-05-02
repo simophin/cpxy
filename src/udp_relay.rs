@@ -15,7 +15,7 @@ pub async fn new_udp_relay(
 ) -> anyhow::Result<(
     SocketAddr,
     impl Sink<UdpPacket<Bytes>, Error = anyhow::Error> + Unpin,
-    impl Stream<Item = UdpPacket<Bytes>> + Unpin,
+    impl Stream<Item = anyhow::Result<UdpPacket<Bytes>>> + Unpin,
 )> {
     let udp = bind_udp(v4).await?;
     let bound_addr = udp.local_addr().context("Getting local_addr")?;
@@ -35,9 +35,21 @@ pub async fn new_udp_relay(
         })
     };
 
-    let stream = stream.filter_map(move |(data, addr)| {
+    let stream = stream.filter_map(move |item| {
+        let (data, addr) = match item {
+            Ok(v) => v,
+            Err(e) => return ready(Some(Err(e))),
+        };
+
         last_addr.lock().replace(addr);
-        ready(UdpPacket::new_checked(data).ok())
+        let pkt = match UdpPacket::new_checked(data) {
+            Ok(v) => v,
+            Err(e) => {
+                log::error!("Error parsing SOCKS5 Udp: {e:?}");
+                return ready(None);
+            }
+        };
+        ready(Some(Ok(pkt)))
     });
 
     Ok((bound_addr, Box::pin(sink), Box::pin(stream)))
@@ -87,6 +99,7 @@ mod tests {
                 .next()
                 .timeout(Duration::from_secs(1))
                 .await
+                .unwrap()
                 .unwrap()
                 .unwrap();
             assert_eq!(pkt.addr(), target_addr);

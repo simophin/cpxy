@@ -9,6 +9,7 @@ use crate::socks5::Address;
 use anyhow::{bail, Context};
 use async_trait::async_trait;
 use bytes::Bytes;
+use futures::TryStreamExt;
 use futures_util::{SinkExt, StreamExt};
 use serde::{Deserialize, Serialize};
 use std::net::SocketAddr;
@@ -94,7 +95,7 @@ impl Protocol for Direct {
                         tx.inc(data.len());
                         async move { Ok((data, addr.resolve_first().await?)) }
                     })),
-                    Box::pin(stream.map(move |(data, addr)| {
+                    Box::pin(stream.map_ok(move |(data, addr)| {
                         rx.inc(data.len());
                         (data, addr.into())
                     })),

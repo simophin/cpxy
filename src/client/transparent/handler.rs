@@ -10,7 +10,7 @@ use crate::{
     },
     socks5::Address,
 };
-use anyhow::Context;
+use anyhow::{anyhow, Context};
 use bytes::Bytes;
 use futures::{future::ready, SinkExt, StreamExt};
 use futures_util::{select, FutureExt};
@@ -127,10 +127,11 @@ impl UdpSession {
 
                 result = super::udp_proxy::serve_udp_on_dgram(
                     sink.with(|(buf, addr)| ready(anyhow::Result::Ok((buf, Address::from(addr))))),
-                    stream.filter_map(|(buf, addr)| {
-                        ready(match addr {
-                            Address::IP(addr) => Some((buf, addr)),
-                            _ => None,
+                    stream.filter_map(|item| {
+                        ready(match item {
+                            Ok((buf, Address::IP(addr))) => Some(Ok((buf, addr))),
+                            Ok((_, _)) => Some(Err(anyhow!("Unsupported address type"))),
+                            Err(e) => Some(Err(e)),
                         })
                     }),
                     src,

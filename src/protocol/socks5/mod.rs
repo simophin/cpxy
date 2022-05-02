@@ -7,7 +7,7 @@ use std::{
 use anyhow::{bail, Context};
 use async_trait::async_trait;
 use bytes::Bytes;
-use futures::{AsyncRead, AsyncWrite, SinkExt, StreamExt};
+use futures::{AsyncRead, AsyncWrite, SinkExt, StreamExt, TryStreamExt};
 use serde::{Deserialize, Serialize};
 
 use crate::{
@@ -204,16 +204,14 @@ impl Protocol for Socks5 {
                         }
                         ready(buf)
                     })),
-                    Box::pin(stream.filter_map(move |pkt| {
-                        rx.inc(pkt.len());
-                        ready(match UdpPacket::new_checked(pkt) {
-                            Ok(p) => Some((p.payload_bytes(), p.addr().into_owned())),
-                            Err(e) => {
-                                log::warn!("Error parsing Sock5 UDP Packet: {e:?}");
-                                None
-                            }
-                        })
-                    })),
+                    Box::pin(stream.inspect_ok(move |pkt| rx.inc(pkt.len())).filter_map(
+                        move |pkt| {
+                            ready(Some(
+                                pkt.and_then(UdpPacket::new_checked)
+                                    .map(|p| (p.payload_bytes(), p.addr().into_owned())),
+                            ))
+                        },
+                    )),
                 ))
             }
             _ => bail!("Unsupported request: {req:?}"),

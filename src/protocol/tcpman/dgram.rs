@@ -11,15 +11,20 @@ use crate::{
 pub fn create_udp_stream(
     mut r: impl AsyncRead + Unpin + Send,
     initial_address: Option<Address<'_>>,
-) -> impl Stream<Item = (Bytes, Address<'static>)> + Unpin + Send {
+) -> impl Stream<Item = anyhow::Result<(Bytes, Address<'static>)>> + Unpin + Send {
     let mut reader = match initial_address {
         Some(a) => PacketReader::new_with_initial_addr(a.into_owned()),
         None => PacketReader::new(),
     };
 
     Box::pin(stream! {
-        while let Ok((data, addr)) = reader.read(&mut r).await {
-            yield ((data, addr.clone().into_owned()))
+        loop {
+            let r = reader.read(&mut r).await.map_err(anyhow::Error::from);
+            let is_error = r.is_err();
+            yield r.map(|(data, addr)| (data, addr.clone().into_owned()));
+            if is_error {
+                break
+            }
         }
     })
 }

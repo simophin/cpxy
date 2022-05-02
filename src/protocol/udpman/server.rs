@@ -1,5 +1,6 @@
 use std::{
     collections::BTreeMap,
+    future::ready,
     net::SocketAddr,
     sync::{Arc, Weak},
     time::Duration,
@@ -17,7 +18,7 @@ use crate::{
 };
 use anyhow::{bail, Context};
 use bytes::Bytes;
-use futures::{select, FutureExt, Sink, SinkExt, Stream, StreamExt};
+use futures::{select, FutureExt, Sink, SinkExt, Stream, StreamExt, TryStreamExt};
 use num_traits::PrimInt;
 use parking_lot::{Mutex, RwLock};
 use scopeguard::defer;
@@ -30,15 +31,31 @@ pub async fn serve_socket(socket: UdpSocket) -> anyhow::Result<()> {
                 Ok((data.to_bytes()?, addr))
             },
         ),
-        Box::pin(stream.filter_map(|(data, addr)| async move {
-            Some((Message::parse(data).ok()?, addr))
+        Box::pin(stream.filter_map(|item| {
+            let (data, addr) = match item {
+                Ok(v) => v,
+                Err(e) => return ready(Some(Err(e))),
+            };
+
+            let msg = match Message::parse(data) {
+                Ok(v) => v,
+                Err(e) => {
+                    log::error!("Error parsing message: {e:?}");
+                    return ready(None);
+                }
+            };
+
+            ready(Some(Ok((msg, addr))))
         })),
     ).await
 }
 
 pub async fn serve(
     sink: impl Sink<(Message<'static>, SocketAddr), Error = anyhow::Error> + Send + 'static,
-    mut stream: impl Stream<Item = (Message<'static>, SocketAddr)> + Unpin + Send + 'static,
+    mut stream: impl Stream<Item = anyhow::Result<(Message<'static>, SocketAddr)>>
+        + Unpin
+        + Send
+        + 'static,
 ) -> anyhow::Result<()> {
     let connections: Arc<RwLock<BTreeMap<u16, Conn>>> = Default::default();
     let (sink_tx, sink_rx) = channel::<(Message<'static>, SocketAddr)>(20);
@@ -46,7 +63,14 @@ pub async fn serve(
     let task1 = {
         let connections = connections.clone();
         spawn(async move {
-            while let Some((msg, from)) = stream.next().await {
+            while let Some(item) = stream.next().await {
+                let (msg, from) = match item {
+                    Ok(v) => v,
+                    Err(e) => {
+                        log::error!("Error receiving message: {e:?}");
+                        continue;
+                    }
+                };
                 log::debug!("Received {msg:?} from {from}");
 
                 match msg {
@@ -194,8 +218,8 @@ impl Conn {
 
             let download_task = spawn(
                 upstream_stream
-                    .map(move |(data, addr)| {
-                        Ok((
+                    .map_ok(move |(data, addr)| {
+                        (
                             Message::Data {
                                 conn_id: None,
                                 addr: if addr == dst { None } else { Some(addr) },
@@ -203,7 +227,7 @@ impl Conn {
                                 enc_nonce: None,
                             },
                             src,
-                        ))
+                        )
                     })
                     .forward(outgoing_tx.sink_map_err(anyhow::Error::from)),
             );

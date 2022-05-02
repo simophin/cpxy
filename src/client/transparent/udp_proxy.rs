@@ -14,7 +14,10 @@ use super::utils::bind_transparent_udp_for_sending;
 
 pub async fn serve_udp_on_dgram(
     mut upstream_sink: impl Sink<(Bytes, SocketAddr), Error = anyhow::Error> + Unpin + Send + 'static,
-    mut upstream_stream: impl Stream<Item = (Bytes, SocketAddr)> + Unpin + Send + 'static,
+    mut upstream_stream: impl Stream<Item = anyhow::Result<(Bytes, SocketAddr)>>
+        + Unpin
+        + Send
+        + 'static,
     src: SocketAddr,
     dst: SocketAddr,
     rx: Receiver<Bytes>,
@@ -32,7 +35,8 @@ pub async fn serve_udp_on_dgram(
             .timeout(timeout)
             .await
             .context("Timeout waiting for one off query response")?
-            .context("Unexpected EOF from upstream")?;
+            .context("Unexpected EOF from upstream")?
+            .context("Receiving upstream stream")?;
         return bind_transparent_udp_for_sending(dst)
             .context("Binding TProxy for sending")?
             .send(data)
@@ -70,7 +74,8 @@ pub async fn serve_udp_on_dgram(
                 let (buf, from) = upstream_stream
                     .next()
                     .await
-                    .with_context(|| format!("Receiving datagram for client {src}"))?;
+                    .with_context(|| format!("Receiving datagram for client {src}"))?
+                    .context("Receiving dgram")?;
 
                 timer.reset();
                 last_upstream_addr.lock().replace(from);

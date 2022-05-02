@@ -7,7 +7,7 @@ use std::sync::Arc;
 use std::task::{Context, Poll, Waker};
 
 use bytes::Bytes;
-use futures::{ready, Sink, Stream};
+use futures::{ready, Sink, Stream, TryStreamExt};
 use futures_util::{SinkExt, StreamExt};
 use parking_lot::Mutex;
 
@@ -85,7 +85,7 @@ impl UdpSocketSinkStream {
         dst: SocketAddr,
     ) -> (
         impl Sink<Bytes, Error = std::io::Error> + Unpin + Send + 'static,
-        impl Stream<Item = Bytes> + Unpin + Send + 'static,
+        impl Stream<Item = anyhow::Result<Bytes>> + Unpin + Send + 'static,
     ) {
         let last_addr = Arc::new(Mutex::new(dst));
         let (sink, stream) = self.split();
@@ -95,15 +95,15 @@ impl UdpSocketSinkStream {
         };
 
         let stream = stream
-            .inspect(move |(_, addr)| *last_addr.lock() = *addr)
-            .map(|(data, _)| data);
+            .inspect_ok(move |(_, addr)| *last_addr.lock() = *addr)
+            .map_ok(|(data, _)| data);
 
         (Box::pin(sink), Box::pin(stream))
     }
 }
 
 impl Stream for UdpSocketSinkStream {
-    type Item = (Bytes, SocketAddr);
+    type Item = anyhow::Result<(Bytes, SocketAddr)>;
 
     fn poll_next(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
         match ready!(Pin::new(self.socket.as_ref()).poll_readable(cx)) {
@@ -116,9 +116,9 @@ impl Stream for UdpSocketSinkStream {
             Ok(None) => Poll::Pending,
             Ok(Some((len, addr))) => {
                 buf.set_len_uninit(len);
-                Poll::Ready(Some((buf.into(), addr)))
+                Poll::Ready(Some(Ok((buf.into(), addr))))
             }
-            Err(_) => Poll::Ready(None),
+            Err(e) => Poll::Ready(Some(Err(e.into()))),
         }
     }
 }
@@ -188,6 +188,7 @@ mod tests {
                 .next()
                 .timeout(Duration::from_secs(1))
                 .await
+                .unwrap()
                 .unwrap()
                 .unwrap();
             assert_eq!(reply, data);

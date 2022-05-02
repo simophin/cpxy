@@ -18,7 +18,8 @@ pub trait AsyncStream: AsyncRead + AsyncWrite + Unpin + Send + Sync {}
 impl<T: AsyncRead + AsyncWrite + Unpin + Send + Sync> AsyncStream for T {}
 
 pub type BoxedSink = Pin<Box<dyn Sink<(Bytes, Address<'static>), Error = anyhow::Error> + Send>>;
-pub type BoxedStream = Pin<Box<dyn Stream<Item = (Bytes, Address<'static>)> + Send>>;
+pub type BoxedStream =
+    Pin<Box<dyn Stream<Item = anyhow::Result<(Bytes, Address<'static>)>> + Send>>;
 
 #[derive(Default)]
 pub struct Stats {

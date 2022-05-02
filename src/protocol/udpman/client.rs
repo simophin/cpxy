@@ -7,7 +7,7 @@ use crate::socks5::Address;
 use anyhow::{anyhow, bail, Context};
 use async_trait::async_trait;
 use bytes::Bytes;
-use futures::StreamExt;
+use futures::{StreamExt, TryStreamExt};
 use futures_util::SinkExt;
 use serde::{Deserialize, Serialize};
 use std::future::ready;
@@ -76,7 +76,8 @@ impl Protocol for UdpMan {
                     })?;
 
                 let (outgoing_tx, outgoing_rx) = channel::<(Bytes, Address<'static>)>(2);
-                let (incoming_tx, incoming_rx) = channel::<(Bytes, Address<'static>)>(2);
+                let (incoming_tx, incoming_rx) =
+                    channel::<anyhow::Result<(Bytes, Address<'static>)>>(2);
 
                 let (upstream_sink, upstream_stream) =
                     upstream.to_sink_stream().to_connected(upstream_addr);
@@ -86,7 +87,7 @@ impl Protocol for UdpMan {
                         tx.inc(b.len());
                         ready(Ok(b))
                     }),
-                    upstream_stream.inspect(move |data| rx.inc(data.len())),
+                    upstream_stream.inspect_ok(move |data| rx.inc(data.len())),
                 );
 
                 let mut outgoing_rx = Some(outgoing_rx);
@@ -95,6 +96,10 @@ impl Protocol for UdpMan {
                 spawn(
                     msg_stream
                         .filter_map(move |m| {
+                            let m = match m {
+                                Ok(v) => v,
+                                Err(e) => return ready(Some(Err(e))),
+                            };
                             log::debug!("Received Message: {m:?}");
                             ready(match m {
                                 proto::Message::Establish {
@@ -136,7 +141,8 @@ impl Protocol for UdpMan {
                                 _ => None,
                             })
                         })
-                        .forward(incoming_tx.sink_map_err(anyhow::Error::from)),
+                        .map(|m| anyhow::Result::Ok(m))
+                        .forward(incoming_tx),
                 )
                 .detach();
 

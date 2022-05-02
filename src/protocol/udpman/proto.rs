@@ -365,10 +365,10 @@ impl<'a> Message<'a> {
 
 pub fn new_message_sink_stream(
     sink: impl Sink<Bytes, Error = anyhow::Error> + Send,
-    stream: impl Stream<Item = Bytes> + Send,
+    stream: impl Stream<Item = anyhow::Result<Bytes>> + Send,
 ) -> (
     impl Sink<Message<'static>, Error = anyhow::Error> + Unpin + Send,
-    impl Stream<Item = Message<'static>> + Unpin + Send,
+    impl Stream<Item = anyhow::Result<Message<'static>>> + Unpin + Send,
 ) {
     (
         Box::pin(sink.with(|m: Message| async move {
@@ -376,15 +376,7 @@ pub fn new_message_sink_stream(
             m.to_writer(&mut buf)?;
             Ok(buf.into())
         })),
-        Box::pin(stream.filter_map(|m| async move {
-            match Message::parse(m) {
-                Ok(v) => Some(v),
-                Err(e) => {
-                    log::error!("Error parsing message: {e:?}");
-                    None
-                }
-            }
-        })),
+        Box::pin(stream.map(|m| m.and_then(Message::parse))),
     )
 }
 

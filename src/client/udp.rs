@@ -6,7 +6,9 @@ use crate::{
     utils::new_vec_uninitialised,
 };
 use anyhow::{anyhow, Context};
-use futures::{select, AsyncRead, AsyncReadExt, AsyncWrite, FutureExt, SinkExt, StreamExt};
+use futures::{
+    select, AsyncRead, AsyncReadExt, AsyncWrite, FutureExt, SinkExt, StreamExt, TryStreamExt,
+};
 use smol_timeout::TimeoutExt;
 
 use crate::{
@@ -37,7 +39,7 @@ pub async fn serve_udp_proxy_conn(
     handshaker.respond_ok(&mut stream, Some(relay_addr)).await?;
 
     // Wait for first packet to decide where to go
-    let pkt = rx.next().await.context("Waiting for first packet")?;
+    let pkt = rx.next().await.context("Waiting for first packet")??;
     let addr = pkt.addr().into_owned();
 
     let req = ProxyRequest::UDP {
@@ -75,7 +77,7 @@ pub async fn serve_udp_proxy_conn(
                     last_error.replace(anyhow!("Unexpected EOF while waiting for response"));
                     break;
                 }
-                Some(Some((data, addr))) => {
+                Some(Some(Ok((data, addr)))) => {
                     tx.send(
                         Socks5UdpRepr {
                             addr: &addr.into(),
@@ -85,6 +87,10 @@ pub async fn serve_udp_proxy_conn(
                         .to_packet()?,
                     )
                     .await?;
+                }
+                Some(Some(Err(e))) => {
+                    last_error.replace(e);
+                    break;
                 }
             };
 
@@ -97,9 +103,7 @@ pub async fn serve_udp_proxy_conn(
             let timer = timer.clone();
             spawn(
                 rx.inspect(move |_| timer.reset())
-                    .filter_map(|pkt| async move {
-                        Some(Ok((pkt.payload_bytes(), pkt.addr().into_owned())))
-                    })
+                    .map_ok(|pkt| (pkt.payload_bytes(), pkt.addr().into_owned()))
                     .forward(upstream_sink),
             )
         };
@@ -108,13 +112,15 @@ pub async fn serve_udp_proxy_conn(
             let timer = timer.clone();
             spawn(
                 upstream_stream
-                    .map(|(data, addr)| {
-                        Socks5UdpRepr {
-                            addr: &addr.into(),
-                            frag_no: 0,
-                            payload: data,
-                        }
-                        .to_packet()
+                    .map(|item| {
+                        item.and_then(|(data, addr)| {
+                            Socks5UdpRepr {
+                                addr: &addr.into(),
+                                frag_no: 0,
+                                payload: data,
+                            }
+                            .to_packet()
+                        })
                     })
                     .inspect(move |_| timer.reset())
                     .forward(tx.sink_map_err(|e| anyhow::Error::from(e))),

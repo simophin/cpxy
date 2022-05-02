@@ -43,7 +43,13 @@ fn serve_works() {
             .await
             .unwrap();
         let timeout = Duration::from_secs(100);
-        let received = dgram_stream.next().timeout(timeout).await.unwrap().unwrap();
+        let received = dgram_stream
+            .next()
+            .timeout(timeout)
+            .await
+            .unwrap()
+            .unwrap()
+            .unwrap();
 
         assert_eq!(data, received.0.as_ref());
         assert_eq!(echo_server_addr.port(), received.1.get_port());
@@ -54,7 +60,13 @@ fn serve_works() {
             .send((Bytes::from_static(data), echo_server_addr.into()))
             .await
             .unwrap();
-        let received = dgram_stream.next().timeout(timeout).await.unwrap().unwrap();
+        let received = dgram_stream
+            .next()
+            .timeout(timeout)
+            .await
+            .unwrap()
+            .unwrap()
+            .unwrap();
 
         assert_eq!(data, received.0.as_ref());
         assert_eq!(echo_server_addr.port(), received.1.get_port());
