@@ -8,6 +8,7 @@ use anyhow::{bail, Context};
 use async_trait::async_trait;
 use bytes::Bytes;
 use futures::{AsyncRead, AsyncWrite, SinkExt, StreamExt};
+use serde::{Deserialize, Serialize};
 
 use crate::{
     fetch::connect_http_stream,
@@ -21,6 +22,7 @@ use crate::{
 
 use super::{AsyncStream, BoxedSink, BoxedStream, Protocol, Stats};
 
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Socks5 {
     pub address: Address<'static>,
     pub supports_udp: bool,

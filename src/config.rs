@@ -15,7 +15,7 @@ use crate::client::ClientStatistics;
 use crate::geoip::{find_geoip, CountryCode};
 use crate::pattern::Pattern;
 use crate::protocol::{
-    direct, tcpman, udpman, AsyncStream, BoxedSink, BoxedStream, Protocol, Stats,
+    direct, socks5, tcpman, udpman, AsyncStream, BoxedSink, BoxedStream, Protocol, Stats,
 };
 use crate::proxy::protocol::ProxyRequest;
 use crate::socks5::Address;
@@ -105,6 +105,9 @@ pub enum UpstreamProtocol {
 
     #[serde(rename = "tcpman")]
     TcpMan(tcpman::TcpMan),
+
+    #[serde(rename = "socks5")]
+    Socks5(socks5::Socks5),
 
     #[serde(rename = "direct")]
     Direct(direct::Direct),
@@ -263,6 +266,7 @@ impl Protocol for UpstreamProtocol {
             UpstreamProtocol::UdpMan(p) => p.supports(req),
             UpstreamProtocol::TcpMan(p) => p.supports(req),
             UpstreamProtocol::Direct(p) => p.supports(req),
+            UpstreamProtocol::Socks5(p) => p.supports(req),
         }
     }
 
@@ -276,6 +280,7 @@ impl Protocol for UpstreamProtocol {
             UpstreamProtocol::UdpMan(p) => p.new_stream_conn(req, stats, fwmark).await,
             UpstreamProtocol::TcpMan(p) => p.new_stream_conn(req, stats, fwmark).await,
             UpstreamProtocol::Direct(p) => p.new_stream_conn(req, stats, fwmark).await,
+            UpstreamProtocol::Socks5(p) => p.new_stream_conn(req, stats, fwmark).await,
         }
     }
 
@@ -289,6 +294,7 @@ impl Protocol for UpstreamProtocol {
             UpstreamProtocol::UdpMan(p) => p.new_dgram_conn(req, stats, fwmark).await,
             UpstreamProtocol::TcpMan(p) => p.new_dgram_conn(req, stats, fwmark).await,
             UpstreamProtocol::Direct(p) => p.new_dgram_conn(req, stats, fwmark).await,
+            UpstreamProtocol::Socks5(p) => p.new_dgram_conn(req, stats, fwmark).await,
         }
     }
 }
