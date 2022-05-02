@@ -1,14 +1,15 @@
 use anyhow::{bail, Context};
 use byteorder::{BigEndian, WriteBytesExt};
 use serde::{Deserialize, Serialize};
+use smallvec::{smallvec, SmallVec};
 use std::borrow::Cow;
 use std::fmt::Formatter;
 use std::io::Write;
-use std::net::{Ipv4Addr, Ipv6Addr, SocketAddr, SocketAddrV4, SocketAddrV6};
+use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr, SocketAddrV4, SocketAddrV6};
 use std::str::FromStr;
 
 use bytes::Buf;
-use futures::{AsyncWrite, AsyncWriteExt};
+use futures::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
 
 use crate::parse::ParseError;
 
@@ -125,6 +126,56 @@ impl<'a> Address<'a> {
             .ok_or_else(|| anyhow::anyhow!("Unable to resolve {self}"))
     }
 
+    pub async fn parse_async(r: &mut (impl AsyncRead + Unpin)) -> anyhow::Result<Address<'static>> {
+        let mut buf: SmallVec<[u8; 6]> = smallvec![0u8; 6];
+
+        r.read_exact(&mut buf[..1])
+            .await
+            .context("Reading address type")?;
+
+        match buf[0] {
+            0x1 => {
+                r.read_exact(&mut buf).await.context("Reading IPv4 addr")?;
+                let mut buf = buf.as_ref();
+
+                let ip = IpAddr::V4(Ipv4Addr::from(buf.get_u32()));
+                let port = buf.get_u16();
+                Ok(Address::IP(SocketAddr::new(ip, port)))
+            }
+
+            0x4 => {
+                buf.resize(18, 0);
+                r.read_exact(&mut buf).await.context("Reading IPv6 addr")?;
+                let mut buf = buf.as_ref();
+
+                let ip = IpAddr::V6(Ipv6Addr::from(buf.get_u128()));
+                let port = buf.get_u16();
+                Ok(Address::IP(SocketAddr::new(ip, port)))
+            }
+
+            0x3 => {
+                r.read_exact(&mut buf[..1])
+                    .await
+                    .context("Reading address len")?;
+                let addr_len = buf[0] as usize;
+                let mut addr_buf = vec![0u8; addr_len];
+                r.read_exact(&mut addr_buf)
+                    .await
+                    .context("Reading address")?;
+                r.read_exact(&mut buf[..2]).await.context("Reading port")?;
+                let port = buf.as_ref().get_u16();
+                let addr = String::from_utf8(addr_buf).context("Parsing address string")?;
+                Ok(Address::Name {
+                    host: Cow::Owned(addr),
+                    port,
+                })
+            }
+            b => {
+                bail!("Unknown address type {b}");
+            }
+        }
+    }
+
     pub fn parse(mut buf: &'a [u8]) -> Result<Option<(usize, Self)>, ParseError> {
         let mut position = 1;
         match buf.get_u8() {
@@ -164,7 +215,7 @@ impl<'a> Address<'a> {
             }
 
             0x4 => {
-                if buf.remaining() < 6 {
+                if buf.remaining() < 18 {
                     return Ok(None);
                 }
 
@@ -214,10 +265,7 @@ impl<'a> Address<'a> {
         } + 2
     }
 
-    pub async fn write(
-        &self,
-        buf: &mut (impl AsyncWrite + Unpin + Send + Sync + ?Sized),
-    ) -> anyhow::Result<()> {
+    pub async fn write(&self, buf: &mut (impl AsyncWrite + Unpin + ?Sized)) -> anyhow::Result<()> {
         match self {
             Address::IP(SocketAddr::V4(addr)) => {
                 buf.write_all(&[0x1]).await?;
@@ -282,6 +330,7 @@ impl std::fmt::Debug for Address<'_> {
 #[cfg(test)]
 mod test {
     use super::*;
+    use crate::rt::block_on;
 
     #[test]
     fn test_encoding() {
@@ -358,6 +407,10 @@ mod test {
                     let (offset, parsed) = Address::parse(&buf).unwrap().unwrap();
                     assert_eq!(addr, parsed);
                     assert_eq!(b"hello, world", &buf[offset..]);
+
+                    let mut buf = buf.as_slice();
+                    let parsed = block_on(Address::parse_async(&mut buf)).unwrap();
+                    assert_eq!(addr, parsed);
                 }
                 Err(e) => {
                     if !expect_error {

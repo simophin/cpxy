@@ -9,6 +9,7 @@ use crate::counter::Counter;
 use crate::{proxy::protocol::ProxyRequest, socks5::Address};
 
 pub mod direct;
+pub mod socks5;
 pub mod tcpman;
 pub mod udpman;
 

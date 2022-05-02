@@ -1,6 +1,7 @@
 use crate::parse::ParseError;
+use anyhow::bail;
 use bytes::Buf;
-use futures::{AsyncWrite, AsyncWriteExt};
+use futures::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
 
 use super::Address;
 
@@ -66,8 +67,27 @@ impl<'a> ClientConnRequest<'a> {
         )))
     }
 
+    pub async fn to_async_writer(&self, w: &mut (impl AsyncWrite + Unpin)) -> anyhow::Result<()> {
+        w.write_all(&[0x5u8, self.cmd.0, 0]).await?;
+        self.address.write(w).await?;
+        Ok(())
+    }
+
+    pub async fn parse_response(
+        r: &mut (impl AsyncRead + Unpin),
+    ) -> anyhow::Result<(ConnStatusCode, Address<'static>)> {
+        let mut hdrs = [0u8; 3];
+        r.read_exact(&mut hdrs).await?;
+        if hdrs[0] != 5 || hdrs[2] != 0 {
+            bail!("Invalid Response");
+        }
+        let code = ConnStatusCode(hdrs[1]);
+        let bounded = Address::parse_async(r).await?;
+        Ok((code, bounded))
+    }
+
     pub async fn respond(
-        w: &mut (impl AsyncWrite + Unpin + Send + Sync),
+        w: &mut (impl AsyncWrite + Unpin),
         code: ConnStatusCode,
         bound_addr: &Address<'_>,
     ) -> anyhow::Result<()> {

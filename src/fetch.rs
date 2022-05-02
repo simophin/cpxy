@@ -40,16 +40,11 @@ pub enum HttpStream<T> {
     SSL(futures_rustls::client::TlsStream<T>),
 }
 
-pub async fn connect_http(
+pub async fn connect_http_stream<T: AsyncRead + AsyncWrite + Unpin + Send + Sync>(
     tls: bool,
     address: &Address<'_>,
-) -> anyhow::Result<HttpStream<TcpStream>> {
-    let client = connect_tcp(&address)
-        .await
-        .with_context(|| format!("Connecting to {address}"))?;
-
-    client.set_nodelay(true).context("Enabling NO_DELAY")?;
-
+    client: T,
+) -> anyhow::Result<HttpStream<T>> {
     let client = if tls {
         HttpStream::SSL(
             connect_tls(address.get_host().as_ref(), client)
@@ -60,6 +55,18 @@ pub async fn connect_http(
         HttpStream::Plain(client)
     };
     Ok(client)
+}
+
+pub async fn connect_http(
+    tls: bool,
+    address: &Address<'_>,
+) -> anyhow::Result<HttpStream<TcpStream>> {
+    let client = connect_tcp(&address)
+        .await
+        .with_context(|| format!("Connecting to {address}"))?;
+
+    client.set_nodelay(true).context("Enabling NO_DELAY")?;
+    connect_http_stream(tls, address, client).await
 }
 
 impl<T: AsyncRead + AsyncWrite + Unpin> AsyncRead for HttpStream<T> {

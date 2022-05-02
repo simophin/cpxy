@@ -10,7 +10,7 @@ use async_trait::async_trait;
 use futures::AsyncReadExt;
 use serde::{Deserialize, Serialize};
 
-use crate::io::{AsyncStreamCounter, TcpStreamExt};
+use crate::io::{AsRawFdExt, AsyncStreamCounter};
 use crate::proxy::protocol::ProxyResult;
 use crate::utils::{read_bincode_lengthed_async, write_bincode_lengthed};
 use crate::{fetch::connect_http, proxy::protocol::ProxyRequest, socks5::Address, url::HttpUrl};

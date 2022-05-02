@@ -1,6 +1,9 @@
+use std::io::IoSlice;
+
 use crate::parse::ParseError;
+use anyhow::bail;
 use bytes::Buf;
-use futures::{AsyncWrite, AsyncWriteExt};
+use futures::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
 
 type Auth = u8;
 
@@ -35,6 +38,22 @@ impl<'a> ClientGreeting<'a> {
         offset += len + 1;
 
         Ok(Some((offset, Self { auths: &buf[..len] })))
+    }
+
+    pub async fn read_response(r: &mut (impl AsyncRead + Unpin)) -> anyhow::Result<Auth> {
+        let mut bufs = [0u8; 2];
+        r.read_exact(&mut bufs).await?;
+        if bufs[0] != 0x5 {
+            bail!("Unknown protocol version: {}", bufs[0]);
+        }
+        Ok(bufs[1])
+    }
+
+    pub async fn to_async_writer(&self, w: &mut (impl AsyncWrite + Unpin)) -> anyhow::Result<()> {
+        let hdrs = [0x5u8, self.auths.len().try_into()?];
+        let mut out = [IoSlice::new(&hdrs), IoSlice::new(self.auths)];
+        w.write_all_vectored(&mut out).await?;
+        Ok(())
     }
 
     pub async fn respond(

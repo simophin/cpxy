@@ -1,7 +1,7 @@
 use super::{Protocol, Stats};
 use crate::fetch::connect_http;
 use crate::io::{
-    bind_udp, connect_tcp, send_to_addr, AsyncStreamCounter, TcpStreamExt, UdpSocketExt,
+    bind_udp, connect_tcp, send_to_addr, AsRawFdExt, AsyncStreamCounter, UdpSocketExt,
 };
 use crate::protocol::{AsyncStream, BoxedSink, BoxedStream};
 use crate::proxy::protocol::ProxyRequest;
@@ -67,7 +67,7 @@ impl Protocol for Direct {
         &self,
         req: &ProxyRequest<'_>,
         stats: &Stats,
-        _: Option<u32>,
+        fwmark: Option<u32>,
     ) -> anyhow::Result<(BoxedSink, BoxedStream)> {
         match req {
             ProxyRequest::UDP {
@@ -77,6 +77,11 @@ impl Protocol for Direct {
                 let socket = bind_udp(!matches!(initial_dst, Address::IP(SocketAddr::V4(_))))
                     .await
                     .context("Binding UDP socket")?;
+
+                if let Some(m) = fwmark {
+                    socket.set_sock_mark(m)?;
+                }
+
                 send_to_addr(&socket, initial_data.as_ref(), initial_dst)
                     .await
                     .context("Sending initial data")?;

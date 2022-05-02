@@ -4,6 +4,7 @@ use futures::{AsyncRead, AsyncWrite};
 
 use crate::counter::Counter;
 use pin_project_lite::pin_project;
+use std::os::unix::prelude::AsRawFd;
 
 pin_project! {
     pub struct AsyncStreamCounter<S> {
@@ -89,3 +90,20 @@ impl<S: AsyncWrite> AsyncWrite for AsyncStreamCounter<S> {
         rc
     }
 }
+
+pub trait AsRawFdExt: AsRawFd {
+    #[cfg(target_os = "linux")]
+    fn set_sock_mark(&self, mark: u32) -> std::io::Result<()> {
+        use nix::sys::socket::{setsockopt, sockopt::Mark};
+
+        setsockopt(self.as_raw_fd(), Mark, &mark)?;
+        Ok(())
+    }
+
+    #[cfg(not(target_os = "linux"))]
+    fn set_sock_mark(&self, _: u32) -> std::io::Result<()> {
+        anyhow::bail!("Unsupported")
+    }
+}
+
+impl<T: AsRawFd> AsRawFdExt for T {}

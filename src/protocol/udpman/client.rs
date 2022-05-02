@@ -1,6 +1,6 @@
 use super::super::{Protocol, Stats};
 use super::proto;
-use crate::io::{bind_udp, UdpSocketExt};
+use crate::io::{bind_udp, AsRawFdExt, UdpSocketExt};
 use crate::protocol::{AsyncStream, BoxedSink, BoxedStream};
 use crate::proxy::protocol::ProxyRequest;
 use crate::socks5::Address;
@@ -41,7 +41,7 @@ impl Protocol for UdpMan {
         &self,
         req: &ProxyRequest<'_>,
         stats: &Stats,
-        _: Option<u32>,
+        fwmark: Option<u32>,
     ) -> anyhow::Result<(BoxedSink, BoxedStream)> {
         let (tx, rx) = (stats.tx.clone(), stats.rx.clone());
         match req {
@@ -51,6 +51,10 @@ impl Protocol for UdpMan {
             } => {
                 let upstream =
                     bind_udp(matches!(self.addr, Address::IP(SocketAddr::V4(_)))).await?;
+
+                if let Some(m) = fwmark {
+                    upstream.set_sock_mark(m)?;
+                }
                 let upstream_addr = self.addr.resolve_first().await?;
 
                 // Send connect message
