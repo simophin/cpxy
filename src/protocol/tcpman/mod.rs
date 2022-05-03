@@ -114,3 +114,31 @@ impl Protocol for TcpMan {
         ))
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::{
+        protocol::test::*,
+        rt::{block_on, spawn},
+        test::create_tcp_server,
+    };
+
+    #[test]
+    fn tcpman_works() {
+        block_on(async move {
+            let (server, addr) = create_tcp_server().await;
+            let _task = spawn(super::server::run_server(server));
+
+            let p = TcpMan {
+                address: addr.into(),
+                ssl: false,
+                allows_udp: true,
+            };
+
+            test_protocol_http(&p).await;
+            test_protocol_tcp(&p).await;
+            test_protocol_udp(&p).await;
+        });
+    }
+}

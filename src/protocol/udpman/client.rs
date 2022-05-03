@@ -155,3 +155,28 @@ impl Protocol for UdpMan {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::{
+        protocol::test::test_protocol_udp,
+        rt::{block_on, spawn},
+        test::create_udp_socket,
+    };
+
+    #[test]
+    fn udpman_works() {
+        let _ = env_logger::try_init();
+        block_on(async move {
+            let (server_socket, server_addr) = create_udp_socket().await;
+            let _task = spawn(super::super::server::serve_socket(server_socket));
+
+            let protocol = UdpMan {
+                addr: server_addr.into(),
+            };
+
+            test_protocol_udp(&protocol).await;
+        });
+    }
+}

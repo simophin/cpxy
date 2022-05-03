@@ -9,7 +9,7 @@ use crate::{
     config::UpstreamProtocol,
     io::{bind_tcp, bind_udp, connect_tcp},
     protocol::tcpman::{server::run_server, TcpMan},
-    rt::{block_on, spawn, Task},
+    rt::{block_on, net::UdpSocket, spawn, Task},
 };
 use anyhow::bail;
 use futures::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
@@ -69,6 +69,21 @@ pub async fn create_http_server() -> (TcpListener, String) {
     let mut addr = listener.local_addr().unwrap();
     set_ip_local(&mut addr);
     (listener, format!("http://{addr}"))
+}
+
+pub async fn create_tcp_server() -> (TcpListener, SocketAddr) {
+    let listener = bind_tcp(&"127.0.0.1:0".parse().unwrap()).await.unwrap();
+
+    let mut addr = listener.local_addr().unwrap();
+    set_ip_local(&mut addr);
+    (listener, addr)
+}
+
+pub async fn create_udp_socket() -> (UdpSocket, SocketAddr) {
+    let socket = bind_udp(true).await.unwrap();
+    let mut addr = socket.local_addr().unwrap();
+    set_ip_local(&mut addr);
+    (socket, addr)
 }
 
 pub async fn echo_tcp_server() -> (Task<()>, SocketAddr) {
