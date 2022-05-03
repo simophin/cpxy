@@ -105,3 +105,18 @@ impl Protocol for Direct {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::super::test;
+    use super::*;
+    use crate::rt::block_on;
+
+    #[test]
+    fn test_direct_works() {
+        let direct = Direct {};
+        block_on(test::test_protocol_tcp(&direct));
+        block_on(test::test_protocol_udp(&direct));
+        block_on(test::test_protocol_http(&direct));
+    }
+}

@@ -1,39 +1,26 @@
-use std::borrow::Cow;
-
 use anyhow::{bail, Context};
 use futures::{AsyncRead, AsyncWrite, AsyncWriteExt};
 
 use crate::{
     buf::RWBuffer,
-    http::{parse_request, parse_response, AsyncHttpStream, HeaderValue, HttpCommon, HttpRequest},
-    url::HttpUrl,
+    http::{
+        parse_request, parse_response, AsyncHttpStream, HttpRequest, HttpRequestBuilder,
+        WithHeaders,
+    },
 };
 
-pub async fn negotiate_websocket<'a>(
-    url: &HttpUrl<'_>,
-    mut stream: impl AsyncRead + AsyncWrite + Unpin + Send + Sync + 'static,
-    extra_headers: Vec<(Cow<'a, str>, HeaderValue<'a>)>,
+pub async fn negotiate_websocket(
+    mut builder: HttpRequestBuilder,
+    mut stream: impl AsyncRead + AsyncWrite + Unpin + Send + Sync,
 ) -> anyhow::Result<impl AsyncRead + AsyncWrite + Unpin + Send + Sync> {
-    let host = url.address.get_host();
-    let mut req = HttpRequest {
-        common: HttpCommon {
-            headers: vec![
-                (Cow::Borrowed("Connection"), "Upgrade".into()),
-                (Cow::Borrowed("Upgrade"), "Websocket".into()),
-                (Cow::Borrowed("Sec-WebSocket-Version"), "13".into()),
-                (
-                    Cow::Borrowed("Sec-WebSocket-Key"),
-                    "dGhlIHNhbXBsZSBub25jZQ==".into(),
-                ),
-                (Cow::Borrowed("Host"), host.as_ref().into()),
-            ],
-        },
-        method: Cow::Borrowed("GET"),
-        path: Cow::Borrowed(url.path.as_ref()),
-    };
+    builder
+        .put_header_text("Connection", "Upgrade")?
+        .put_header_text("Upgrade", "Websocket")?
+        .put_header_text("Sec-WebSocket-Version", "13")?
+        .put_header_text("Sec-WebSocket-Key", "dGhlIHNhbXBsZSBub25jZQ==")?;
 
-    req.common.headers.extend(extra_headers);
-    req.to_async_writer(&mut stream)
+    stream
+        .write_all(&builder.finalise())
         .await
         .context("Sending request")?;
 
@@ -110,7 +97,7 @@ pub async fn serve_websocket<T: AsyncRead + AsyncWrite + Unpin + Send + Sync>(
         && websocket_key.len() > 0
     {
         return Ok(WebSocketServeResult {
-            _sec_key: websocket_key.into_owned(),
+            _sec_key: websocket_key.to_string(),
             stream: req,
         });
     }

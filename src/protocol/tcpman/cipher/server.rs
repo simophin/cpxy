@@ -2,6 +2,7 @@ use super::client::CipherParams;
 use anyhow::bail;
 use futures::{AsyncRead, AsyncReadExt, AsyncWrite};
 
+use crate::http::WithHeaders;
 use crate::stream::VecStream;
 use crate::ws::serve_websocket;
 
@@ -56,9 +57,7 @@ pub async fn listen<T: AsyncRead + AsyncWrite + Send + Sync + Unpin>(
     };
 
     let initial_data = match req.request().get_header(super::client::INITIAL_DATA_HEADER) {
-        Some(value) => {
-            base64::decode_config(value.as_str().as_ref(), super::client::INITIAL_DATA_CONFIG)?
-        }
+        Some(value) => base64::decode_config(value, super::client::INITIAL_DATA_CONFIG)?,
         None => Default::default(),
     };
 

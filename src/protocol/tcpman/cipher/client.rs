@@ -2,7 +2,7 @@ use std::{borrow::Cow, fmt::Display, str::FromStr};
 
 use super::strategy::EncryptionStrategy;
 use super::stream::CipherStream;
-use crate::{http::HeaderValue, url::HttpUrl, ws::negotiate_websocket};
+use crate::{http::HttpRequestBuilder, url::HttpUrl, ws::negotiate_websocket};
 use anyhow::{anyhow, Context};
 use base64::{display::Base64Display, URL_SAFE_NO_PAD};
 use cipher::StreamCipher;
@@ -60,7 +60,7 @@ pub async fn connect(
     send_strategy: EncryptionStrategy,
     recv_strategy: EncryptionStrategy,
     mut initial_data: impl AsMut<[u8]> + Send,
-) -> anyhow::Result<impl AsyncRead + AsyncWrite + Unpin + Send + Sync + 'static> {
+) -> anyhow::Result<impl AsyncRead + AsyncWrite + Unpin + Send + Sync> {
     let (cipher_type, wr_cipher, key, iv) = super::suite::pick_cipher();
     let mut wr_cipher = send_strategy.wrap_cipher(wr_cipher);
 
@@ -76,23 +76,15 @@ pub async fn connect(
         wr_cipher.apply_keystream(initial_data.as_mut());
     }
 
-    let (r, w) = negotiate_websocket(
-        &HttpUrl {
-            is_https: url.is_https,
-            address: url.address.clone(),
-            path: Cow::Owned(params.to_string()),
-        },
-        stream,
-        vec![(
-            Cow::Borrowed(INITIAL_DATA_HEADER),
-            HeaderValue::from_display(Base64Display::with_config(
-                initial_data.as_mut(),
-                INITIAL_DATA_CONFIG,
-            )),
-        )],
-    )
-    .await?
-    .split();
+    let mut builder = HttpRequestBuilder::new("GET", params)?;
+    builder
+        .put_header_text("Host", url.address.get_host())?
+        .put_header_text(
+            INITIAL_DATA_HEADER,
+            Base64Display::with_config(initial_data.as_mut(), INITIAL_DATA_CONFIG),
+        )?;
+
+    let (r, w) = negotiate_websocket(builder, stream).await?.split();
 
     let rd_cipher = recv_strategy.wrap_cipher(
         super::suite::create_cipher(cipher_type, key.as_slice(), iv.as_slice())

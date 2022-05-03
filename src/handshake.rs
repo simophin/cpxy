@@ -109,7 +109,7 @@ impl Handshaker {
                         break;
                     }
                     (_, _, Ok(Some((offset, h)))) => {
-                        proxy_state = ProxyState::Http(h);
+                        proxy_state = ProxyState::Http(h.into_owned());
                         buf.advance_read(offset);
                         break;
                     }
@@ -127,7 +127,7 @@ impl Handshaker {
                 ParseState::HttpPartial => match HttpRequest::parse(buf.read_buf())? {
                     None => {}
                     Some((offset, h)) => {
-                        proxy_state = ProxyState::Http(h);
+                        proxy_state = ProxyState::Http(h.into_owned());
                         buf.advance_read(offset);
                         break;
                     }
@@ -259,9 +259,9 @@ fn handshake_http(r: HttpRequest<'static>) -> anyhow::Result<HandshakeRequest> {
             Ok(HandshakeRequest::TCP { dst: path.parse()? })
         }
         HttpRequest {
-            path,
             method,
-            common,
+            path,
+            headers,
         } => {
             let HttpUrl {
                 is_https,
@@ -272,9 +272,9 @@ fn handshake_http(r: HttpRequest<'static>) -> anyhow::Result<HandshakeRequest> {
                 dst: address.into_owned(),
                 https: is_https,
                 req: HttpRequest {
-                    method: Cow::Owned(method.into_owned()),
-                    path: Cow::Owned(path.into_owned()),
-                    common,
+                    headers,
+                    method,
+                    path: Cow::Owned(path.to_string()),
                 },
             })
         }

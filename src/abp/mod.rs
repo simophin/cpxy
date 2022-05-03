@@ -1,4 +1,5 @@
 use std::{
+    borrow::Cow,
     io::Read,
     path::{Path, PathBuf},
     sync::RwLock,
@@ -6,7 +7,7 @@ use std::{
 };
 
 use crate::rt::fs::File;
-use crate::{fetch::fetch_http_with_proxy, http::HeaderValue, socks5::Address};
+use crate::{fetch::fetch_http_with_proxy, socks5::Address};
 use adblock::{
     engine::Engine,
     lists::{FilterSet, ParseOptions},
@@ -115,13 +116,14 @@ async fn update_engine(
     };
 
     let last_modified = last_modified
-        .map(|v| {
-            HeaderValue::from_display(
-                DateTime::<chrono::Utc>::from(v).format("%a, %d %b %Y %H:%M:%S GMT"),
-            )
-        })
+        .map(|v| DateTime::<chrono::Utc>::from(v).format("%a, %d %b %Y %H:%M:%S GMT"))
         .into_iter()
-        .map(|v| ("If-Modified-Since", v));
+        .map(|v| {
+            (
+                Cow::Borrowed("If-Modified-Since"),
+                Cow::Owned(v.to_string().into_bytes()),
+            )
+        });
 
     let mut body =
         match fetch_http_with_proxy(rule_list_url, "GET", last_modified, proxy, None).await? {

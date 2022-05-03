@@ -1,7 +1,7 @@
 import { Button, Dialog, DialogActions, DialogContent, DialogTitle, FormControl, FormControlLabel, MenuItem, Stack, Switch, TextField } from "@mui/material";
 import { forwardRef, useImperativeHandle, useRef, useState } from "react";
 import { BASE_URL } from "./config";
-import { ClientConfig, ProtocolConfig, TcpManConfig, UdpManConfig, UpstreamUpdate } from "./models";
+import { ClientConfig, HttpProxyConfig, ProtocolConfig, Socks5Config, TcpManConfig, UdpManConfig, UpstreamUpdate } from "./models";
 import { transformRule } from "./trafficRules";
 import { FindError, mandatory, useEditState, validAddress } from "./useEditState";
 import useHttp from "./useHttp";
@@ -64,7 +64,7 @@ const TcpManConfigEdit = forwardRef(({ initial }: { initial?: TcpManConfig }, re
                 allows_udp: allowsUdp,
             };
         }
-    }), [address, allowsUdp]);
+    }), [address, allowsUdp, ssl]);
 
     return <>
         <TextField
@@ -84,7 +84,7 @@ const TcpManConfigEdit = forwardRef(({ initial }: { initial?: TcpManConfig }, re
                         onChange={v => setSsl(v.currentTarget.checked)}
                     />}
                     labelPlacement='start'
-                    label="TLS" />
+                    label="SSL" />
             </FormControl>
         </div>
 
@@ -102,6 +102,82 @@ const TcpManConfigEdit = forwardRef(({ initial }: { initial?: TcpManConfig }, re
     </>;
 });
 
+const HttpProxyConfigEdit = forwardRef(({ initial }: { initial?: HttpProxyConfig }, ref) => {
+    const address = useEditState(initial?.address ?? '', mandatory('Address', validAddress));
+    const [ssl, setSsl] = useState(initial?.ssl === true);
+
+    useImperativeHandle(ref, () => ({
+        validate(): HttpProxyConfig {
+            return {
+                type: 'http',
+                address: address.validate(),
+                ssl,
+            };
+        }
+    }), [address, ssl]);
+
+    return <>
+        <TextField
+            value={address.value}
+            label='Address'
+            margin='dense'
+            error={!!address.error}
+            helperText={address.error}
+            onChange={v => address.setValue(v.currentTarget.value)}
+        />
+
+        <div>
+            <FormControl>
+                <FormControlLabel
+                    control={<Switch
+                        checked={ssl}
+                        onChange={v => setSsl(v.currentTarget.checked)}
+                    />}
+                    labelPlacement='start'
+                    label="SSL" />
+            </FormControl>
+        </div>
+    </>;
+});
+
+
+const Socks5ConfigEdit = forwardRef(({ initial }: {
+    initial?: Socks5Config,
+}, ref) => {
+    const address = useEditState(initial?.address ?? '', mandatory('Address', validAddress));
+    const [supportsUdp, setSupportsUdp] = useState(initial?.supports_udp === true);
+
+    useImperativeHandle(ref, () => ({
+        validate(): Socks5Config {
+            return {
+                type: 'socks5',
+                address: address.validate(),
+                supports_udp: supportsUdp,
+            }
+        }
+    }), [address, supportsUdp]);
+
+    return <>
+        <TextField
+            value={address.value}
+            label='Address'
+            margin='dense'
+            error={!!address.error}
+            helperText={address.error}
+            onChange={v => address.setValue(v.currentTarget.value)} />
+        <div>
+            <FormControl>
+                <FormControlLabel
+                    control={<Switch
+                        checked={supportsUdp}
+                        onChange={v => setSupportsUdp(v.currentTarget.checked)}
+                    />}
+                    labelPlacement='start'
+                    label="Allows UDP" />
+            </FormControl>
+        </div>
+    </>;
+});
 
 export default function UpstreamEdit({ onChanged, onCancelled, editing, current_config }: Props) {
     const existing = editing ? current_config.upstreams[editing] : undefined;
@@ -181,6 +257,8 @@ export default function UpstreamEdit({ onChanged, onCancelled, editing, current_
                     margin='dense'>
                     <MenuItem value={'tcpman'}>TCPMan</MenuItem>
                     <MenuItem value={'udpman'}>UDPMan</MenuItem>
+                    <MenuItem value={'socks5'}>Socks5 Proxy</MenuItem>
+                    <MenuItem value={'http'}>HTTP Proxy</MenuItem>
                     <MenuItem value={'direct'}>Direct</MenuItem>
                 </TextField>
 
@@ -191,6 +269,14 @@ export default function UpstreamEdit({ onChanged, onCancelled, editing, current_
                 {protoType === 'udpman' && <UdpManConfigEdit
                     ref={validatorRef}
                     initial={existing?.protocol?.type === 'udpman' ? existing?.protocol : undefined} />}
+
+                {protoType === 'http' && <HttpProxyConfigEdit
+                    ref={validatorRef}
+                    initial={existing?.protocol?.type === 'http' ? existing?.protocol : undefined} />}
+
+                {protoType === 'socks5' && <Socks5ConfigEdit
+                    ref={validatorRef}
+                    initial={existing?.protocol?.type === 'socks5' ? existing?.protocol : undefined} />}
 
                 <TextField
                     value={accept.value}

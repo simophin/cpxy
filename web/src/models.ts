@@ -16,7 +16,19 @@ export interface DirectConfig {
     type: "direct";
 }
 
-export type ProtocolConfig = TcpManConfig | UdpManConfig | DirectConfig;
+export interface Socks5Config {
+    type: "socks5";
+    address: string;
+    supports_udp: boolean;
+}
+
+export interface HttpProxyConfig {
+    type: "http";
+    address: string;
+    ssl: boolean;
+}
+
+export type ProtocolConfig = TcpManConfig | UdpManConfig | DirectConfig | Socks5Config | HttpProxyConfig;
 
 export type UpstreamConfig = {
     protocol: ProtocolConfig,

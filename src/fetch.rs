@@ -5,7 +5,7 @@ use futures::{AsyncRead, AsyncWrite, AsyncWriteExt};
 
 use crate::{
     buf::RWBuffer,
-    http::{AsyncHttpStream, HeaderValue, HttpCommon, HttpRequest, HttpResponse},
+    http::{AsyncHttpStream, HttpRequest, HttpResponse, WithHeaders},
     io::connect_tcp,
     rt::net::TcpStream,
     socks5::Address,
@@ -162,21 +162,22 @@ pub async fn send_http(
 pub async fn fetch_http_with_proxy<'a, 'b>(
     url: &'a str,
     method: &'a str,
-    headers: impl Iterator<Item = (&'b str, HeaderValue<'b>)> + Send + Sync + 'b,
+    headers: impl Iterator<Item = (Cow<'b, str>, Cow<'b, [u8]>)> + Send + Sync + 'b,
     http_proxy: &Address<'_>,
     body: Option<(&str, &[u8])>,
 ) -> anyhow::Result<
     AsyncHttpStream<HttpResponse<'static>, impl AsyncRead + AsyncWrite + Unpin + Send + Sync + 'a>,
 > {
-    let mut headers = headers
-        .map(|(k, v)| (Cow::Borrowed(k), v))
-        .collect::<Vec<_>>();
+    let mut headers = headers.collect::<Vec<_>>();
 
     let body = if let Some((content_type, body)) = body {
-        headers.push((Cow::Borrowed("Content-Type"), content_type.into()));
+        headers.push((
+            Cow::Borrowed("Content-Type"),
+            Cow::Borrowed(content_type.as_bytes()),
+        ));
         headers.push((
             Cow::Borrowed("Content-Length"),
-            HeaderValue::from_display(body.len()),
+            Cow::Owned(body.len().to_string().into_bytes()),
         ));
         Some(body)
     } else {
@@ -189,24 +190,20 @@ pub async fn fetch_http_with_proxy<'a, 'b>(
         path,
     } = url.try_into()?;
 
-    let mut common = HttpCommon { headers };
-    if common.get_header("host").is_none() {
-        common
-            .headers
-            .push((Cow::Borrowed("Host"), HeaderValue::from_display(&address)));
+    let mut request = HttpRequest {
+        path,
+        method: Cow::Borrowed(method),
+        headers,
+    };
+
+    if request.get_header("host").is_none() {
+        request.headers.push((
+            Cow::Borrowed("Host"),
+            Cow::Owned(address.to_string().into_bytes()),
+        ));
     }
 
-    let mut client = send_http_with_proxy(
-        is_https,
-        &address,
-        HttpRequest {
-            path,
-            method: Cow::Borrowed(method),
-            common,
-        },
-        http_proxy,
-    )
-    .await?;
+    let mut client = send_http_with_proxy(is_https, &address, request, http_proxy).await?;
 
     if let Some(body) = body {
         client.write_all(body).await?;

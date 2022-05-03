@@ -12,6 +12,10 @@ pub mod direct;
 pub mod socks5;
 pub mod tcpman;
 pub mod udpman;
+pub mod http;
+
+#[cfg(test)]
+mod test;
 
 pub trait AsyncStream: AsyncRead + AsyncWrite + Unpin + Send + Sync {}
 
