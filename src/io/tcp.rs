@@ -4,6 +4,8 @@ use crate::socks5::Address;
 
 use crate::rt::net::{TcpListener, TcpStream};
 
+use super::AsRawFdExt;
+
 pub trait TcpStreamExt {
     fn is_v4(&self) -> bool;
     fn get_original_dst(&self) -> Option<SocketAddr>;
@@ -46,6 +48,17 @@ pub async fn connect_tcp(a: &Address<'_>) -> std::io::Result<TcpStream> {
         Address::IP(addr) => Ok(TcpStream::connect(addr).await?),
         Address::Name { host, port } => Ok(TcpStream::connect((host.as_ref(), *port)).await?),
     }
+}
+
+pub async fn connect_tcp_marked(
+    a: &Address<'_>,
+    fwmark: Option<u32>,
+) -> std::io::Result<TcpStream> {
+    let stream = connect_tcp(a).await?;
+    if let Some(mark) = fwmark {
+        stream.set_sock_mark(mark)?;
+    }
+    Ok(stream)
 }
 
 pub async fn bind_tcp(a: &Address<'_>) -> std::io::Result<TcpListener> {

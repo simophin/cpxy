@@ -1,5 +1,6 @@
 mod cipher;
 mod dgram;
+mod proto;
 pub mod server;
 mod udp_stream;
 
@@ -10,7 +11,7 @@ use async_trait::async_trait;
 use futures::AsyncReadExt;
 use serde::{Deserialize, Serialize};
 
-use crate::io::{AsRawFdExt, AsyncStreamCounter};
+use crate::io::{connect_tcp_marked, AsRawFdExt, AsyncStreamCounter};
 use crate::proxy::protocol::ProxyResult;
 use crate::utils::{read_bincode_lengthed_async, write_bincode_lengthed};
 use crate::{fetch::connect_http, proxy::protocol::ProxyRequest, socks5::Address, url::HttpUrl};
@@ -79,6 +80,20 @@ impl Protocol for TcpMan {
             (ProxyRequest::DNS { .. }, false) => false,
             _ => true,
         }
+    }
+
+    async fn new_stream(
+        &self,
+        dst: &Address<'_>,
+        initial_data: Option<&[u8]>,
+        stats: &Stats,
+        fwmark: Option<u32>,
+    ) -> anyhow::Result<Box<dyn AsyncStream>> {
+        let stream = connect_tcp_marked(&self.address, fwmark)
+            .await
+            .context("Connect to TCPMan server")?;
+
+        bail!("Stream unsupported")
     }
 
     async fn new_stream_conn(
