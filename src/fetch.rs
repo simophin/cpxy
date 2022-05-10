@@ -7,7 +7,6 @@ use crate::{
     buf::RWBuffer,
     http::{AsyncHttpStream, HttpRequest, HttpResponse, WithHeaders},
     io::connect_tcp,
-    rt::net::TcpStream,
     socks5::Address,
     tls::connect_tls,
     url::HttpUrl,
@@ -57,18 +56,6 @@ pub async fn connect_http_stream<T: AsyncRead + AsyncWrite + Unpin + Send + Sync
     Ok(client)
 }
 
-pub async fn connect_http(
-    tls: bool,
-    address: &Address<'_>,
-) -> anyhow::Result<HttpStream<TcpStream>> {
-    let client = connect_tcp(&address)
-        .await
-        .with_context(|| format!("Connecting to {address}"))?;
-
-    client.set_nodelay(true).context("Enabling NO_DELAY")?;
-    connect_http_stream(tls, address, client).await
-}
-
 impl<T: AsyncRead + AsyncWrite + Unpin> AsyncRead for HttpStream<T> {
     fn poll_read(
         self: std::pin::Pin<&mut Self>,
@@ -89,18 +76,6 @@ impl<T: AsyncRead + AsyncWrite + Unpin> AsyncRead for HttpStream<T> {
         match self.get_mut() {
             HttpStream::Plain(s) => AsyncRead::poll_read_vectored(Pin::new(s), cx, bufs),
             HttpStream::SSL(s) => AsyncRead::poll_read_vectored(Pin::new(s), cx, bufs),
-        }
-    }
-}
-
-impl<T> HttpStream<T> {
-    pub fn inner(&self) -> &T {
-        match self {
-            HttpStream::Plain(stream) => stream,
-            #[cfg(not(target_arch = "mips"))]
-            HttpStream::SSL(stream) => stream.get_ref().0,
-            #[cfg(target_arch = "mips")]
-            HttpStream::SSL(stream) => stream,
         }
     }
 }
@@ -149,15 +124,15 @@ impl<T: AsyncRead + AsyncWrite + Unpin> AsyncWrite for HttpStream<T> {
     }
 }
 
-pub async fn send_http(
-    https: bool,
-    address: &Address<'_>,
-    req: &HttpRequest<'_>,
-) -> anyhow::Result<impl AsyncRead + AsyncWrite + Unpin + Send + Sync + 'static> {
-    let mut stream = connect_http(https, address).await?;
-    req.to_async_writer(&mut stream).await?;
-    Ok(stream)
-}
+// pub async fn send_http(
+//     https: bool,
+//     address: &Address<'_>,
+//     req: &HttpRequest<'_>,
+// ) -> anyhow::Result<impl AsyncRead + AsyncWrite + Unpin + Send + Sync + 'static> {
+//     let mut stream = connect_http(https, address).await?;
+//     req.to_async_writer(&mut stream).await?;
+//     Ok(stream)
+// }
 
 pub async fn fetch_http_with_proxy<'a, 'b>(
     url: &'a str,

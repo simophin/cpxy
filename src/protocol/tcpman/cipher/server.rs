@@ -127,7 +127,9 @@ mod test {
     use super::super::client::connect;
     use super::super::strategy::EncryptionStrategy;
     use super::*;
-    use crate::{fetch::connect_http, rt, test::create_http_server, url::HttpUrl};
+    use crate::{
+        fetch::connect_http_stream, io::connect_tcp, rt, test::create_http_server, url::HttpUrl,
+    };
     use futures::{io::copy, AsyncReadExt, AsyncWriteExt};
     use rand::RngCore;
 
@@ -149,9 +151,17 @@ mod test {
 
             let data = b"hello, world";
             let url = HttpUrl::try_from(url.as_str()).unwrap();
+            let stream = connect_http_stream(
+                url.is_https,
+                &url.address,
+                connect_tcp(&url.address).await.unwrap(),
+            )
+            .await
+            .unwrap();
+
             let mut client = connect(
                 &url,
-                connect_http(url.is_https, &url.address).await.unwrap(),
+                stream,
                 EncryptionStrategy::FirstN(5.try_into().unwrap()),
                 EncryptionStrategy::Always,
                 data.to_vec(),
