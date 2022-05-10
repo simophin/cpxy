@@ -1,6 +1,5 @@
 use super::partial::PartialStreamCipher;
 use super::suite::StreamCipherExt;
-use crate::proxy::protocol::ProxyRequest;
 use anyhow::anyhow;
 use cipher::StreamCipher;
 use std::num::NonZeroUsize;
@@ -24,20 +23,18 @@ impl std::fmt::Display for EncryptionStrategy {
 }
 
 impl EncryptionStrategy {
-    pub fn pick_send(req: &ProxyRequest, is_tls: bool) -> Self {
-        match (&req, is_tls) {
-            (_, true) => EncryptionStrategy::Never,
-            (ProxyRequest::TCP { dst }, _) if dst.get_port() == 443 => {
-                Self::FirstN(NonZeroUsize::try_from(512).unwrap())
-            }
-            _ => EncryptionStrategy::Always,
+    pub fn new_send(is_tcp: bool, dst_port: u16, is_upstream_tls: bool) -> Self {
+        match (is_tcp, dst_port, is_upstream_tls) {
+            (_, _, true) => Self::Never,
+            (true, 443, _) => Self::FirstN(512.try_into().unwrap()),
+            _ => Self::Always,
         }
     }
 
-    pub fn pick_receive(req: &ProxyRequest) -> Self {
-        match &req {
-            ProxyRequest::TCP { dst } if dst.get_port() == 443 => EncryptionStrategy::Never,
-            _ => EncryptionStrategy::Always,
+    pub fn new_receive(is_tcp: bool, dst_port: u16) -> Self {
+        match (is_tcp, dst_port) {
+            (true, 443) => Self::Never,
+            _ => Self::Always,
         }
     }
 

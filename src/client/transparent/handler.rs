@@ -1,9 +1,8 @@
-use std::{borrow::Cow, collections::HashMap, net::SocketAddr, sync::Arc, time::Duration};
+use std::{collections::HashMap, net::SocketAddr, sync::Arc, time::Duration};
 
 use crate::{
     config::ClientConfig,
-    protocol::Protocol,
-    proxy::protocol::ProxyRequest,
+    protocol::{Protocol, TrafficType},
     rt::{
         mpsc::{channel, Sender},
         spawn, Task,
@@ -99,24 +98,20 @@ impl UdpSession {
         let (tx, rx) = channel(10);
         let dst_addr: Address = dst.into();
         let _task = spawn(async move {
-            let req = ProxyRequest::UDP {
-                initial_dst: dst_addr.clone(),
-                initial_data: Cow::Borrowed(&initial_data),
-            };
-
-            let mut upstreams = config.find_best_upstream(&req, &stats, &dst_addr);
+            let mut upstreams = config.find_best_upstream(TrafficType::Datagram, &stats, &dst_addr);
             let mut result = Ok(());
             while let Some((name, upstream)) = upstreams.pop() {
                 log::debug!("Trying upstream {name} for UDP://{dst_addr}");
                 let (sink, stream) = match upstream
                     .protocol
-                    .new_dgram_conn(
-                        &req,
+                    .new_datagram(
+                        &dst_addr,
+                        initial_data.clone(),
                         &stats.get_protocol_stats(name).unwrap_or_default(),
                         config.fwmark,
                     )
                     .await
-                    .with_context(|| format!("Creating upstream dgram for {req:?}"))
+                    .with_context(|| format!("Creating upstream dgram for UDP://{dst}"))
                 {
                     Ok(v) => v,
                     Err(e) => {

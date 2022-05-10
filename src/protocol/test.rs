@@ -3,28 +3,25 @@ use bytes::Bytes;
 
 use crate::{
     buf::RWBuffer,
-    http::{parse_response, HttpRequest},
-    proxy::protocol::ProxyRequest,
+    http::{parse_response, HttpRequestBuilder},
+    protocol::TrafficType,
     rt::TimeoutExt,
     test::{echo_tcp_server, echo_udp_server},
 };
 
 use super::Protocol;
 use futures::{AsyncReadExt, AsyncWriteExt, SinkExt, StreamExt};
-use std::{borrow::Cow, io::Write, time::Duration};
+use std::{io::Write, time::Duration};
 
 const TIMEOUT: Duration = Duration::from_secs(1);
 
-pub async fn test_protocol_tcp(p: &impl Protocol) {
+pub async fn test_protocol_tcp(p: &(impl Protocol + Send + Sync)) {
     let (_echo_task, echo_addr) = echo_tcp_server().await;
 
-    let req = ProxyRequest::TCP {
-        dst: echo_addr.into(),
-    };
-    assert!(p.supports(&req));
+    assert!(p.supports(TrafficType::Stream));
 
-    let (mut stream, _) = p
-        .new_stream_conn(&req, &Default::default(), None)
+    let mut stream = p
+        .new_stream(&echo_addr.into(), None, &Default::default(), None)
         .timeout(TIMEOUT)
         .await
         .expect("No timeout")
@@ -54,21 +51,20 @@ pub async fn test_protocol_tcp(p: &impl Protocol) {
     }
 }
 
-pub async fn test_protocol_http(p: &impl Protocol) {
-    let req = ProxyRequest::HTTP {
-        dst: "www.google.com:80".parse().unwrap(),
-        https: false,
-        req: HttpRequest {
-            headers: Default::default(),
-            method: Cow::Borrowed("GET"),
-            path: Cow::Borrowed("/"),
-        },
-    };
+pub async fn test_protocol_http(p: &(impl Protocol + Send + Sync)) {
+    assert!(p.supports(TrafficType::Stream));
 
-    assert!(p.supports(&req));
+    let mut b = HttpRequestBuilder::new("GET", "/").unwrap();
+    b.put_header_text("Host", "www.google.com").unwrap();
+    let initial_data = b.finalise();
 
-    let (stream, _) = p
-        .new_stream_conn(&req, &Default::default(), None)
+    let stream = p
+        .new_stream(
+            &"www.google.com:80".parse().unwrap(),
+            Some(&initial_data),
+            &Default::default(),
+            None,
+        )
         .timeout(TIMEOUT)
         .await
         .expect("No timeout")
@@ -81,18 +77,20 @@ pub async fn test_protocol_http(p: &impl Protocol) {
     assert_eq!(http_stream.status_code, 200);
 }
 
-pub async fn test_protocol_udp(p: &impl Protocol) {
+pub async fn test_protocol_udp(p: &(impl Protocol + Send + Sync)) {
     let (_echo_task, echo_addr) = echo_udp_server().await;
 
     let initial_data = b"hello, world";
-    let req = ProxyRequest::UDP {
-        initial_dst: echo_addr.into(),
-        initial_data: Cow::Borrowed(initial_data),
-    };
-    assert!(p.supports(&req));
+
+    assert!(p.supports(TrafficType::Datagram));
 
     let (mut sink, mut stream) = p
-        .new_dgram_conn(&req, &Default::default(), None)
+        .new_datagram(
+            &echo_addr.into(),
+            Bytes::from_static(initial_data),
+            &Default::default(),
+            None,
+        )
         .timeout(TIMEOUT)
         .await
         .expect("No timeout")

@@ -1,10 +1,7 @@
 use anyhow::Context;
 use futures::{AsyncRead, AsyncWrite};
 
-use crate::{
-    config::ClientConfig, handshake::Handshaker, http::HttpRequest, proxy::protocol::ProxyRequest,
-    socks5::Address,
-};
+use crate::{config::ClientConfig, handshake::Handshaker, http::HttpRequest, socks5::Address};
 
 use super::ClientStatistics;
 
@@ -19,11 +16,7 @@ pub async fn serve_http_proxy_conn(
 ) -> anyhow::Result<()> {
     super::common::serve_stream_based_conn(
         dst.clone(),
-        &ProxyRequest::HTTP {
-            dst: dst.clone(),
-            https,
-            req,
-        },
+        Some(&req.to_builder().finalise()),
         config,
         stats,
         stream,

@@ -1,10 +1,12 @@
+use std::fmt::Debug;
+
 use super::client::CipherParams;
-use anyhow::bail;
+use anyhow::{bail, Context};
+use cipher::StreamCipher;
 use futures::{AsyncRead, AsyncReadExt, AsyncWrite};
 
 use crate::http::WithHeaders;
-use crate::stream::VecStream;
-use crate::ws::serve_websocket;
+use crate::ws::{serve_websocket, WebSocketServeResult};
 
 use super::stream::CipherStream;
 use super::suite::{create_cipher, StreamCipherExt};
@@ -43,12 +45,57 @@ fn check_request(
     Ok((rd_cipher, wr_cipher))
 }
 
-pub async fn listen<T: AsyncRead + AsyncWrite + Send + Sync + Unpin>(
-    stream: T,
-) -> anyhow::Result<impl AsyncRead + AsyncWrite + Send + Sync + Unpin> {
-    let req = serve_websocket(stream).await?;
+pub struct Handshaker<T, RC, WC> {
+    r: WebSocketServeResult<T>,
+    rc: RC,
+    wc: WC,
+}
 
-    let (rd_cipher, wr_cipher) = match check_request(req.request().path.as_ref()) {
+impl<T, RC, WC> Handshaker<T, RC, WC>
+where
+    T: AsyncRead + AsyncWrite + Send + Sync + Unpin,
+    RC: StreamCipherExt + Send + Sync,
+    WC: StreamCipherExt + Send + Sync,
+{
+    pub async fn respond_error(self, err: &impl Debug) -> anyhow::Result<()> {
+        let error_content = format!("{err:?}");
+        self.r
+            .respond_fail_with_raw_response(
+                format!(
+                    "HTTP/1.1 500 Internal Error\r\n\
+        Content-Type: text/plain\r\n\
+        Content-Length: {}\r\n\
+        \r\n\
+        {error_content}",
+                    error_content.as_bytes().len()
+                )
+                .as_bytes(),
+            )
+            .await
+    }
+
+    pub async fn respond_success(
+        self,
+    ) -> anyhow::Result<impl AsyncRead + AsyncWrite + Unpin + Send + Sync> {
+        let Handshaker { r, rc, wc } = self;
+
+        let (r, w) = r
+            .respond_success()
+            .await
+            .context("Responding success to cipher client")?
+            .split();
+        Ok(CipherStream::new("server".to_string(), r, w, rc, wc))
+    }
+}
+
+pub async fn accept_client<T: AsyncRead + AsyncWrite + Send + Sync + Unpin>(
+    stream: T,
+) -> anyhow::Result<(
+    Option<Vec<u8>>,
+    Handshaker<T, impl StreamCipherExt + Send + Sync, impl StreamCipherExt + Send + Sync>,
+)> {
+    let req = serve_websocket(stream).await?;
+    let (mut rd_cipher, wr_cipher) = match check_request(req.request().path.as_ref()) {
         Ok(v) => v,
         Err((res, err)) => {
             req.respond_fail_with_raw_response(res.as_bytes()).await?;
@@ -57,19 +104,21 @@ pub async fn listen<T: AsyncRead + AsyncWrite + Send + Sync + Unpin>(
     };
 
     let initial_data = match req.request().get_header(super::client::INITIAL_DATA_HEADER) {
-        Some(value) => base64::decode_config(value, super::client::INITIAL_DATA_CONFIG)?,
-        None => Default::default(),
+        Some(value) => {
+            let mut data = base64::decode_config(value, super::client::INITIAL_DATA_CONFIG)?;
+            rd_cipher.apply_keystream(&mut data);
+            Some(data)
+        }
+        None => None,
     };
 
-    // Respond client with correct details
-    let (r, w) = req.respond_success().await?.split();
-
-    Ok(CipherStream::new(
-        "server".to_string(),
-        VecStream::new(initial_data).chain(r),
-        w,
-        rd_cipher,
-        wr_cipher,
+    Ok((
+        initial_data,
+        Handshaker {
+            r: req,
+            rc: rd_cipher,
+            wc: wr_cipher,
+        },
     ))
 }
 
@@ -89,7 +138,11 @@ mod test {
             let server_task = rt::spawn(async move {
                 loop {
                     let (stream, _) = http_server.accept().await.unwrap();
-                    let (r, mut w) = listen(stream).await.unwrap().split();
+                    let (initial_data, hs) = accept_client(stream).await.unwrap();
+                    let (r, mut w) = hs.respond_success().await.unwrap().split();
+                    w.write_all(&initial_data.unwrap_or_default())
+                        .await
+                        .unwrap();
                     copy(r, &mut w).await.unwrap();
                 }
             });

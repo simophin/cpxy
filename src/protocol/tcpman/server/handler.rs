@@ -1,32 +1,80 @@
-use crate::io::TcpStreamExt;
+use crate::protocol::direct::Direct;
+use crate::protocol::tcpman::dgram::{create_udp_sink, create_udp_stream};
+use crate::protocol::Protocol;
 use crate::rt::spawn;
-use futures::{AsyncRead, AsyncWrite};
+use anyhow::Context;
+use bytes::Bytes;
+use futures::{AsyncRead, AsyncReadExt, AsyncWrite, StreamExt};
 
-use super::{
-    dns::resolve_domains, tcp::serve_http_proxy, tcp::serve_tcp_proxy, udp::serve_udp_proxy_conn,
-};
-use crate::proxy::protocol::ProxyRequest;
+use super::{super::cipher, super::proto};
 use crate::rt::net::TcpListener;
-use crate::utils::read_bincode_lengthed_async;
+use crate::utils::{copy_duplex, race};
 
-pub async fn serve_client(
-    v4: bool,
+pub async fn serve_client<P: Protocol + Send + Sync>(
     stream: impl AsyncRead + AsyncWrite + Unpin + Send + Sync + 'static,
+    upstream_factory: impl FnOnce(&proto::Request) -> anyhow::Result<P>,
 ) -> anyhow::Result<()> {
-    let mut stream = super::super::cipher::server::listen(stream).await?;
-    let req: ProxyRequest = read_bincode_lengthed_async(&mut stream).await?;
-    log::debug!("Receive client request: {req:?}");
+    let (initial_data, hs) = cipher::server::accept_client(stream)
+        .await
+        .context("Awaiting handshake")?;
+
+    let initial_data = initial_data.unwrap_or_default();
+
+    let req = match proto::Request::parse(&initial_data).context("Parsing TCPMan request") {
+        Ok(v) => v,
+        Err(e) => {
+            hs.respond_error(&e).await?;
+            return Err(e);
+        }
+    };
+
+    let upstream_protocol = match upstream_factory(&req) {
+        Ok(v) => v,
+        Err(e) => {
+            hs.respond_error(&e).await?;
+            return Err(e);
+        }
+    };
 
     match req {
-        ProxyRequest::TCP { dst } => serve_tcp_proxy(&dst, stream).await,
-        ProxyRequest::HTTP { dst, https, req } => serve_http_proxy(https, &dst, req, stream).await,
-        ProxyRequest::UDP {
-            initial_data,
-            initial_dst,
-        } => serve_udp_proxy_conn(v4, stream, initial_data, initial_dst).await,
-        ProxyRequest::DNS { domains } => resolve_domains(domains, stream).await,
-        ProxyRequest::EchoTestTcp => super::echo::serve_tcp(stream).await,
-        ProxyRequest::EchoTestUdp => super::echo::serve_udp(stream).await,
+        proto::Request::TCP { dst, initial_data } => {
+            let upstream = match upstream_protocol
+                .new_stream(&dst, Some(initial_data), &Default::default(), None)
+                .await
+            {
+                Ok(v) => v,
+                Err(e) => {
+                    hs.respond_error(&e).await?;
+                    return Err(e);
+                }
+            };
+
+            copy_duplex(hs.respond_success().await?, upstream, None, None).await
+        }
+        proto::Request::UDP { dst, initial_data } => {
+            let (upstream_sink, upstream_stream) = match upstream_protocol
+                .new_datagram(
+                    &dst,
+                    Bytes::copy_from_slice(initial_data),
+                    &Default::default(),
+                    None,
+                )
+                .await
+            {
+                Ok(v) => v,
+                Err(e) => {
+                    hs.respond_error(&e).await?;
+                    return Err(e);
+                }
+            };
+
+            let (r, w) = hs.respond_success().await?.split();
+
+            let task1 = spawn(create_udp_stream(r, Some(dst)).forward(upstream_sink));
+            let task2 = spawn(upstream_stream.forward(create_udp_sink(w)));
+
+            race(task1, task2).await
+        }
     }
 }
 
@@ -35,7 +83,7 @@ pub async fn run_server(listener: TcpListener) -> anyhow::Result<()> {
         let (stream, addr) = listener.accept().await?;
         log::info!("Accepted client {addr}");
         spawn(async move {
-            if let Err(e) = serve_client(stream.is_v4(), stream).await {
+            if let Err(e) = serve_client(stream, |_| Ok(Direct {})).await {
                 log::error!("Error serving client {addr}: {e:?}");
             }
             log::info!("Client {addr} disconnected");

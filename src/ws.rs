@@ -41,7 +41,7 @@ pub struct WebSocketServeResult<T> {
 }
 
 impl<T: AsyncRead + AsyncWrite + Unpin + Send + Sync> WebSocketServeResult<T> {
-    pub async fn respond_success(
+    pub async fn respond_success<'a>(
         mut self,
     ) -> anyhow::Result<AsyncHttpStream<HttpRequest<'static>, T>> {
         self.stream

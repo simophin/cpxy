@@ -9,13 +9,9 @@ use orion::aead::SecretKey;
 use std::io::Write;
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr};
 
-type Nonce = u16;
+use crate::io::BytesRef;
 
-#[derive(Debug, PartialEq, Eq)]
-pub enum BytesRef<'a> {
-    Ref(&'a [u8]),
-    Bytes(Bytes),
-}
+type Nonce = u16;
 
 #[derive(Debug, PartialEq, Eq)]
 pub enum Message<'a> {
@@ -163,10 +159,10 @@ fn parse_uuid(b: &mut Bytes) -> anyhow::Result<Bytes> {
     Ok(b.split_to(uuid_len))
 }
 
-fn write_uuid(w: &mut impl Write, id: &impl AsRef<[u8]>) -> anyhow::Result<()> {
-    let len: u8 = id.as_ref().len().try_into().context("Writing UUID len")?;
+fn write_uuid(w: &mut impl Write, id: &[u8]) -> anyhow::Result<()> {
+    let len: u8 = id.len().try_into().context("Writing UUID len")?;
     w.write_u8(len)?;
-    w.write_all(id.as_ref())?;
+    w.write_all(id)?;
     Ok(())
 }
 
@@ -217,8 +213,8 @@ impl<'a> Message<'a> {
                 };
 
                 Ok(Self::Connect {
-                    uuid: BytesRef::Bytes(uuid),
-                    initial_data: BytesRef::Bytes(b),
+                    uuid: uuid.into(),
+                    initial_data: b.into(),
                     initial_data_nonce,
                     dst,
                 })
@@ -273,7 +269,7 @@ impl<'a> Message<'a> {
                 Ok(Self::Data {
                     conn_id,
                     addr,
-                    payload: BytesRef::Bytes(b),
+                    payload: b.into(),
                     enc_nonce: nonce,
                 })
             }
@@ -295,7 +291,7 @@ impl<'a> Message<'a> {
                     }
                     .into(),
                 )?;
-                write_uuid(w, uuid)?;
+                write_uuid(w, uuid.as_ref())?;
                 write_socket_addr(w, dst)?;
                 if let Some(nonce) = initial_data_nonce {
                     w.write_u16::<BigEndian>(*nonce)?;
@@ -380,24 +376,6 @@ pub fn new_message_sink_stream(
     )
 }
 
-impl<'a> AsRef<[u8]> for BytesRef<'a> {
-    fn as_ref(&self) -> &[u8] {
-        match self {
-            Self::Bytes(b) => b.as_ref(),
-            Self::Ref(b) => *b,
-        }
-    }
-}
-
-impl Into<Bytes> for BytesRef<'static> {
-    fn into(self) -> Bytes {
-        match self {
-            BytesRef::Ref(r) => Bytes::from_static(r),
-            BytesRef::Bytes(b) => b,
-        }
-    }
-}
-
 #[allow(dead_code)]
 fn secret_key() -> &'static SecretKey {
     lazy_static! {
@@ -428,15 +406,15 @@ mod tests {
     #[test]
     fn encoding_works() {
         test_message(Message::Connect {
-            uuid: BytesRef::Bytes(Bytes::from_static(b"uuid")),
-            initial_data: BytesRef::Bytes(Bytes::from_static(b"hello, world")),
+            uuid: Bytes::from_static(b"uuid").into(),
+            initial_data: Bytes::from_static(b"hello, world").into(),
             initial_data_nonce: Some(12),
             dst: "1.2.3.4:90".parse().unwrap(),
         });
 
         test_message(Message::Connect {
-            uuid: BytesRef::Bytes(Bytes::from_static(b"uuid")),
-            initial_data: BytesRef::Bytes(Bytes::from_static(b"hello, world")),
+            uuid: Bytes::from_static(b"uuid").into(),
+            initial_data: Bytes::from_static(b"hello, world").into(),
             initial_data_nonce: None,
             dst: "[::1]:90".parse().unwrap(),
         });
@@ -461,42 +439,42 @@ mod tests {
 
         test_message(Message::Data {
             conn_id: Some(456),
-            payload: BytesRef::Bytes(Bytes::from_static(b"hello, world")),
+            payload: Bytes::from_static(b"hello, world").into(),
             enc_nonce: Some(12),
             addr: None,
         });
 
         test_message(Message::Data {
             conn_id: Some(456),
-            payload: BytesRef::Bytes(Bytes::from_static(b"hello, world")),
+            payload: Bytes::from_static(b"hello, world").into(),
             enc_nonce: Some(12),
             addr: Some("1.2.3.4:80".parse().unwrap()),
         });
 
         test_message(Message::Data {
             conn_id: Some(456),
-            payload: BytesRef::Bytes(Bytes::from_static(b"hello, world")),
+            payload: Bytes::from_static(b"hello, world").into(),
             addr: Some("[::1]:80".parse().unwrap()),
             enc_nonce: None,
         });
 
         test_message(Message::Data {
             conn_id: None,
-            payload: BytesRef::Bytes(Bytes::from_static(b"hello, world")),
+            payload: Bytes::from_static(b"hello, world").into(),
             addr: None,
             enc_nonce: None,
         });
 
         test_message(Message::Data {
             conn_id: None,
-            payload: BytesRef::Bytes(Bytes::from_static(b"hello, world")),
+            payload: Bytes::from_static(b"hello, world").into(),
             addr: Some("1.2.3.4:80".parse().unwrap()),
             enc_nonce: Some(12),
         });
 
         test_message(Message::Data {
             conn_id: None,
-            payload: BytesRef::Bytes(Bytes::from_static(b"hello, world")),
+            payload: Bytes::from_static(b"hello, world").into(),
             addr: Some("[::1]:80".parse().unwrap()),
             enc_nonce: Some(12),
         });

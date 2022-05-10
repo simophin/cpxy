@@ -1,11 +1,11 @@
-use std::{borrow::Cow, sync::Arc};
+use std::sync::Arc;
 
 use crate::{
     buf::RWBuffer,
-    http::{parse_request, HttpRequest},
+    http::{parse_request, HttpRequestBuilder},
     protocol::Protocol,
-    proxy::protocol::ProxyRequest,
     rt::{net::TcpListener, spawn},
+    socks5::Address,
     url::HttpUrl,
     utils::copy_duplex,
 };
@@ -30,13 +30,8 @@ pub async fn serve(
                     }
                 };
 
-            let req = match stream.method.as_ref() {
-                "CONNECT" => ProxyRequest::TCP {
-                    dst: stream
-                        .path
-                        .parse()
-                        .with_context(|| format!("Parsing {} as TCP address", stream.path))?,
-                },
+            let (reply_http_response, dst, initial_data) = match stream.method.as_ref() {
+                "CONNECT" => (true, Address::try_from(stream.path.as_ref())?, None),
                 m => {
                     let url: HttpUrl = stream
                         .path
@@ -44,24 +39,25 @@ pub async fn serve(
                         .try_into()
                         .with_context(|| format!("Parsing {} as HTTP URL", stream.path))?;
 
-                    ProxyRequest::HTTP {
-                        dst: url.address.clone(),
-                        https: url.is_https,
-                        req: HttpRequest {
-                            method: Cow::Borrowed(m),
-                            headers: Default::default(),
-                            path: url.path.to_owned(),
-                        },
+                    let mut builder = HttpRequestBuilder::new(m, url.path.as_ref())?;
+                    for (n, v) in &stream.headers {
+                        builder.put_header(n.as_ref(), v.as_ref())?;
                     }
+                    (false, url.address, Some(builder.finalise()))
                 }
             };
-            log::debug!("Sending {req:?} from {from} to upstream");
+            log::debug!("Sending HTTPPROXY://{dst} from {from} to upstream");
 
             let upstream = match upstream
-                .new_stream_conn(&req, &Default::default(), None)
+                .new_stream(
+                    &dst,
+                    initial_data.as_ref().map(Vec::as_slice),
+                    &Default::default(),
+                    None,
+                )
                 .await
             {
-                Ok((stream, _)) => stream,
+                Ok(stream) => stream,
                 Err(e) => {
                     log::error!("Error requesting upstream: {e:?}");
                     stream.write_all(b"HTTP/1.1 500 Error\r\n\r\n").await?;
@@ -69,7 +65,7 @@ pub async fn serve(
                 }
             };
 
-            if let ProxyRequest::TCP { .. } = &req {
+            if reply_http_response {
                 stream.write_all(b"HTTP/1.1 200 OK\r\n\r\n").await?;
             }
 

@@ -140,16 +140,19 @@ impl<'a> HttpRequest<'a> {
         }
     }
 
+    pub fn to_builder(&self) -> HttpRequestBuilder {
+        let mut builder = HttpRequestBuilder::new(&self.method, &self.path).unwrap();
+        for (k, v) in &self.headers {
+            builder.put_header(k, v.as_ref()).unwrap();
+        }
+        builder
+    }
+
     pub async fn to_async_writer(
         &self,
         w: &mut (impl AsyncWrite + Unpin + Send + Sync),
     ) -> anyhow::Result<()> {
-        let mut builder = HttpRequestBuilder::new(&self.method, &self.path)?;
-        for (k, v) in &self.headers {
-            builder.put_header(k, v.as_ref())?;
-        }
-
-        w.write_all(&builder.finalise()).await?;
+        w.write_all(&self.to_builder().finalise()).await?;
         Ok(())
     }
 }

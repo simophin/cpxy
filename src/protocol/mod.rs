@@ -1,4 +1,3 @@
-use std::time::Duration;
 use std::{pin::Pin, sync::Arc};
 
 use anyhow::bail;
@@ -7,7 +6,7 @@ use bytes::Bytes;
 use futures::{AsyncRead, AsyncWrite, Sink, Stream};
 
 use crate::counter::Counter;
-use crate::{proxy::protocol::ProxyRequest, socks5::Address};
+use crate::socks5::Address;
 
 pub mod direct;
 pub mod http;
@@ -32,41 +31,33 @@ pub struct Stats {
     pub rx: Arc<Counter>,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum TrafficType {
+    Stream,
+    Datagram,
+}
+
 #[async_trait]
 pub trait Protocol {
-    fn supports(&self, req: &ProxyRequest<'_>) -> bool;
+    fn supports(&self, traffic_type: TrafficType) -> bool;
 
     async fn new_stream(
         &self,
-        dst: &Address<'_>,
-        initial_data: Option<&[u8]>,
-        stats: &Stats,
-        fwmark: Option<u32>,
+        _dst: &Address<'_>,
+        _initial_data: Option<&[u8]>,
+        _stats: &Stats,
+        _fwmark: Option<u32>,
     ) -> anyhow::Result<Box<dyn AsyncStream>> {
         bail!("Stream unsupported")
     }
 
     async fn new_datagram(
         &self,
-        dst: &Address<'_>,
-        initial_data: Bytes,
-        stats: &Stats,
-        fwmark: Option<u32>,
+        _dst: &Address<'_>,
+        _initial_data: Bytes,
+        _stats: &Stats,
+        _fwmark: Option<u32>,
     ) -> anyhow::Result<(BoxedSink, BoxedStream)> {
         bail!("Datagram unsupported")
     }
-
-    async fn new_stream_conn(
-        &self,
-        req: &ProxyRequest<'_>,
-        stats: &Stats,
-        fwmark: Option<u32>,
-    ) -> anyhow::Result<(Box<dyn AsyncStream>, Duration)>;
-
-    async fn new_dgram_conn(
-        &self,
-        req: &ProxyRequest<'_>,
-        stats: &Stats,
-        fwmark: Option<u32>,
-    ) -> anyhow::Result<(BoxedSink, BoxedStream)>;
 }

@@ -4,24 +4,23 @@ mod proto;
 pub mod server;
 mod udp_stream;
 
-use std::time::{Duration, Instant};
+use std::borrow::Cow;
 
-use anyhow::{bail, Context};
+use anyhow::Context;
 use async_trait::async_trait;
-use futures::AsyncReadExt;
+use bytes::Bytes;
+use futures::{AsyncRead, AsyncReadExt, AsyncWrite};
 use serde::{Deserialize, Serialize};
 
-use crate::io::{connect_tcp_marked, AsRawFdExt, AsyncStreamCounter};
-use crate::proxy::protocol::ProxyResult;
-use crate::utils::{read_bincode_lengthed_async, write_bincode_lengthed};
-use crate::{fetch::connect_http, proxy::protocol::ProxyRequest, socks5::Address, url::HttpUrl};
+use crate::io::{connect_tcp_marked, AsyncStreamCounter};
+use crate::{socks5::Address, url::HttpUrl};
 
 use self::{
     cipher::strategy::EncryptionStrategy,
     dgram::{create_udp_sink, create_udp_stream},
 };
 
-use super::{AsyncStream, BoxedSink, BoxedStream, Protocol, Stats};
+use super::{AsyncStream, BoxedSink, BoxedStream, Protocol, Stats, TrafficType};
 
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
 pub struct TcpMan {
@@ -31,53 +30,39 @@ pub struct TcpMan {
 }
 
 impl TcpMan {
-    async fn send_request(
+    async fn send_request<'a>(
         &self,
-        req: &ProxyRequest<'_>,
+        dst: &Address<'_>,
+        req: proto::Request<'a>,
         stats: &Stats,
         fwmark: Option<u32>,
-    ) -> anyhow::Result<(impl AsyncStream, Duration)> {
-        let start = Instant::now();
-
-        let stream = connect_http(self.ssl, &self.address)
+    ) -> anyhow::Result<impl AsyncRead + AsyncWrite + Unpin + Send + Sync> {
+        let stream = connect_tcp_marked(&self.address, fwmark)
             .await
-            .with_context(|| format!("Connecting to {}", self.address))?;
+            .context("Connect to TCPMan server")?;
 
-        if let Some(m) = fwmark {
-            stream.inner().set_sock_mark(m)?;
-        }
+        let initial_data = req.to_vec();
 
-        let mut initial_data = Vec::new();
-        write_bincode_lengthed(&mut initial_data, req)?;
-        let mut stream = cipher::client::connect(
+        cipher::client::connect(
             &HttpUrl {
                 is_https: self.ssl,
                 address: self.address.clone(),
-                path: Default::default(),
+                path: Cow::Borrowed("/"),
             },
             AsyncStreamCounter::new(stream, stats.rx.clone(), stats.tx.clone()),
-            EncryptionStrategy::pick_send(req, self.ssl),
-            EncryptionStrategy::pick_receive(req),
+            EncryptionStrategy::new_send(true, dst.get_port(), self.ssl),
+            EncryptionStrategy::new_receive(true, dst.get_port()),
             initial_data,
         )
         .await
-        .context("Connect encryption")?;
-
-        match read_bincode_lengthed_async(&mut stream)
-            .await
-            .context("Reading proxy response")?
-        {
-            ProxyResult::Granted { .. } => Ok((stream, start.elapsed())),
-            v => Err(v.into()),
-        }
     }
 }
 
 #[async_trait]
 impl Protocol for TcpMan {
-    fn supports(&self, req: &ProxyRequest<'_>) -> bool {
-        match (req, self.allows_udp) {
-            (ProxyRequest::DNS { .. }, false) => false,
+    fn supports(&self, t: TrafficType) -> bool {
+        match (t, self.allows_udp) {
+            (TrafficType::Datagram, false) => false,
             _ => true,
         }
     }
@@ -89,40 +74,39 @@ impl Protocol for TcpMan {
         stats: &Stats,
         fwmark: Option<u32>,
     ) -> anyhow::Result<Box<dyn AsyncStream>> {
-        let stream = connect_tcp_marked(&self.address, fwmark)
-            .await
-            .context("Connect to TCPMan server")?;
-
-        bail!("Stream unsupported")
+        Ok(Box::new(
+            self.send_request(
+                dst,
+                proto::Request::TCP {
+                    dst: dst.clone(),
+                    initial_data: initial_data.unwrap_or_default(),
+                },
+                stats,
+                fwmark,
+            )
+            .await?,
+        ))
     }
 
-    async fn new_stream_conn(
+    async fn new_datagram(
         &self,
-        req: &ProxyRequest<'_>,
-        stats: &Stats,
-        fwmark: Option<u32>,
-    ) -> anyhow::Result<(Box<dyn AsyncStream>, Duration)> {
-        match req {
-            ProxyRequest::TCP { .. } | ProxyRequest::HTTP { .. } => {}
-            _ => bail!("Invalid request {req:?} for streaming"),
-        };
-
-        let (stream, latency) = self.send_request(req, stats, fwmark).await?;
-        Ok((Box::new(stream), latency))
-    }
-
-    async fn new_dgram_conn(
-        &self,
-        req: &ProxyRequest<'_>,
+        dst: &Address<'_>,
+        initial_data: Bytes,
         stats: &Stats,
         fwmark: Option<u32>,
     ) -> anyhow::Result<(BoxedSink, BoxedStream)> {
-        if !matches!(req, ProxyRequest::UDP { .. }) {
-            bail!("Unsupported request type for dgram conn: {req:?}");
-        }
-
-        let (stream, _) = self.send_request(req, stats, fwmark).await?;
-        let (r, w) = stream.split();
+        let (r, w) = self
+            .send_request(
+                dst,
+                proto::Request::UDP {
+                    dst: dst.clone(),
+                    initial_data: initial_data.as_ref(),
+                },
+                stats,
+                fwmark,
+            )
+            .await?
+            .split();
         Ok((
             Box::pin(create_udp_sink(w)),
             Box::pin(create_udp_stream(r, None)),
@@ -141,6 +125,8 @@ mod tests {
 
     #[test]
     fn tcpman_works() {
+        std::env::set_var("RUST_LOG", "debug");
+        let _ = env_logger::try_init();
         block_on(async move {
             let (server, addr) = create_tcp_server().await;
             let _task = spawn(super::server::run_server(server));

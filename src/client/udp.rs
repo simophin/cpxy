@@ -1,8 +1,8 @@
-use std::{borrow::Cow, time::Duration};
+use std::time::Duration;
 
 use crate::{
     io::{is_one_off_udp_query, Timer},
-    protocol::Protocol,
+    protocol::{Protocol, TrafficType},
     utils::new_vec_uninitialised,
 };
 use anyhow::{anyhow, Context};
@@ -12,8 +12,8 @@ use futures::{
 use smol_timeout::TimeoutExt;
 
 use crate::{
-    config::ClientConfig, handshake::Handshaker, proxy::protocol::ProxyRequest, rt::spawn,
-    socks5::UdpRepr as Socks5UdpRepr, udp_relay::new_udp_relay,
+    config::ClientConfig, handshake::Handshaker, rt::spawn, socks5::UdpRepr as Socks5UdpRepr,
+    udp_relay::new_udp_relay,
 };
 
 use super::ClientStatistics;
@@ -42,19 +42,16 @@ pub async fn serve_udp_proxy_conn(
     let pkt = rx.next().await.context("Waiting for first packet")??;
     let addr = pkt.addr().into_owned();
 
-    let req = ProxyRequest::UDP {
-        initial_dst: pkt.addr(),
-        initial_data: Cow::Borrowed(pkt.payload()),
-    };
-    let mut upstreams = c.find_best_upstream(&req, stats, &addr);
+    let mut upstreams = c.find_best_upstream(TrafficType::Datagram, stats, &addr);
     let mut last_error = None;
 
     while let Some((name, upstream)) = upstreams.pop() {
-        log::debug!("Trying upstream {name} for {req:?}");
+        log::debug!("Trying upstream {name} for UDP://{addr}");
         let (upstream_sink, mut upstream_stream) = match upstream
             .protocol
-            .new_dgram_conn(
-                &req,
+            .new_datagram(
+                &addr,
+                pkt.payload_bytes(),
                 &stats.get_protocol_stats(name).unwrap_or_default(),
                 c.fwmark,
             )
@@ -135,7 +132,7 @@ pub async fn serve_udp_proxy_conn(
         };
     }
 
-    Err(last_error.unwrap_or_else(|| anyhow!("No upstreams available for {req:?}")))
+    Err(last_error.unwrap_or_else(|| anyhow!("No upstreams available for UDP://{addr}")))
 }
 
 async fn drain_socks(socks: &mut (impl AsyncRead + Unpin)) -> anyhow::Result<()> {

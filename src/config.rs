@@ -1,11 +1,12 @@
 use anyhow::anyhow;
 use async_trait::async_trait;
+use bytes::Bytes;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::fmt::{Debug, Display, Formatter};
 use std::net::{IpAddr, Ipv4Addr, SocketAddr};
 use std::str::FromStr;
-use std::time::{Duration, UNIX_EPOCH};
+use std::time::UNIX_EPOCH;
 
 use ipnetwork::IpNetwork;
 use serde_with::{DeserializeFromStr, SerializeDisplay};
@@ -16,8 +17,8 @@ use crate::geoip::{find_geoip, CountryCode};
 use crate::pattern::Pattern;
 use crate::protocol::{
     direct, socks5, tcpman, udpman, AsyncStream, BoxedSink, BoxedStream, Protocol, Stats,
+    TrafficType,
 };
-use crate::proxy::protocol::ProxyRequest;
 use crate::socks5::Address;
 
 #[derive(Debug, Clone, DeserializeFromStr, SerializeDisplay)]
@@ -221,7 +222,7 @@ impl ClientConfig {
     // Sorted by score MIN -> MAX
     pub fn find_best_upstream(
         &self,
-        req: &ProxyRequest,
+        t: TrafficType,
         stats: &ClientStatistics,
         target: &Address,
     ) -> Vec<(&str, &UpstreamConfig)> {
@@ -239,7 +240,7 @@ impl ClientConfig {
             self.upstreams
                 .iter()
                 .filter_map(|(n, c)| {
-                    if !c.protocol.supports(req) {
+                    if !c.protocol.supports(t) {
                         return None;
                     }
 
@@ -261,40 +262,42 @@ impl ClientConfig {
 
 #[async_trait]
 impl Protocol for UpstreamProtocol {
-    fn supports(&self, req: &ProxyRequest<'_>) -> bool {
+    fn supports(&self, traffic_type: TrafficType) -> bool {
         match self {
-            UpstreamProtocol::UdpMan(p) => p.supports(req),
-            UpstreamProtocol::TcpMan(p) => p.supports(req),
-            UpstreamProtocol::Direct(p) => p.supports(req),
-            UpstreamProtocol::Socks5(p) => p.supports(req),
+            UpstreamProtocol::UdpMan(p) => p.supports(traffic_type),
+            UpstreamProtocol::TcpMan(p) => p.supports(traffic_type),
+            UpstreamProtocol::Direct(p) => p.supports(traffic_type),
+            UpstreamProtocol::Socks5(p) => p.supports(traffic_type),
         }
     }
 
-    async fn new_stream_conn(
+    async fn new_stream(
         &self,
-        req: &ProxyRequest<'_>,
+        dst: &Address<'_>,
+        initial_data: Option<&[u8]>,
         stats: &Stats,
         fwmark: Option<u32>,
-    ) -> anyhow::Result<(Box<dyn AsyncStream>, Duration)> {
+    ) -> anyhow::Result<Box<dyn AsyncStream>> {
         match self {
-            UpstreamProtocol::UdpMan(p) => p.new_stream_conn(req, stats, fwmark).await,
-            UpstreamProtocol::TcpMan(p) => p.new_stream_conn(req, stats, fwmark).await,
-            UpstreamProtocol::Direct(p) => p.new_stream_conn(req, stats, fwmark).await,
-            UpstreamProtocol::Socks5(p) => p.new_stream_conn(req, stats, fwmark).await,
+            UpstreamProtocol::UdpMan(p) => p.new_stream(dst, initial_data, stats, fwmark).await,
+            UpstreamProtocol::TcpMan(p) => p.new_stream(dst, initial_data, stats, fwmark).await,
+            UpstreamProtocol::Direct(p) => p.new_stream(dst, initial_data, stats, fwmark).await,
+            UpstreamProtocol::Socks5(p) => p.new_stream(dst, initial_data, stats, fwmark).await,
         }
     }
 
-    async fn new_dgram_conn(
+    async fn new_datagram(
         &self,
-        req: &ProxyRequest<'_>,
+        dst: &Address<'_>,
+        initial_data: Bytes,
         stats: &Stats,
         fwmark: Option<u32>,
     ) -> anyhow::Result<(BoxedSink, BoxedStream)> {
         match self {
-            UpstreamProtocol::UdpMan(p) => p.new_dgram_conn(req, stats, fwmark).await,
-            UpstreamProtocol::TcpMan(p) => p.new_dgram_conn(req, stats, fwmark).await,
-            UpstreamProtocol::Direct(p) => p.new_dgram_conn(req, stats, fwmark).await,
-            UpstreamProtocol::Socks5(p) => p.new_dgram_conn(req, stats, fwmark).await,
+            UpstreamProtocol::UdpMan(p) => p.new_datagram(dst, initial_data, stats, fwmark).await,
+            UpstreamProtocol::TcpMan(p) => p.new_datagram(dst, initial_data, stats, fwmark).await,
+            UpstreamProtocol::Direct(p) => p.new_datagram(dst, initial_data, stats, fwmark).await,
+            UpstreamProtocol::Socks5(p) => p.new_datagram(dst, initial_data, stats, fwmark).await,
         }
     }
 }

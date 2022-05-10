@@ -20,8 +20,8 @@ impl<'a> Display for CipherParams<'a> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.write_fmt(format_args!(
             "/{}/{}/{}/{}/{}",
-            base64::encode_config(&self.key.as_ref(), URL_SAFE_NO_PAD),
-            base64::encode_config(&self.iv.as_ref(), URL_SAFE_NO_PAD),
+            base64::display::Base64Display::with_config(self.key.as_ref(), URL_SAFE_NO_PAD),
+            base64::display::Base64Display::with_config(self.iv.as_ref(), URL_SAFE_NO_PAD),
             self.send_strategy,
             self.recv_strategy,
             self.cipher_type
@@ -29,10 +29,7 @@ impl<'a> Display for CipherParams<'a> {
     }
 }
 
-impl<'a> FromStr for CipherParams<'a>
-where
-    Self: 'a,
-{
+impl FromStr for CipherParams<'static> {
     type Err = anyhow::Error;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {

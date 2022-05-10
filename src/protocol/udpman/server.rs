@@ -6,7 +6,7 @@ use std::{
     time::Duration,
 };
 
-use super::proto::{BytesRef, Message};
+use super::proto::Message;
 use crate::{
     io::{bind_udp, is_one_off_udp_query, UdpSocketExt},
     rt::{
@@ -89,8 +89,8 @@ pub async fn serve(
                             }
                         };
                         let conn = match Conn::new(
-                            uuid,
-                            initial_data,
+                            uuid.into(),
+                            initial_data.into(),
                             from,
                             dst,
                             conn_id,
@@ -156,8 +156,8 @@ struct Conn {
 
 impl Conn {
     pub fn new(
-        uuid: BytesRef<'static>,
-        initial_data: BytesRef<'static>,
+        uuid: Bytes,
+        initial_data: Bytes,
         src: SocketAddr,
         dst: SocketAddr,
         conn_id: u16,
@@ -223,7 +223,7 @@ impl Conn {
                             Message::Data {
                                 conn_id: None,
                                 addr: if addr == dst { None } else { Some(addr) },
-                                payload: BytesRef::Bytes(data),
+                                payload: data.into(),
                                 enc_nonce: None,
                             },
                             src,
