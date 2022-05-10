@@ -11,8 +11,7 @@ use anyhow::Context;
 use bytes::Bytes;
 use futures::{ready, Sink, Stream, StreamExt};
 use nix::sys::socket::{
-    setsockopt, sockopt::IpTransparent, AddressFamily, SockFlag, SockProtocol, SockaddrIn,
-    SockaddrIn6,
+    setsockopt, sockopt::IpTransparent, AddressFamily, InetAddr, SockAddr, SockFlag, SockProtocol,
 };
 
 use libc::{
@@ -61,11 +60,8 @@ fn new_tsock(addr: SocketAddr) -> anyhow::Result<UdpSocket> {
         }
     }
 
-    match addr {
-        SocketAddr::V4(addr) => nix::sys::socket::bind(socket, &SockaddrIn::from(addr)),
-        SocketAddr::V6(addr) => nix::sys::socket::bind(socket, &SockaddrIn6::from(addr)),
-    }
-    .with_context(|| format!("Binding on {addr}"))?;
+    nix::sys::socket::bind(socket, &SockAddr::Inet(InetAddr::from_std(&addr)))
+        .with_context(|| format!("Binding on {addr}"))?;
 
     log::debug!("UDP tproxy bound on {addr}");
 

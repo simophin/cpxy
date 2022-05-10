@@ -39,7 +39,7 @@ pub enum HttpStream<T> {
     SSL(futures_rustls::client::TlsStream<T>),
 }
 
-pub async fn connect_http_stream<T: AsyncRead + AsyncWrite + Unpin + Send + Sync>(
+pub async fn connect_http_stream<T: AsyncRead + AsyncWrite + Unpin + Send + Sync + 'static>(
     tls: bool,
     address: &Address<'_>,
     client: T,

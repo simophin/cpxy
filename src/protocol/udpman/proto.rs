@@ -195,10 +195,7 @@ fn parse_conn_id(b: &mut Bytes) -> anyhow::Result<u16> {
 }
 
 impl<'a> Message<'a> {
-    pub fn parse(mut b: Bytes) -> anyhow::Result<Self>
-    where
-        'a: 'static,
-    {
+    pub fn parse(mut b: Bytes) -> anyhow::Result<Self> {
         check_remaining!(b, 1, "MessageType");
         let flags = MessageFlags::try_from(b.get_u8()).context("Unknown message type")?;
         match flags {
