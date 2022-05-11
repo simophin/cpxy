@@ -1,2 +1,4 @@
-/target
-/Dockerfile
+target
+Dockerfile
+web
+android

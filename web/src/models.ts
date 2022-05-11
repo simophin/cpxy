@@ -9,7 +9,7 @@ export interface TcpManConfig {
 
 export interface UdpManConfig {
     type: "udpman";
-    address: string;
+    addr: string;
 }
 
 export interface DirectConfig {

@@ -4,10 +4,15 @@ RUN mkdir /app
 WORKDIR /app
 COPY . ./
 
-RUN cargo build --release -p cjk-proxy --no-default-features
+
+RUN rustup override set nightly
+
+RUN mkdir -p web/build && \
+    cargo build --release -p cjk-proxy
 
 FROM ubuntu
 COPY --from=0 /app/target/release/proxy /usr/local/bin/
 
-EXPOSE 8000
+EXPOSE 80/tcp
+EXPOSE 3000/udp
 CMD ["/usr/local/bin/proxy", "server"]

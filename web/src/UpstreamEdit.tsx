@@ -29,13 +29,13 @@ interface Validator {
 const UdpManConfigEdit = forwardRef(({ initial }: {
     initial?: UdpManConfig,
 }, ref) => {
-    const address = useEditState(initial?.address ?? '', mandatory('Address', validAddress));
+    const address = useEditState(initial?.addr ?? '', mandatory('Address', validAddress));
 
     useImperativeHandle(ref, () => ({
         validate(): UdpManConfig {
             return {
                 type: 'udpman',
-                address: address.validate(),
+                addr: address.validate(),
             }
         }
     }), [address]);

@@ -107,8 +107,8 @@ export default function UpstreamList({ showSettings, onSettingsClosed }: { showS
                 const stats = statsData?.upstreams?.[name];
                 let title;
                 switch (value.protocol.type) {
-                    case 'tcpman': title = value.protocol.address; break;
-                    case 'udpman': title = value.protocol.address; break;
+                    case 'tcpman': title = 'tcpman://' + value.protocol.address; break;
+                    case 'udpman': title = 'udpman://' + value.protocol.addr; break;
                     case 'direct': title = 'Direct'; break;
                 }
                 return <ListItem
