@@ -315,13 +315,13 @@ pub async fn run_controller(
 
     loop {
         let (socket, addr) = listener.accept().await?;
-        log::info!("Serving controller client: {addr}");
+        log::debug!("Serving controller client: {addr}");
         match controller.handle_client(socket).await {
             Ok(_) => {}
             Err(e) => {
                 log::error!("Error serving client {addr}: {e:?}");
             }
         }
-        log::info!("Client {addr} disconnected");
+        log::debug!("Client {addr} disconnected");
     }
 }

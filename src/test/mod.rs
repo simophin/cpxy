@@ -31,6 +31,7 @@ use crate::{
     socks5::Address,
 };
 
+#[allow(dead_code)]
 pub async fn duplex(
     _: usize,
 ) -> (
@@ -147,12 +148,13 @@ pub async fn run_test_client(upstream_address: SocketAddr) -> (Task<()>, SocketA
                             accept: Default::default(),
                             reject: Default::default(),
                             priority: 0,
-                            enabled: true
+                            enabled: true,
                         }
                     },
                     socks5_udp_host: "0.0.0.0".parse().unwrap(),
                     fwmark: None,
                     udp_tproxy_address: None,
+                    set_router_rules: false,
                 };
                 let stats = ClientStatistics::new(&config);
 

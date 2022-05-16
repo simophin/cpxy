@@ -1,5 +1,5 @@
-import { Button, Dialog, DialogActions, DialogContent, DialogTitle, Stack, TextField } from "@mui/material";
-import { useEffect } from "react";
+import { Button, Dialog, DialogActions, DialogContent, DialogTitle, Stack, TextField, FormControl, Switch, FormControlLabel } from "@mui/material";
+import { useEffect, useState } from "react";
 import { BASE_URL } from "./config";
 import { ClientConfig } from "./models";
 import { mandatory, optional, useEditState, validAddress } from "./useEditState";
@@ -35,6 +35,7 @@ export default function BasicSettingsEdit({ onSaved, onCancelled, current_config
     const udpHost = useEditState(current_config.socks5_udp_host ?? '', mandatory('UDP host'));
     const fwmark = useEditState<number>(current_config.fwmark?.toString() ?? '', optional(isValidFwmark), transformFwmark);
     const udpTProxyAddress = useEditState(current_config.udp_tproxy_address ?? '', optional(validAddress));
+    const [routerRules, setRouterRules] = useState<boolean>(current_config.set_router_rules === true);
     const request = useHttp(`${BASE_URL}/api/config`, { headers: { "Content-Type": "application/json" } });
     const [snackbar, showSnackbar] = useSnackbar();
     const gfwListRequest = useHttp<RuleResult>(`${BASE_URL}/api/gfwlist`, { timeoutMills: 40000 });
@@ -71,6 +72,7 @@ export default function BasicSettingsEdit({ onSaved, onCancelled, current_config
                 socks5_udp_host: udpHost.validate(),
                 fwmark: fwmark.validate(),
                 udp_tproxy_address: udpTProxyAddress.validate(),
+                set_router_rules: routerRules,
             };
 
             if (config.udp_tproxy_address?.length === 0) {
@@ -126,6 +128,18 @@ export default function BasicSettingsEdit({ onSaved, onCancelled, current_config
                     fullWidth
                     onChange={(e) => udpHost.setValue(e.target.value)}
                     variant='outlined' />
+                <div>
+                    <FormControl>
+                        <FormControlLabel
+                            control={<Switch
+                                checked={routerRules}
+                                onChange={v => setRouterRules(v.currentTarget.checked)}
+                            />}
+                            labelPlacement='start'
+                            label="Set Router Rules (Linux only)" />
+                    </FormControl>
+                </div>
+
                 <div style={{ marginTop: 8 }}>
                     <b>GFW List: </b>{gfwListRequest.data ? formatDate(gfwListRequest.data.last_updated)
                         : (gfwListRequest.error ? 'Error' : 'Loading')} &nbsp;

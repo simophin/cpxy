@@ -190,6 +190,9 @@ pub struct ClientConfig {
 
     #[serde(default)]
     pub udp_tproxy_address: Option<SocketAddr>,
+
+    #[serde(default)]
+    pub set_router_rules: bool,
 }
 
 impl Default for ClientConfig {
@@ -200,6 +203,7 @@ impl Default for ClientConfig {
             upstreams: Default::default(),
             fwmark: None,
             udp_tproxy_address: None,
+            set_router_rules: false,
         }
     }
 }

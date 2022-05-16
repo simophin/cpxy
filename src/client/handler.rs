@@ -2,6 +2,7 @@ use std::sync::Arc;
 
 use crate::{
     io::{bind_tcp, TcpStreamExt},
+    iptables as ipt,
     rt::{spawn, Task},
 };
 use anyhow::Context;
@@ -41,6 +42,7 @@ pub async fn run_client(
         while let Some(task) = current_tasks.pop() {
             task.cancel().await;
         }
+        let _ = ipt::clean_up();
 
         let proxy_listener = match bind_tcp(&Address::IP(config.socks5_address)).await {
             Ok(v) => v,
@@ -49,6 +51,18 @@ pub async fn run_client(
                 continue;
             }
         };
+
+        if config.set_router_rules {
+            if let Err(e) = ipt::add_rules(
+                config.socks5_address.port(),
+                config.udp_tproxy_address.map(|v| v.port()),
+            ) {
+                log::error!("Error setting router rules: {e:?}");
+                let _ = ipt::clean_up();
+            } else {
+                log::info!("Successfully set router rules");
+            }
+        }
 
         current_tasks.push(spawn(run_proxy_with(
             proxy_listener,

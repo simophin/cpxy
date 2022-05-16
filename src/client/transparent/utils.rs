@@ -9,7 +9,7 @@ use std::{
 
 use anyhow::Context;
 use bytes::Bytes;
-use futures::{ready, Sink, Stream, StreamExt};
+use futures::{ready, Sink, SinkExt, Stream, StreamExt};
 use nix::sys::socket::{
     setsockopt, sockopt::IpTransparent, AddressFamily, InetAddr, SockAddr, SockFlag, SockProtocol,
 };
@@ -82,7 +82,14 @@ pub fn bind_transparent_udp_for_sending(
 ) -> anyhow::Result<
     impl Sink<(Bytes, SocketAddr), Error = std::io::Error> + Unpin + Send + Sync + Sized,
 > {
-    Ok(new_tsock(addr)?.to_sink_stream().split().0)
+    Ok(new_tsock(addr)?
+        .to_sink_stream()
+        .split()
+        .0
+        .with(|(data, dst): (Bytes, SocketAddr)| {
+            log::debug!("Sending TPROXY pkt(siez={}) to {dst}", data.len());
+            std::future::ready(Ok((data, dst)))
+        }))
 }
 
 fn recv_with_orig_dst(

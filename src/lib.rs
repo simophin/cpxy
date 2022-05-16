@@ -8,6 +8,7 @@ mod counter;
 mod fetch;
 mod handshake;
 mod http;
+mod iptables;
 mod parse;
 mod pattern;
 pub mod protocol;

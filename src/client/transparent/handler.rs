@@ -141,6 +141,12 @@ impl UdpSession {
             }
 
             clean_up.send(UdpSessionKey { src, dst }).await?;
+            if let Err(e) = &result {
+                log::error!("{e:?}");
+            } else {
+                log::info!("UDP://{dst_addr} stopped");
+            }
+
             result
         });
 

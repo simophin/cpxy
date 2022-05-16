@@ -44,6 +44,7 @@ export type ClientConfig = {
     fwmark?: number,
     udp_tproxy_address?: string,
     upstreams: { [name: string]: UpstreamConfig },
+    set_router_rules?: boolean,
 }
 
 export type UpstreamStatistics = {

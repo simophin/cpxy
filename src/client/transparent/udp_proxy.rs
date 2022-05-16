@@ -30,16 +30,20 @@ pub async fn serve_udp_on_dgram(
         .with_context(|| format!("Sending initial data to {dst} for {src}"))?;
 
     if is_one_off_udp_query(&dst.into()) {
-        let data = upstream_stream
+        let (data, _) = upstream_stream
             .next()
             .timeout(timeout)
             .await
             .context("Timeout waiting for one off query response")?
             .context("Unexpected EOF from upstream")?
             .context("Receiving upstream stream")?;
+        log::debug!(
+            "Received one off reply from {dst}: {} bytes. Sending to {src}",
+            data.len()
+        );
         return bind_transparent_udp_for_sending(dst)
             .context("Binding TProxy for sending")?
-            .send(data)
+            .send((data, src))
             .await
             .context("Sending reply back to one off query");
     }
@@ -103,6 +107,9 @@ pub async fn serve_udp_on_dgram(
     select! {
         _ = upload_task.fuse() => Ok(()),
         _ = download_task.fuse() => Ok(()),
-        _ = timer.fuse() => Ok(())
+        _ = timer.fuse() => {
+            log::info!("Timeout serving udp://{dst}, from {src}");
+            Ok(())
+        }
     }
 }
