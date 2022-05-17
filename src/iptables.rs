@@ -89,6 +89,7 @@ mod linux {
             .collect();
 
         networks.insert("127.0.0.0/8".to_string());
+        networks.insert("255.0.0.0/8".to_string());
 
         // TCP rules
         ipt.new_chain("nat", CHAIN_NAME)

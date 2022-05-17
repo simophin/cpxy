@@ -43,7 +43,7 @@ pub async fn serve_udp_transparent_proxy(
             let (buf, src, dst) = select! {
                 k = cleanup_rx.next().fuse() => {
                     let k = k.context("Timeout channel closed")?;
-                    log::info!("UDP session {k:?} timeout");
+                    log::info!("Removing UDP session {k:?}");
                     sessions.remove(&k);
                     continue;
                 }
