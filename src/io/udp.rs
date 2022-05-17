@@ -5,6 +5,7 @@ use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr};
 use std::pin::Pin;
 use std::sync::Arc;
 use std::task::{Context, Poll, Waker};
+use std::time::Duration;
 
 use bytes::Bytes;
 use futures::{ready, Sink, Stream, TryStreamExt};
@@ -37,8 +38,11 @@ pub async fn send_to_addr(
     }
 }
 
-pub fn is_one_off_udp_query(dst: &Address<'_>) -> bool {
-    dst.get_port() == 53
+pub fn get_one_off_udp_query_timeout(dst: &Address<'_>) -> Option<Duration> {
+    match dst.get_port() {
+        53 => Some(Duration::from_secs(2)),
+        _ => None,
+    }
 }
 
 pub trait UdpSocketExt {

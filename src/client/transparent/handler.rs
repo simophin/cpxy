@@ -58,7 +58,7 @@ pub async fn serve_udp_transparent_proxy(
                 }
             };
 
-            log::debug!("TProxy received {} from {src}, orig dst = {dst}", buf.len());
+            log::debug!("TProxy received {} bytes from client {src}, orig dst = {dst}", buf.len());
             let key = UdpSessionKey { src, dst };
             match sessions.get_mut(&key) {
                 Some(s) => match s.tx.try_send(buf) {
@@ -120,6 +120,7 @@ impl UdpSession {
                     }
                 };
 
+                log::info!("Serving UDP://{dst} on upstream: {name}");
                 result = super::udp_proxy::serve_udp_on_dgram(
                     sink.with(|(buf, addr)| ready(anyhow::Result::Ok((buf, Address::from(addr))))),
                     stream.filter_map(|item| {

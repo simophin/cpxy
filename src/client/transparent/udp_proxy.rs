@@ -6,7 +6,7 @@ use futures::{future::ready, select, FutureExt, Sink, SinkExt, Stream, StreamExt
 use parking_lot::Mutex;
 
 use crate::{
-    io::{is_one_off_udp_query, Timer},
+    io::{get_one_off_udp_query_timeout, Timer},
     rt::{mpsc::Receiver, spawn, Task, TimeoutExt},
 };
 
@@ -29,16 +29,16 @@ pub async fn serve_udp_on_dgram(
         .await
         .with_context(|| format!("Sending initial data to {dst} for {src}"))?;
 
-    if is_one_off_udp_query(&dst.into()) {
+    if let Some(one_off_timeout) = get_one_off_udp_query_timeout(&dst.into()) {
         let (data, _) = upstream_stream
             .next()
-            .timeout(timeout)
+            .timeout(one_off_timeout)
             .await
             .context("Timeout waiting for one off query response")?
             .context("Unexpected EOF from upstream")?
             .context("Receiving upstream stream")?;
-        log::debug!(
-            "Received one off reply from {dst}: {} bytes. Sending to {src}",
+        log::info!(
+            "Received one off reply from {dst}: {} bytes. Sending back to {src}",
             data.len()
         );
         return bind_transparent_udp_for_sending(dst)

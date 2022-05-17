@@ -1,7 +1,7 @@
 use std::time::Duration;
 
 use crate::{
-    io::{is_one_off_udp_query, Timer},
+    io::{get_one_off_udp_query_timeout, Timer},
     protocol::{Protocol, TrafficType},
     utils::new_vec_uninitialised,
 };
@@ -64,8 +64,8 @@ pub async fn serve_udp_proxy_conn(
             }
         };
 
-        if is_one_off_udp_query(&addr) {
-            match upstream_stream.next().timeout(UDP_IDLING_TIMEOUT).await {
+        if let Some(timeout) = get_one_off_udp_query_timeout(&addr) {
+            match upstream_stream.next().timeout(timeout).await {
                 None => {
                     last_error.replace(anyhow!("Timeout waiting for response"));
                     break;

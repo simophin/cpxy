@@ -8,7 +8,7 @@ use std::{
 
 use super::proto::Message;
 use crate::{
-    io::{bind_udp, is_one_off_udp_query, UdpSocketExt},
+    io::{bind_udp, get_one_off_udp_query_timeout, UdpSocketExt},
     rt::{
         mpsc::{channel, Sender},
         net::UdpSocket,
@@ -204,7 +204,7 @@ impl Conn {
                 .await
                 .context("Sending established message")?;
 
-            if is_one_off_udp_query(&dst.into()) {
+            if get_one_off_udp_query_timeout(&dst.into()).is_some() {
                 return Ok(());
             }
 

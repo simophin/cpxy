@@ -236,7 +236,7 @@ impl ClientConfig {
         };
 
         if let Some(c) = &country_code {
-            log::info!("Got country code {c} for {target}");
+            log::debug!("Got country code {c} for {target}");
         }
 
         let mut upstreams: Vec<(&str, &UpstreamConfig, usize)> = {

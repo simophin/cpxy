@@ -109,6 +109,8 @@ export default function UpstreamList({ showSettings, onSettingsClosed }: { showS
                 switch (value.protocol.type) {
                     case 'tcpman': title = 'tcpman://' + value.protocol.address; break;
                     case 'udpman': title = 'udpman://' + value.protocol.addr; break;
+                    case 'socks5': title = 'socks5h://' + value.protocol.address; break;
+                    case 'http': title = 'http://' + value.protocol.address; break;
                     case 'direct': title = 'Direct'; break;
                 }
                 return <ListItem
