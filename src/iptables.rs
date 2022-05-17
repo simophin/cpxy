@@ -1,8 +1,7 @@
 #[cfg(target_os = "linux")]
 mod linux {
     use anyhow::{anyhow, Context};
-    use interfaces::Interface;
-    use std::{collections::HashSet, error::Error, net::SocketAddr, process::Command};
+    use std::{error::Error, process::Command};
 
     const CHAIN_NAME: &str = "cjk-proxy";
     const TPROXY_MARK: u32 = 121;
@@ -61,35 +60,21 @@ mod linux {
         Ok(())
     }
 
-    fn get_networks(iface: &Interface) -> Vec<String> {
-        iface
-            .addresses
-            .iter()
-            .filter_map(|i| i.addr.zip(i.mask))
-            .filter(|(addr, _)| matches!(addr, SocketAddr::V4(_)))
-            .filter_map(|(addr, mask)| {
-                Some(format!(
-                    "{}/{}",
-                    addr.ip(),
-                    ipnetwork::ip_mask_to_prefix(mask.ip()).ok()?
-                ))
-            })
-            .collect()
-    }
-
     pub fn add_rules(tcp_port: u16, udp_port: Option<u16>) -> anyhow::Result<()> {
         execute_command("sysctl", &["-w", "net.ipv4.conf.all.route_localnet=1"])?;
         let ipt = iptables::new(false).context("Create iptable instance")?;
 
-        let mut networks: HashSet<_> = Interface::get_all()
-            .context("Getting network interfaces")?
-            .into_iter()
-            .filter(|i| i.is_up() && !i.is_loopback())
-            .flat_map(|i| get_networks(&i))
-            .collect();
-
-        networks.insert("127.0.0.0/8".to_string());
-        networks.insert("255.0.0.0/8".to_string());
+        let networks = [
+            "10.0.0.0/8",
+            "100.64.0.0/10",
+            "127.0.0.0/8",
+            "169.254.0.0/16",
+            "172.16.0.0/12",
+            "192.0.0.0/24",
+            "192.168.0.0/16",
+            "198.18.0.0/15",
+            "255.255.255.255/32",
+        ];
 
         // TCP rules
         ipt.new_chain("nat", CHAIN_NAME)
