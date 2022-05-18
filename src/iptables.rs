@@ -156,7 +156,7 @@ mod linux {
 
 #[cfg(not(target_os = "linux"))]
 mod noop {
-    pub fn add_rules(_tcp_port: u16, _udp_port: u16) -> anyhow::Result<()> {
+    pub fn add_rules(_tcp_port: u16, _udp_port: Option<u16>) -> anyhow::Result<()> {
         Ok(())
     }
 

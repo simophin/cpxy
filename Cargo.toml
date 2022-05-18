@@ -82,8 +82,8 @@ name = "proxy"
 futures-rustls = "0"
 webpki-roots = "0"
 
-[target.'cfg(not(target_env = "msvc"))'.dependencies]
-tikv-jemallocator = "0"
+# [target.'cfg(not(target_env = "msvc"))'.dependencies]
+# tikv-jemallocator = "0"
 
 [build]
 rustflags = ["-C", "link-arg=-fuse-ld=lld"]

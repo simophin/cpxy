@@ -102,7 +102,7 @@ pub trait AsRawFdExt: AsRawFd {
 
     #[cfg(not(target_os = "linux"))]
     fn set_sock_mark(&self, _: u32) -> std::io::Result<()> {
-        anyhow::bail!("Unsupported")
+        Ok(())
     }
 }
 
