@@ -2,11 +2,12 @@ pub use smol::{block_on, spawn, Executor, Task, Timer};
 
 pub mod net {
     use bytes::Bytes;
+
     use std::{
         io::ErrorKind,
         net::SocketAddr,
         pin::Pin,
-        sync::Arc,
+        sync::{atomic::AtomicUsize, Arc},
         task::{Context, Poll},
     };
 
@@ -21,19 +22,74 @@ pub mod net {
         Ok(smol::net::resolve(name).await?.into_iter())
     }
 
+    static STD_INSTANCE_COUNT: AtomicUsize = AtomicUsize::new(0);
+    static NON_STD_INSTANCE_COUNT: AtomicUsize = AtomicUsize::new(0);
+
     #[derive(Deref)]
     pub struct UdpSocket {
         #[deref]
         inner: smol::net::UdpSocket,
         s: Arc<Async<std::net::UdpSocket>>,
+        from_std: bool,
+    }
+
+    #[cfg(test)]
+    fn should_show_instance_stats() -> bool {
+        true
+    }
+
+    #[cfg(not(test))]
+    fn should_show_instance_stats() -> bool {
+        use lazy_static::lazy_static;
+        use parking_lot::Mutex;
+        use std::time::{Duration, Instant};
+        lazy_static! {
+            static ref LAST_SHOW: Mutex<Option<Instant>> = Mutex::new(None);
+        }
+
+        let mut guard = LAST_SHOW.lock();
+        match guard.as_ref() {
+            Some(v) if v.elapsed() < Duration::from_secs(10) => false,
+            _ => {
+                guard.replace(Instant::now());
+                true
+            }
+        }
+    }
+
+    fn print_instant_stats() {
+        if should_show_instance_stats() {
+            log::info!(
+                "UDPSocket std counts: {}, non-std counts: {}",
+                STD_INSTANCE_COUNT.load(std::sync::atomic::Ordering::Relaxed),
+                NON_STD_INSTANCE_COUNT.load(std::sync::atomic::Ordering::Relaxed)
+            )
+        }
+    }
+
+    impl Drop for UdpSocket {
+        fn drop(&mut self) {
+            if self.from_std {
+                log::info!("UDPSocket dropped");
+                STD_INSTANCE_COUNT.fetch_sub(1, std::sync::atomic::Ordering::AcqRel);
+            } else {
+                NON_STD_INSTANCE_COUNT.fetch_sub(1, std::sync::atomic::Ordering::AcqRel);
+            }
+
+            print_instant_stats();
+        }
     }
 
     impl UdpSocket {
         pub async fn bind(addr: impl AsyncToSocketAddrs) -> std::io::Result<Self> {
             let inner = smol::net::UdpSocket::bind(addr).await?;
+            NON_STD_INSTANCE_COUNT.fetch_add(1, std::sync::atomic::Ordering::Acquire);
+            print_instant_stats();
+
             Ok(Self {
                 s: inner.clone().into(),
                 inner,
+                from_std: false,
             })
         }
 
@@ -86,9 +142,12 @@ pub mod net {
 
         fn try_from(value: std::net::UdpSocket) -> Result<Self, Self::Error> {
             let inner: smol::net::UdpSocket = value.try_into()?;
+            STD_INSTANCE_COUNT.fetch_add(1, std::sync::atomic::Ordering::Acquire);
+            print_instant_stats();
             Ok(Self {
                 s: inner.clone().into(),
                 inner,
+                from_std: true,
             })
         }
     }

@@ -1,19 +1,22 @@
 use super::super::{Protocol, Stats};
-use super::proto;
+use super::proto::{self, Message};
 use crate::io::{bind_udp, AsRawFdExt, UdpSocketExt};
 use crate::protocol::{BoxedSink, BoxedStream, TrafficType};
 use crate::socks5::Address;
+use crate::utils::race;
 use anyhow::{anyhow, Context};
 use async_trait::async_trait;
 use bytes::Bytes;
 use futures::{StreamExt, TryStreamExt};
 use futures_util::SinkExt;
 use serde::{Deserialize, Serialize};
+use smol_timeout::TimeoutExt;
 use std::future::ready;
 use std::net::SocketAddr;
+use std::time::Duration;
 use uuid::Uuid;
 
-use crate::rt::{mpsc::channel, spawn};
+use crate::rt::{mpsc::channel, spawn, Task};
 
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
 pub struct UdpMan {
@@ -57,13 +60,14 @@ impl Protocol for UdpMan {
             .await
             .with_context(|| format!("Sending connect message to upstream {}", self.addr))?;
 
-        let (outgoing_tx, outgoing_rx) = channel::<(Bytes, Address<'static>)>(2);
-        let (incoming_tx, incoming_rx) = channel::<anyhow::Result<(Bytes, Address<'static>)>>(2);
+        let (outgoing_tx, mut outgoing_rx) = channel::<(Bytes, Address<'static>)>(2);
+        let (mut incoming_tx, incoming_rx) =
+            channel::<anyhow::Result<(Bytes, Address<'static>)>>(2);
 
         let (upstream_sink, upstream_stream) =
             upstream.to_sink_stream().to_connected(upstream_addr);
 
-        let (msg_sink, msg_stream) = proto::new_message_sink_stream(
+        let (mut msg_sink, mut msg_stream) = proto::new_message_sink_stream(
             upstream_sink.with(move |b: Bytes| {
                 tx.inc(b.len());
                 ready(Ok(b))
@@ -71,59 +75,99 @@ impl Protocol for UdpMan {
             upstream_stream.inspect_ok(move |data| rx.inc(data.len())),
         );
 
-        let mut outgoing_rx = Some(outgoing_rx);
-        let mut msg_sink = Some(msg_sink);
+        // Listening for messages
+        spawn(async move {
+            // First wait for the ESTABLISH message
+            let msg = match msg_stream.next().timeout(Duration::from_secs(1)).await {
+                None => {
+                    let _ = incoming_tx
+                        .send(Err(anyhow!("Timeout waiting for first message")))
+                        .await;
+                    return;
+                }
+                Some(Some(Err(e))) => {
+                    let _ = incoming_tx.send(Err(e)).await;
+                    return;
+                }
+                Some(None) => {
+                    let _ = incoming_tx
+                        .send(Err(anyhow!("Message stream closed")))
+                        .await;
+                    return;
+                }
+                Some(Some(Ok(v))) => v,
+            };
+            log::debug!("Receive first reply message: {msg:?}");
 
-        spawn(
-            msg_stream
-                .filter_map(move |m| {
-                    let m = match m {
-                        Ok(v) => v,
-                        Err(e) => return ready(Some(Err(e))),
-                    };
-                    log::debug!("Received Message: {m:?}");
-                    ready(match m {
-                        proto::Message::Establish {
-                            uuid: received_uuid,
-                            conn_id,
-                            initial_reply,
-                        } => {
-                            if uuid.as_ref() != received_uuid.as_ref() {
-                                Some(Err(anyhow!("Received different UUID than requested")))
-                            } else {
-                                if let (Some(outgoing_rx), Some(msg_sink)) =
-                                    (outgoing_rx.take(), msg_sink.take())
-                                {
-                                    log::debug!("UDP conn established");
-                                    spawn(
-                                        outgoing_rx
-                                            .map(move |(data, _)| {
-                                                Ok(proto::Message::Data {
-                                                    conn_id: Some(conn_id),
-                                                    addr: None,
-                                                    enc_nonce: None,
-                                                    payload: data.into(),
-                                                })
-                                            })
-                                            .forward(msg_sink),
-                                    )
-                                    .detach();
-                                    initial_reply.map(|(data, addr)| Ok((data, addr.into())))
-                                } else {
-                                    log::warn!("Received duplicated Establish message");
-                                    None
-                                }
-                            }
+            let (conn_id, initial_reply) = match msg {
+                Message::Establish {
+                    uuid: received_uuid,
+                    conn_id,
+                    initial_reply,
+                } => {
+                    if uuid.as_ref() != received_uuid.as_ref() {
+                        let _ = incoming_tx
+                            .send(Err(anyhow!(
+                                "First replying message's UUID doesn't match the requested one"
+                            )))
+                            .await;
+                        return;
+                    }
+                    (conn_id, initial_reply)
+                }
+                _ => {
+                    let _ = incoming_tx
+                        .send(Err(anyhow!("Invalid first message: {msg:?}")))
+                        .await;
+                    return;
+                }
+            };
+
+            log::debug!("Connection established");
+            if let Some((data, addr)) = initial_reply {
+                let _ = incoming_tx.send(Ok((data, addr.into()))).await;
+            }
+
+            if incoming_tx.is_closed() {
+                log::debug!("No further packet is needed. UDP conn closed");
+                return;
+            }
+
+            let upload_task: Task<anyhow::Result<()>> = spawn(async move {
+                while let Some((data, _)) = outgoing_rx.next().await {
+                    let _ = msg_sink
+                        .send(Message::Data {
+                            conn_id: Some(conn_id),
+                            addr: None,
+                            payload: data.into(),
+                            enc_nonce: None,
+                        })
+                        .await?;
+                }
+                Ok(())
+            });
+            let download_task: Task<anyhow::Result<()>> = spawn(async move {
+                while let Some(d) = msg_stream.next().await {
+                    match d? {
+                        Message::Data { addr, payload, .. } => {
+                            incoming_tx
+                                .send(Ok((payload.into(), addr.unwrap_or(initial_dst).into())))
+                                .await?;
                         }
-                        proto::Message::Data { payload, addr, .. } => {
-                            Some(Ok((payload.into(), addr.unwrap_or(initial_dst).into())))
+                        m => {
+                            log::warn!("Invalid message {m:?} received after ESTABLISH");
                         }
-                        _ => None,
-                    })
-                })
-                .map(|m| anyhow::Result::Ok(m))
-                .forward(incoming_tx),
-        )
+                    }
+                }
+                Ok(())
+            });
+
+            if let Err(e) = race(upload_task, download_task).await {
+                log::error!("Error serving UDP: {e:?}");
+            } else {
+                log::debug!("UDP connection closed");
+            }
+        })
         .detach();
 
         Ok((
@@ -144,6 +188,7 @@ mod tests {
 
     #[test]
     fn udpman_works() {
+        std::env::set_var("RUST_LOG", "debug");
         let _ = env_logger::try_init();
         block_on(async move {
             let (server_socket, server_addr) = create_udp_socket().await;

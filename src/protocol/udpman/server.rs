@@ -8,7 +8,7 @@ use std::{
 
 use super::proto::Message;
 use crate::{
-    io::{bind_udp, get_one_off_udp_query_timeout, UdpSocketExt},
+    io::{bind_udp, get_one_off_udp_query_timeout, Timer, UdpSocketExt},
     rt::{
         mpsc::{channel, Sender},
         net::UdpSocket,
@@ -18,7 +18,7 @@ use crate::{
 };
 use anyhow::{bail, Context};
 use bytes::Bytes;
-use futures::{select, FutureExt, Sink, SinkExt, Stream, StreamExt, TryStreamExt};
+use futures::{select, FutureExt, Sink, SinkExt, Stream, StreamExt};
 use num_traits::PrimInt;
 use parking_lot::{Mutex, RwLock};
 use scopeguard::defer;
@@ -26,10 +26,12 @@ use scopeguard::defer;
 pub async fn serve_socket(socket: UdpSocket) -> anyhow::Result<()> {
     let (sink, stream) = socket.to_sink_stream().split();
     serve(
-        sink.sink_map_err(anyhow::Error::from).with(
-            |(data, addr): (Message<'static>, SocketAddr)| async move {
-                Ok((data.to_bytes()?, addr))
-            },
+        Box::pin(
+            sink.sink_map_err(anyhow::Error::from).with(
+                |(data, addr): (Message<'static>, SocketAddr)| async move {
+                    Ok((data.to_bytes()?, addr))
+                },
+            ),
         ),
         Box::pin(stream.filter_map(|item| {
             let (data, addr) = match item {
@@ -47,20 +49,21 @@ pub async fn serve_socket(socket: UdpSocket) -> anyhow::Result<()> {
 
             ready(Some(Ok((msg, addr))))
         })),
-    ).await
+    )
+    .await
 }
 
 pub async fn serve(
-    sink: impl Sink<(Message<'static>, SocketAddr), Error = anyhow::Error> + Send + 'static,
+    mut sink: impl Sink<(Message<'static>, SocketAddr), Error = anyhow::Error> + Unpin + Send + 'static,
     mut stream: impl Stream<Item = anyhow::Result<(Message<'static>, SocketAddr)>>
         + Unpin
         + Send
         + 'static,
 ) -> anyhow::Result<()> {
     let connections: Arc<RwLock<BTreeMap<u16, Conn>>> = Default::default();
-    let (sink_tx, sink_rx) = channel::<(Message<'static>, SocketAddr)>(20);
+    let (sink_tx, mut sink_rx) = channel::<(Message<'static>, SocketAddr)>(20);
 
-    let task1 = {
+    let task1: Task<anyhow::Result<()>> = {
         let connections = connections.clone();
         spawn(async move {
             while let Some(item) = stream.next().await {
@@ -132,21 +135,21 @@ pub async fn serve(
                     }
                 }
             }
+            Ok(())
         })
     };
 
-    let task2 = spawn(
-        sink_rx
-            .map(|a| {
-                log::debug!("Sending Message({:?}) to {}", a.0, a.1);
-                Ok(a)
-            })
-            .forward(sink),
-    );
-    select! {
-        _ = task1.fuse() => Ok(()),
-        v = task2.fuse() => v,
-    }
+    let task2 = spawn(async move {
+        while let Some(a) = sink_rx.next().await {
+            log::debug!("Sending Message({:?}) to {}", a.0, a.1);
+            sink.send(a).await?;
+        }
+        anyhow::Result::<()>::Ok(())
+    });
+
+    let r = race(task1, task2).await;
+    log::info!("Serve stopped at result: {r:?}");
+    r
 }
 
 struct Conn {
@@ -165,7 +168,7 @@ impl Conn {
         connections: Weak<RwLock<BTreeMap<u16, Conn>>>,
     ) -> anyhow::Result<Self> {
         log::debug!("Created UDP Connection(id = {conn_id}), src = {src}, dst = {dst}");
-        let (incoming_tx, incoming_rx) = channel(10);
+        let (incoming_tx, mut incoming_rx) = channel(10);
         let _task = spawn(async move {
             defer! {
                 if let Some(conns) = connections.upgrade() {
@@ -208,31 +211,47 @@ impl Conn {
                 return Ok(());
             }
 
-            let (upstream_sink, upstream_stream) = upstream.to_sink_stream().split();
+            let (mut upstream_sink, mut upstream_stream) = upstream.to_sink_stream().split();
+            let timer = Timer::new(Duration::from_secs(60));
 
-            let upload_task = spawn(
-                incoming_rx
-                    .map(move |data| Ok((data, dst)))
-                    .forward(upstream_sink.sink_map_err(anyhow::Error::from)),
-            );
+            let upload_task = {
+                let timer = timer.clone();
+                spawn(async move {
+                    while let Some(data) = incoming_rx.next().await {
+                        upstream_sink.send((data, dst)).await?;
+                        timer.reset();
+                    }
+                    anyhow::Result::<()>::Ok(())
+                })
+            };
 
-            let download_task = spawn(
-                upstream_stream
-                    .map_ok(move |(data, addr)| {
-                        (
-                            Message::Data {
-                                conn_id: None,
-                                addr: if addr == dst { None } else { Some(addr) },
-                                payload: data.into(),
-                                enc_nonce: None,
-                            },
-                            src,
-                        )
-                    })
-                    .forward(outgoing_tx.sink_map_err(anyhow::Error::from)),
-            );
+            let download_task = {
+                let timer = timer.clone();
+                spawn(async move {
+                    while let Some(p) = upstream_stream.next().await {
+                        let (data, addr) = p?;
+                        outgoing_tx
+                            .send((
+                                Message::Data {
+                                    conn_id: None,
+                                    addr: if addr == dst { None } else { Some(addr) },
+                                    payload: data.into(),
+                                    enc_nonce: None,
+                                },
+                                src,
+                            ))
+                            .await?;
+                        timer.reset();
+                    }
+                    anyhow::Result::<()>::Ok(())
+                })
+            };
 
-            race(upload_task, download_task).await
+            select! {
+                v1 = upload_task.fuse() => v1,
+                v2 = download_task.fuse() => v2,
+                _ = timer.fuse() => bail!("Timeout"),
+            }
         });
 
         Ok(Self {

@@ -37,7 +37,12 @@ fn new_tsock(addr: SocketAddr) -> anyhow::Result<UdpSocket> {
     )
     .context("Creating Unix Datagram socket")?;
 
-    setsockopt(socket, IpTransparent, &true).context("Setting IP_TRANSPARNET on UdpSocket")?;
+    if let Err(e) =
+        setsockopt(socket, IpTransparent, &true).context("Setting IP_TRANSPARNET on UdpSocket")
+    {
+        let _ = nix::unistd::close(socket);
+        return Err(e);
+    }
 
     unsafe {
         let value = 1usize;
@@ -55,13 +60,18 @@ fn new_tsock(addr: SocketAddr) -> anyhow::Result<UdpSocket> {
             size_of::<usize>() as socklen_t,
         ) != 0
         {
+            let _ = nix::unistd::close(socket);
             return Err(std::io::Error::from_raw_os_error(nix::errno::errno()))
                 .context("Setting RECV_ORIG_DST_ADDR");
         }
     }
 
-    nix::sys::socket::bind(socket, &SockAddr::Inet(InetAddr::from_std(&addr)))
-        .with_context(|| format!("Binding on {addr}"))?;
+    if let Err(e) = nix::sys::socket::bind(socket, &SockAddr::Inet(InetAddr::from_std(&addr)))
+        .with_context(|| format!("Binding on {addr}"))
+    {
+        let _ = nix::unistd::close(socket);
+        return Err(e);
+    }
 
     log::debug!("UDP tproxy bound on {addr}");
 

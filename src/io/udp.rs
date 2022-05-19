@@ -60,7 +60,7 @@ impl UdpSocketExt for UdpSocket {
 
     fn to_sink_stream(self) -> UdpSocketSinkStream {
         UdpSocketSinkStream {
-            socket: Arc::new(self),
+            socket: self,
             buffer_waker: None,
             buffers: Default::default(),
         }
@@ -68,19 +68,9 @@ impl UdpSocketExt for UdpSocket {
 }
 
 pub struct UdpSocketSinkStream {
-    socket: Arc<UdpSocket>,
+    socket: UdpSocket,
     buffers: VecDeque<(Bytes, SocketAddr)>,
     buffer_waker: Option<Waker>,
-}
-
-impl Clone for UdpSocketSinkStream {
-    fn clone(&self) -> Self {
-        Self {
-            socket: self.socket.clone(),
-            buffers: Default::default(),
-            buffer_waker: None,
-        }
-    }
 }
 
 impl UdpSocketSinkStream {
@@ -110,7 +100,7 @@ impl Stream for UdpSocketSinkStream {
     type Item = anyhow::Result<(Bytes, SocketAddr)>;
 
     fn poll_next(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
-        match ready!(Pin::new(self.socket.as_ref()).poll_readable(cx)) {
+        match ready!(Pin::new(&self.socket).poll_readable(cx)) {
             Ok(_) => {}
             Err(_) => return Poll::Ready(None),
         };
@@ -146,7 +136,7 @@ impl Sink<(Bytes, SocketAddr)> for UdpSocketSinkStream {
     }
 
     fn poll_flush(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
-        ready!(Pin::new(self.socket.as_ref()).poll_writable(cx))?;
+        ready!(Pin::new(&self.socket).poll_writable(cx))?;
         while let Some((data, addr)) = self.buffers.front() {
             match self.socket.try_send_to(data.as_ref(), *addr) {
                 Ok(_) => {
@@ -176,6 +166,8 @@ mod tests {
 
     #[test]
     fn sink_stream_works() {
+        std::env::set_var("RUST_LOG", "info");
+        let _ = env_logger::try_init();
         block_on(async move {
             let (_task, echo_addr) = echo_udp_server().await;
 
