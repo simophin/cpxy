@@ -113,6 +113,7 @@ export default function UpstreamList({ showSettings, onSettingsClosed }: { showS
                     case 'http': title = 'http://' + value.protocol.address; break;
                     case 'direct': title = 'Direct'; break;
                 }
+                let groups = value.groups?.sort()?.join(', ');
                 return <ListItem
                     key={name}>
                     <ListItemIcon>
@@ -125,7 +126,9 @@ export default function UpstreamList({ showSettings, onSettingsClosed }: { showS
                         primary={
                             <>{name}{stats && formatStatistics(stats)}</>
                         }
-                        secondary={title} />
+                        secondary={
+                            <>{groups && <>[<b>{groups}</b>]&nbsp;</>}{title}</>
+                        } />
 
                 </ListItem >;
             });
