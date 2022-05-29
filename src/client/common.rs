@@ -16,7 +16,7 @@ pub async fn find_and_connect_stream(
     client_config: &ClientConfig,
     stats: &ClientStatistics,
 ) -> anyhow::Result<Box<dyn AsyncStream>> {
-    let mut upstreams = client_config.find_best_upstream(TrafficType::Stream, stats, dst);
+    let mut upstreams = client_config.find_best_upstream(TrafficType::Stream, stats, dst)?;
     let mut last_error = None;
 
     while let Some((name, config)) = upstreams.pop() {

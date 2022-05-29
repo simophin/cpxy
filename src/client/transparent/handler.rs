@@ -58,7 +58,10 @@ pub async fn serve_udp_transparent_proxy(
                 }
             };
 
-            log::debug!("TProxy received {} bytes from client {src}, orig dst = {dst}", buf.len());
+            log::debug!(
+                "TProxy received {} bytes from client {src}, orig dst = {dst}",
+                buf.len()
+            );
             let key = UdpSessionKey { src, dst };
             match sessions.get_mut(&key) {
                 Some(s) => match s.tx.try_send(buf) {
@@ -98,7 +101,8 @@ impl UdpSession {
         let (tx, rx) = channel(10);
         let dst_addr: Address = dst.into();
         let _task = spawn(async move {
-            let mut upstreams = config.find_best_upstream(TrafficType::Datagram, &stats, &dst_addr);
+            let mut upstreams =
+                config.find_best_upstream(TrafficType::Datagram, &stats, &dst_addr)?;
             let mut result = Ok(());
             while let Some((name, upstream)) = upstreams.pop() {
                 log::debug!("Trying upstream {name} for UDP://{dst_addr}");

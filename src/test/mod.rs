@@ -145,15 +145,14 @@ pub async fn run_test_client(upstream_address: SocketAddr) -> (Task<()>, SocketA
                                 ssl: false,
                                 allows_udp: true,
                             }),
-                            accept: Default::default(),
-                            reject: Default::default(),
-                            priority: 0,
                             enabled: true,
+                            groups: Default::default(),
                         }
                     },
                     socks5_udp_host: "0.0.0.0".parse().unwrap(),
                     fwmark: None,
                     udp_tproxy_address: None,
+                    traffic_rules: Default::default(),
                     set_router_rules: false,
                 };
                 let stats = ClientStatistics::new(&config);
