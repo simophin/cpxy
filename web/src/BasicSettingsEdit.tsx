@@ -38,6 +38,7 @@ export default function BasicSettingsEdit({ onSaved, onCancelled, current_config
     const [routerRules, setRouterRules] = useState<boolean>(current_config.set_router_rules === true);
     const request = useHttp(`${BASE_URL}/api/config`, { headers: { "Content-Type": "application/json" } });
     const [snackbar, showSnackbar] = useSnackbar();
+    const trafficRules = useEditState(current_config.traffic_rules ?? '');
     const gfwListRequest = useHttp<RuleResult>(`${BASE_URL}/api/gfwlist`, { timeoutMills: 40000 });
     const adBlockListRequest = useHttp<RuleResult>(`${BASE_URL}/api/adblocklist`, { timeoutMills: 40000 });
 
@@ -73,6 +74,7 @@ export default function BasicSettingsEdit({ onSaved, onCancelled, current_config
                 fwmark: fwmark.validate(),
                 udp_tproxy_address: udpTProxyAddress.validate(),
                 set_router_rules: routerRules,
+                traffic_rules: trafficRules.validate(),
             };
 
             if (config.udp_tproxy_address?.length === 0) {
@@ -127,6 +129,18 @@ export default function BasicSettingsEdit({ onSaved, onCancelled, current_config
                     margin='dense'
                     fullWidth
                     onChange={(e) => udpHost.setValue(e.target.value)}
+                    variant='outlined' />
+                <TextField
+                    label='Traffic rules'
+                    helperText={trafficRules.error}
+                    error={!!trafficRules.error}
+                    value={trafficRules.value}
+                    multiline
+                    margin='dense'
+                    fullWidth
+                    minRows={5}
+                    style={{ fontFamily: "monospace", }}
+                    onChange={(e) => trafficRules.setValue(e.target.value)}
                     variant='outlined' />
                 <div>
                     <FormControl>

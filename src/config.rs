@@ -38,7 +38,7 @@ pub const fn default_upstream_enabled() -> bool {
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct UpstreamConfig {
     pub protocol: UpstreamProtocol,
-    pub groups: HashSet<String>,
+    pub groups: Option<HashSet<String>>,
     #[serde(default = "default_upstream_enabled")]
     pub enabled: bool,
 }
@@ -155,8 +155,11 @@ impl ClientConfig {
                         return None;
                     }
 
-                    if !c.groups.contains(name) {
-                        return None;
+                    match &c.groups {
+                        Some(groups) if !groups.contains(name) => {
+                            return None;
+                        }
+                        _ => {}
                     }
 
                     Some((n.as_str(), c, Self::calc_last_visit_score(stats, n)))

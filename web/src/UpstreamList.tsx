@@ -102,7 +102,7 @@ export default function UpstreamList({ showSettings, onSettingsClosed }: { showS
     };
 
     const items = useMemo(() => {
-        return _.sortBy(_.map(configData?.upstreams, (value, name) => ({ value, name })), ({ value, name }) => [-value.priority, name])
+        return _.sortBy(_.map(configData?.upstreams, (value, name) => ({ value, name })), ({ value, name }) => [name])
             .map(({ value, name }) => {
                 const stats = statsData?.upstreams?.[name];
                 let title;

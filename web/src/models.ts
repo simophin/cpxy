@@ -32,10 +32,8 @@ export type ProtocolConfig = TcpManConfig | UdpManConfig | DirectConfig | Socks5
 
 export type UpstreamConfig = {
     protocol: ProtocolConfig,
-    accept: string[];
-    reject: string[];
-    priority: number;
     enabled: boolean;
+    groups?: string[];
 }
 
 export type ClientConfig = {
@@ -45,6 +43,7 @@ export type ClientConfig = {
     udp_tproxy_address?: string,
     upstreams: { [name: string]: UpstreamConfig },
     set_router_rules?: boolean,
+    traffic_rules?: string,
 }
 
 export type UpstreamStatistics = {

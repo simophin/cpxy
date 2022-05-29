@@ -2,7 +2,6 @@ import { Button, Dialog, DialogActions, DialogContent, DialogTitle, FormControl,
 import { forwardRef, useImperativeHandle, useRef, useState } from "react";
 import { BASE_URL } from "./config";
 import { ClientConfig, HttpProxyConfig, ProtocolConfig, Socks5Config, TcpManConfig, UdpManConfig, UpstreamUpdate } from "./models";
-import { transformRule } from "./trafficRules";
 import { FindError, mandatory, useEditState, validAddress } from "./useEditState";
 import useHttp from "./useHttp";
 
@@ -183,12 +182,10 @@ export default function UpstreamEdit({ onChanged, onCancelled, editing, current_
     const existing = editing ? current_config.upstreams[editing] : undefined;
     const name = useEditState(editing ?? '', mandatory('Name', uniqueUpstreamName(editing, current_config)));
 
-    const accept = useEditState(existing?.accept?.join('\n') ?? '', undefined, transformRule);
-    const reject = useEditState(existing?.reject?.join('\n') ?? '', undefined, transformRule);
-    const priority = useEditState(existing?.priority?.toString() ?? '0', mandatory('Priority'));
     const request = useHttp(`${BASE_URL}/api/upstream`, { headers: { "Content-Type": "application/json" } });
 
     const [protoType, setProtoType] = useState<ProtocolConfig['type'] | undefined>(existing?.protocol?.type);
+    const groups = useEditState(existing?.groups?.join(', ') ?? '');
 
     const validatorRef = useRef<Validator>();
 
@@ -204,15 +201,18 @@ export default function UpstreamEdit({ onChanged, onCancelled, editing, current_
                 protocol = { 'type': 'direct' };
             }
 
+            let trimmedGroups = groups.validate()
+                .split(',')
+                .map(g => g.trim())
+                .filter(g => g.length > 0);
+
             const update: UpstreamUpdate = {
                 old_name: editing,
                 name: name.validate(),
                 config: {
                     enabled: existing?.enabled ?? true,
-                    accept: accept.validate(),
-                    reject: reject.validate(),
-                    priority: parseInt(priority.validate()),
                     protocol,
+                    groups: trimmedGroups
                 }
             };
 
@@ -250,6 +250,15 @@ export default function UpstreamEdit({ onChanged, onCancelled, editing, current_
                     onChange={v => name.setValue(v.currentTarget.value)}
                 />
                 <TextField
+                    autoFocus={editing === undefined}
+                    value={groups.value}
+                    label='Groups (comma separated)'
+                    margin='dense'
+                    error={!!groups.error}
+                    helperText={groups.error}
+                    onChange={v => groups.setValue(v.currentTarget.value)}
+                />
+                <TextField
                     value={protoType}
                     select
                     label='Protocol'
@@ -277,33 +286,6 @@ export default function UpstreamEdit({ onChanged, onCancelled, editing, current_
                 {protoType === 'socks5' && <Socks5ConfigEdit
                     ref={validatorRef}
                     initial={existing?.protocol?.type === 'socks5' ? existing?.protocol : undefined} />}
-
-                <TextField
-                    value={accept.value}
-                    label='Accept rules'
-                    margin='dense'
-                    multiline
-                    error={!!accept.error}
-                    helperText={accept.error}
-                    onChange={v => accept.setValue(v.currentTarget.value)} />
-
-                <TextField
-                    value={reject.value}
-                    label='Reject rules'
-                    margin='dense'
-                    multiline
-                    error={!!reject.error}
-                    helperText={reject.error}
-                    onChange={v => reject.setValue(v.currentTarget.value)} />
-
-                <TextField
-                    value={priority.value}
-                    label='Priority'
-                    margin='dense'
-                    type='number'
-                    error={!!priority.error}
-                    helperText={priority.error}
-                    onChange={v => priority.setValue(v.currentTarget.value)} />
 
                 {(request.error) && <>
                     <p>Error saving configuration: <br />
