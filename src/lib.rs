@@ -15,7 +15,6 @@ pub mod protocol;
 mod rule;
 mod socks4;
 pub mod socks5;
-mod tls;
 pub mod url;
 pub mod utils;
 mod ws;

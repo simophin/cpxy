@@ -47,12 +47,12 @@ either = "1"
 libc = "0"
 uuid = { version = "1", features = ["v4"] }
 derive_more = "0"
-tokio = { version = "1", features = ["full"], optional = true }
 parking_lot = "0"
 async-trait = "0"
 async-stream = "0"
 orion = "0"
 scopeguard = "1"
+async-native-tls = { version = "0", features = ["vendored"] }
 
 [dev-dependencies]
 maplit = "1"
@@ -76,9 +76,6 @@ android_logger = "0"
 crate-type = ["rlib", "dylib"]
 name = "proxy"
 
-[target.'cfg(not(target_arch = "mips"))'.dependencies]
-futures-rustls = "0"
-webpki-roots = "0"
 
 # [target.'cfg(not(target_env = "msvc"))'.dependencies]
 # tikv-jemallocator = "0"

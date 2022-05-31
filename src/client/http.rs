@@ -1,9 +1,10 @@
 use anyhow::Context;
+use async_native_tls::TlsConnector;
 use futures::{AsyncRead, AsyncWrite, TryFutureExt};
 
 use crate::{
     config::ClientConfig, handshake::Handshaker, http::HttpRequest, socks5::Address,
-    tls::connect_tls, utils::copy_duplex,
+    utils::copy_duplex,
 };
 
 use super::{common::find_and_connect_stream, ClientStatistics};
@@ -66,7 +67,8 @@ async fn find_and_connect_tls(
         .await
         .context("Connecting to upstream")?;
 
-    connect_tls(dst.get_host().as_ref(), upstream)
+    TlsConnector::new()
+        .connect(dst.get_host().as_ref(), upstream)
         .await
         .context("Connecting to TLS stream")
 }

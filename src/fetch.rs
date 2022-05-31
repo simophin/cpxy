@@ -1,6 +1,7 @@
 use std::{borrow::Cow, pin::Pin};
 
 use anyhow::Context;
+use async_native_tls::{TlsConnector, TlsStream};
 use futures::{AsyncRead, AsyncWrite, AsyncWriteExt};
 
 use crate::{
@@ -8,7 +9,6 @@ use crate::{
     http::{AsyncHttpStream, HttpRequest, HttpResponse, WithHeaders},
     io::connect_tcp,
     socks5::Address,
-    tls::connect_tls,
     url::HttpUrl,
 };
 
@@ -33,10 +33,7 @@ pub async fn send_http_with_proxy(
 
 pub enum HttpStream<T> {
     Plain(T),
-    #[cfg(target_arch = "mips")]
-    SSL(T),
-    #[cfg(not(target_arch = "mips"))]
-    SSL(futures_rustls::client::TlsStream<T>),
+    SSL(TlsStream<T>),
 }
 
 pub async fn connect_http_stream<T: AsyncRead + AsyncWrite + Unpin + Send + Sync + 'static>(
@@ -46,7 +43,8 @@ pub async fn connect_http_stream<T: AsyncRead + AsyncWrite + Unpin + Send + Sync
 ) -> anyhow::Result<HttpStream<T>> {
     let client = if tls {
         HttpStream::SSL(
-            connect_tls(address.get_host().as_ref(), client)
+            TlsConnector::new()
+                .connect(address.get_host().as_ref(), client)
                 .await
                 .context("TLS handshake")?,
         )
