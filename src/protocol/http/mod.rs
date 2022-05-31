@@ -71,13 +71,14 @@ impl Protocol for HttpProxy {
 
 #[cfg(test)]
 mod tests {
+    use smol::spawn;
+
     use super::*;
     use crate::{
         protocol::{
             direct::Direct,
             test::{test_protocol_http, test_protocol_tcp},
         },
-        rt::{block_on, spawn},
         test::create_http_server,
         url::HttpUrl,
     };
@@ -85,7 +86,7 @@ mod tests {
     #[test]
     fn http_proxy_works() {
         let _ = env_logger::try_init();
-        block_on(async move {
+        smol::block_on(async move {
             let (server, server_url) = create_http_server().await;
             let url: HttpUrl = server_url.as_str().try_into().unwrap();
             spawn(super::server::serve(server, Direct {})).detach();

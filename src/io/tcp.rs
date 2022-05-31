@@ -1,8 +1,8 @@
 use std::net::SocketAddr;
 
-use crate::socks5::Address;
+use smol::net::{TcpStream, TcpListener};
 
-use crate::rt::net::{TcpListener, TcpStream};
+use crate::socks5::Address;
 
 use super::AsRawFdExt;
 

@@ -86,7 +86,7 @@ impl Protocol for Direct {
 mod tests {
     use super::super::test;
     use super::*;
-    use crate::rt::block_on;
+    use smol::block_on;
 
     #[test]
     fn test_direct_works() {

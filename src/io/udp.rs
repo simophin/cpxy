@@ -7,13 +7,15 @@ use std::sync::Arc;
 use std::task::{Context, Poll, Waker};
 use std::time::Duration;
 
+use async_io::Async;
+use async_net::UdpSocket;
 use bytes::Bytes;
 use futures::{ready, Sink, Stream, TryStreamExt};
 use futures_util::{SinkExt, StreamExt};
 use parking_lot::Mutex;
 
+use crate::socks5::Address;
 use crate::utils::{new_vec_for_udp, VecExt};
-use crate::{rt::net::UdpSocket, socks5::Address};
 
 pub async fn bind_udp(v4: bool) -> std::io::Result<UdpSocket> {
     UdpSocket::bind((
@@ -60,7 +62,7 @@ impl UdpSocketExt for UdpSocket {
 
     fn to_sink_stream(self) -> UdpSocketSinkStream {
         UdpSocketSinkStream {
-            socket: self,
+            socket: self.into(),
             buffer_waker: None,
             buffers: Default::default(),
         }
@@ -68,7 +70,7 @@ impl UdpSocketExt for UdpSocket {
 }
 
 pub struct UdpSocketSinkStream {
-    socket: UdpSocket,
+    socket: Arc<Async<std::net::UdpSocket>>,
     buffers: VecDeque<(Bytes, SocketAddr)>,
     buffer_waker: Option<Waker>,
 }
@@ -106,14 +108,12 @@ impl Stream for UdpSocketSinkStream {
         };
 
         let mut buf = new_vec_for_udp();
-        match self.socket.try_recv_from(&mut buf) {
-            Ok(None) => Poll::Pending,
-            Ok(Some((len, addr))) => {
-                buf.set_len_uninit(len);
-                Poll::Ready(Some(Ok((buf.into(), addr))))
-            }
-            Err(e) => Poll::Ready(Some(Err(e.into()))),
-        }
+        let (len, addr) = match self.socket.get_ref().recv_from(&mut buf) {
+            Ok(v) => v,
+            Err(e) => return Poll::Ready(Some(Err(e.into()))),
+        };
+        buf.set_len_uninit(len);
+        Poll::Ready(Some(Ok((buf.into(), addr))))
     }
 }
 
@@ -138,11 +138,14 @@ impl Sink<(Bytes, SocketAddr)> for UdpSocketSinkStream {
     fn poll_flush(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
         ready!(Pin::new(&self.socket).poll_writable(cx))?;
         while let Some((data, addr)) = self.buffers.front() {
-            match self.socket.try_send_to(data.as_ref(), *addr) {
+            match self.socket.get_ref().send_to(data.as_ref(), *addr) {
                 Ok(_) => {
                     let _ = self.buffers.pop_front();
                 }
-                Err(e) if e.kind() == ErrorKind::WouldBlock => return Poll::Pending,
+                Err(e) if e.kind() == ErrorKind::WouldBlock => {
+                    cx.waker().wake_by_ref();
+                    return Poll::Pending;
+                }
                 Err(e) => return Poll::Ready(Err(e)),
             }
         }
@@ -159,8 +162,9 @@ impl Sink<(Bytes, SocketAddr)> for UdpSocketSinkStream {
 
 #[cfg(test)]
 mod tests {
+    use smol_timeout::TimeoutExt;
+
     use super::*;
-    use crate::rt::{block_on, TimeoutExt};
     use crate::test::echo_udp_server;
     use std::time::Duration;
 
@@ -168,7 +172,7 @@ mod tests {
     fn sink_stream_works() {
         std::env::set_var("RUST_LOG", "info");
         let _ = env_logger::try_init();
-        block_on(async move {
+        smol::block_on(async move {
             let (_task, echo_addr) = echo_udp_server().await;
 
             let (mut sink, mut stream) = bind_udp(matches!(echo_addr, SocketAddr::V4(_)))

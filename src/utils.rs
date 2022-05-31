@@ -183,7 +183,7 @@ impl VecExt for Vec<u8> {
 #[cfg(test)]
 mod test {
     use super::*;
-    use crate::rt::block_on;
+    use smol::block_on;
 
     #[test]
     fn test_lengthed_encoding() {

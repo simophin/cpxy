@@ -1,11 +1,11 @@
 use async_stream::stream;
 use bytes::Bytes;
+use smol_timeout::TimeoutExt;
 
 use crate::{
     buf::RWBuffer,
     http::{parse_response, HttpRequestBuilder},
     protocol::TrafficType,
-    rt::TimeoutExt,
     test::{echo_tcp_server, echo_udp_server},
 };
 

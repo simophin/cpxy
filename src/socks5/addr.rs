@@ -1,4 +1,5 @@
 use anyhow::{bail, Context};
+use async_net::resolve;
 use byteorder::{BigEndian, WriteBytesExt};
 use serde::{Deserialize, Serialize};
 use smallvec::{smallvec, SmallVec};
@@ -112,10 +113,7 @@ impl<'a> Address<'a> {
     pub async fn resolve(&self) -> std::io::Result<impl Iterator<Item = SocketAddr>> {
         match self {
             Address::IP(addr) => Ok(vec![*addr].into_iter()),
-            Address::Name { host, port } => Ok(crate::rt::net::resolve((host.as_ref(), *port))
-                .await?
-                .collect::<Vec<_>>()
-                .into_iter()),
+            Address::Name { host, port } => Ok(resolve((host.as_ref(), *port)).await?.into_iter()),
         }
     }
 
@@ -330,7 +328,7 @@ impl std::fmt::Debug for Address<'_> {
 #[cfg(test)]
 mod test {
     use super::*;
-    use crate::rt::block_on;
+    use smol::block_on;
 
     #[test]
     fn test_encoding() {

@@ -116,18 +116,16 @@ impl Protocol for TcpMan {
 
 #[cfg(test)]
 mod tests {
+    use smol::spawn;
+
     use super::*;
-    use crate::{
-        protocol::test::*,
-        rt::{block_on, spawn},
-        test::create_tcp_server,
-    };
+    use crate::{protocol::test::*, test::create_tcp_server};
 
     #[test]
     fn tcpman_works() {
         std::env::set_var("RUST_LOG", "debug");
         let _ = env_logger::try_init();
-        block_on(async move {
+        smol::block_on(async move {
             let (server, addr) = create_tcp_server().await;
             let _task = spawn(super::server::run_server(server));
 

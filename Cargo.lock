@@ -377,6 +377,8 @@ dependencies = [
  "android_logger",
  "anyhow",
  "async-broadcast",
+ "async-io",
+ "async-net",
  "async-stream",
  "async-trait",
  "base64",

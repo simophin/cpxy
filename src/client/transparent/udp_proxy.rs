@@ -4,11 +4,10 @@ use anyhow::Context;
 use bytes::Bytes;
 use futures::{future::ready, select, FutureExt, Sink, SinkExt, Stream, StreamExt};
 use parking_lot::Mutex;
+use smol::{channel::Receiver, spawn, Task};
+use smol_timeout::TimeoutExt;
 
-use crate::{
-    io::{get_one_off_udp_query_timeout, Timer},
-    rt::{mpsc::Receiver, spawn, Task, TimeoutExt},
-};
+use crate::io::{get_one_off_udp_query_timeout, Timer};
 
 use super::utils::bind_transparent_udp_for_sending;
 

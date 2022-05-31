@@ -9,19 +9,20 @@ use std::{
 use super::proto::Message;
 use crate::{
     io::{bind_udp, get_one_off_udp_query_timeout, Timer, UdpSocketExt},
-    rt::{
-        mpsc::{channel, Sender},
-        net::UdpSocket,
-        spawn, Task, TimeoutExt,
-    },
-    utils::race,
+    utils::{new_vec_for_udp, race, VecExt},
 };
 use anyhow::{bail, Context};
+use async_net::UdpSocket;
 use bytes::Bytes;
-use futures::{select, FutureExt, Sink, SinkExt, Stream, StreamExt};
+use futures::{
+    channel::mpsc::{channel, Sender},
+    select, FutureExt, Sink, SinkExt, Stream, StreamExt,
+};
 use num_traits::PrimInt;
 use parking_lot::{Mutex, RwLock};
 use scopeguard::defer;
+use smol::{spawn, Task};
+use smol_timeout::TimeoutExt;
 
 pub async fn serve_socket(socket: UdpSocket) -> anyhow::Result<()> {
     let (sink, stream) = socket.to_sink_stream().split();
@@ -184,13 +185,17 @@ impl Conn {
                 .with_context(|| format!("Sending initial data {dst}"))?;
 
             // Try to receive initial message within 500ms
+            let mut buf = new_vec_for_udp();
             let initial_reply = match upstream
-                .recv_bytes_from()
+                .recv_from(&mut buf)
                 .timeout(Duration::from_millis(500))
                 .await
             {
                 None => None,
-                Some(Ok(v)) => Some(v),
+                Some(Ok((len, addr))) => {
+                    buf.set_len_uninit(len);
+                    Some((Bytes::from(buf), addr))
+                }
                 Some(Err(e)) => bail!("Error receiving initial data: {e:?}"),
             };
 

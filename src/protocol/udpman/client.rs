@@ -7,16 +7,16 @@ use crate::utils::race;
 use anyhow::{anyhow, Context};
 use async_trait::async_trait;
 use bytes::Bytes;
+use futures::channel::mpsc::channel;
 use futures::{StreamExt, TryStreamExt};
 use futures_util::SinkExt;
 use serde::{Deserialize, Serialize};
+use smol::{spawn, Task};
 use smol_timeout::TimeoutExt;
 use std::future::ready;
 use std::net::SocketAddr;
 use std::time::Duration;
 use uuid::Uuid;
-
-use crate::rt::{mpsc::channel, spawn, Task};
 
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
 pub struct UdpMan {
@@ -180,11 +180,8 @@ impl Protocol for UdpMan {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{
-        protocol::test::test_protocol_udp,
-        rt::{block_on, spawn},
-        test::create_udp_socket,
-    };
+    use crate::{protocol::test::test_protocol_udp, test::create_udp_socket};
+    use smol::{block_on, spawn};
 
     #[test]
     fn udpman_works() {

@@ -3,16 +3,18 @@ use std::sync::Arc;
 use crate::{
     io::{bind_tcp, TcpStreamExt},
     iptables as ipt,
-    rt::{spawn, Task},
 };
 use anyhow::Context;
 use futures::{Stream, StreamExt};
+use smol::{
+    net::{TcpListener, TcpStream},
+    spawn, Task,
+};
 
 use crate::{
     buf::RWBuffer,
     config::ClientConfig,
     handshake::{HandshakeRequest as HR, Handshaker},
-    rt::net::{TcpListener, TcpStream},
     socks5::Address,
 };
 

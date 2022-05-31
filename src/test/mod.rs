@@ -9,12 +9,13 @@ use crate::{
     config::UpstreamProtocol,
     io::{bind_tcp, bind_udp, connect_tcp},
     protocol::tcpman::{server::run_server, TcpMan},
-    rt::{block_on, net::UdpSocket, spawn, Task},
 };
 use anyhow::bail;
+use async_net::{TcpListener, UdpSocket};
 use futures::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
 use futures_util::join;
 use maplit::hashmap;
+use smol::{spawn, Task};
 
 mod http;
 mod tcp_socks4;
@@ -26,7 +27,6 @@ use crate::{
     client::{run_proxy_with, ClientStatistics},
     config::{ClientConfig, UpstreamConfig},
     fetch::fetch_http_with_proxy,
-    rt::net::{TcpListener, TcpStream},
     // server::run_server,
     socks5::Address,
 };

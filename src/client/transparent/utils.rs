@@ -4,10 +4,12 @@ use std::{
     net::{Ipv4Addr, Ipv6Addr, SocketAddr, SocketAddrV4, SocketAddrV6},
     os::unix::prelude::{AsRawFd, FromRawFd, RawFd},
     pin::Pin,
+    sync::Arc,
     task::Poll,
 };
 
 use anyhow::Context;
+use async_io::Async;
 use bytes::Bytes;
 use futures::{ready, Sink, SinkExt, Stream, StreamExt};
 use nix::sys::socket::{
@@ -18,10 +20,10 @@ use libc::{
     c_int, c_void, size_t, sockaddr_in, sockaddr_in6, socklen_t, ssize_t, AF_INET, AF_INET6,
     IPV6_RECVORIGDSTADDR, IP_RECVORIGDSTADDR, SOL_IP, SOL_IPV6,
 };
+use smol::net::UdpSocket;
 
 use crate::{
     io::UdpSocketExt,
-    rt::net::UdpSocket,
     utils::{new_vec_for_udp, VecExt},
 };
 
@@ -84,7 +86,7 @@ pub fn bind_transparent_udp_for_reciving(
     addr: SocketAddr,
 ) -> anyhow::Result<impl Stream<Item = (Bytes, SocketAddr, SocketAddr)> + Unpin + Send + Sync + Sized>
 {
-    Ok(TransparentUdpStream(new_tsock(addr)?))
+    Ok(TransparentUdpStream(new_tsock(addr)?.into()))
 }
 
 pub fn bind_transparent_udp_for_sending(
@@ -182,7 +184,7 @@ extern "C" {
     ) -> ssize_t;
 }
 
-struct TransparentUdpStream(UdpSocket);
+struct TransparentUdpStream(Arc<Async<std::net::UdpSocket>>);
 
 impl Stream for TransparentUdpStream {
     type Item = (Bytes, SocketAddr, SocketAddr);

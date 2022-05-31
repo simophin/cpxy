@@ -4,13 +4,14 @@ use crate::{
     buf::RWBuffer,
     http::{parse_request, HttpRequestBuilder},
     protocol::Protocol,
-    rt::{net::TcpListener, spawn},
     socks5::Address,
     url::HttpUrl,
     utils::copy_duplex,
 };
 use anyhow::Context;
+use async_net::TcpListener;
 use futures::AsyncWriteExt;
+use smol::spawn;
 
 pub async fn serve(
     stream: TcpListener,

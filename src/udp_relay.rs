@@ -61,7 +61,8 @@ mod tests {
 
     use futures::StreamExt;
 
-    use crate::rt::{block_on, TimeoutExt};
+    use smol::block_on;
+    use smol_timeout::TimeoutExt;
 
     use crate::socks5::{Address, UdpRepr};
     use crate::test::set_ip_local;

@@ -1,12 +1,10 @@
 use async_stream::stream;
 use bytes::Bytes;
-use futures::{AsyncRead, AsyncWrite, Sink, SinkExt, Stream, StreamExt};
+use futures::{channel::mpsc::channel, AsyncRead, AsyncWrite, Sink, SinkExt, Stream, StreamExt};
+use smol::spawn;
 
 use super::udp_stream::{PacketReader, PacketWriter};
-use crate::{
-    rt::{mpsc::channel, spawn},
-    socks5::Address,
-};
+use crate::socks5::Address;
 
 pub fn create_udp_stream(
     mut r: impl AsyncRead + Unpin + Send,

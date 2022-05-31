@@ -226,7 +226,7 @@ impl PacketWriter {
 
 #[cfg(test)]
 mod tests {
-    use crate::rt::block_on;
+    use smol::block_on;
 
     use super::*;
 

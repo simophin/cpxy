@@ -12,7 +12,6 @@ mod iptables;
 mod parse;
 mod pattern;
 pub mod protocol;
-pub mod rt;
 mod rule;
 mod socks4;
 pub mod socks5;

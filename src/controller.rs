@@ -4,16 +4,16 @@ use crate::buf::RWBuffer;
 use crate::client::{run_client, ClientStatistics};
 use crate::config::{ClientConfig, UpstreamConfig};
 use crate::http::{parse_request, write_http_response};
-use crate::rt::fs::File;
-use crate::rt::net::TcpListener;
-use crate::rt::spawn;
 use crate::socks5::Address;
 use anyhow::{anyhow, Context};
 use async_broadcast::Sender;
+use async_net::TcpListener;
 use chrono::{DateTime, Utc};
 use futures::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
 use rust_embed::RustEmbed;
 use serde::{Deserialize, Serialize};
+use smol::fs::File;
+use smol::spawn;
 use std::path::PathBuf;
 use std::sync::Arc;
 
@@ -311,7 +311,7 @@ pub async fn run_controller(
         config_file: config_file.to_path_buf(),
     };
 
-    let _client_task = spawn(async move { run_client(rx).await });
+    let _client_task = spawn(run_client(rx));
 
     loop {
         let (socket, addr) = listener.accept().await?;

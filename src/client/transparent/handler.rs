@@ -3,16 +3,16 @@ use std::{collections::HashMap, net::SocketAddr, sync::Arc, time::Duration};
 use crate::{
     config::ClientConfig,
     protocol::{Protocol, TrafficType},
-    rt::{
-        mpsc::{channel, Sender},
-        spawn, Task,
-    },
     socks5::Address,
 };
 use anyhow::{anyhow, Context};
 use bytes::Bytes;
 use futures::{future::ready, SinkExt, StreamExt};
 use futures_util::{select, FutureExt};
+use smol::{
+    channel::{bounded, Sender, TrySendError},
+    spawn, Task,
+};
 
 use super::super::ClientStatistics;
 use super::utils::bind_transparent_udp_for_reciving;
@@ -37,7 +37,7 @@ pub async fn serve_udp_transparent_proxy(
     log::info!("Started UDP transparent proxy at {addr}");
     Ok(spawn(async move {
         let mut sessions: HashMap<UdpSessionKey, UdpSession> = Default::default();
-        let (cleanup_tx, mut cleanup_rx) = channel::<UdpSessionKey>(2);
+        let (cleanup_tx, mut cleanup_rx) = bounded::<UdpSessionKey>(2);
 
         loop {
             let (buf, src, dst) = select! {
@@ -66,7 +66,7 @@ pub async fn serve_udp_transparent_proxy(
             match sessions.get_mut(&key) {
                 Some(s) => match s.tx.try_send(buf) {
                     Ok(_) => {}
-                    Err(v) if v.is_disconnected() => {
+                    Err(TrySendError::Closed(_)) => {
                         let key = UdpSessionKey { src, dst };
                         log::debug!("Session {key:?} closed");
                         sessions.remove(&key);
@@ -95,10 +95,10 @@ impl UdpSession {
         dst: SocketAddr,
         config: Arc<ClientConfig>,
         stats: Arc<ClientStatistics>,
-        mut clean_up: Sender<UdpSessionKey>,
+        clean_up: Sender<UdpSessionKey>,
         initial_data: Bytes,
     ) -> Self {
-        let (tx, rx) = channel(10);
+        let (tx, rx) = bounded(10);
         let dst_addr: Address = dst.into();
         let _task = spawn(async move {
             let mut upstreams =

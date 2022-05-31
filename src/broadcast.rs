@@ -44,8 +44,8 @@ pub fn bounded<T: Clone>(init: Option<T>, cap: usize) -> (async_broadcast::Sende
 #[cfg(test)]
 mod test {
     use super::*;
-    use crate::rt::block_on;
     use futures::StreamExt;
+    use smol::block_on;
 
     #[test]
     fn test_channel_init() {

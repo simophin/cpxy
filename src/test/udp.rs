@@ -1,5 +1,7 @@
 use crate::io::send_to_addr;
-use crate::rt::TimeoutExt;
+use async_net::TcpStream;
+use smol::block_on;
+use smol_timeout::TimeoutExt;
 
 use crate::utils::{new_vec_for_udp, VecExt};
 use crate::{

@@ -1,6 +1,9 @@
-use crate::{http::parse_response, rt::TimeoutExt};
+use crate::http::parse_response;
+use async_net::TcpStream;
+use smol_timeout::TimeoutExt;
 
 use super::*;
+use smol::block_on;
 
 #[test]
 fn test_http_proxy() {

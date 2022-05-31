@@ -3,7 +3,7 @@ use std::{ops::DerefMut, pin::Pin, sync::Arc, task::Poll, time::Duration};
 use futures::{ready, Future};
 use parking_lot::Mutex;
 
-use crate::rt::Timer as RealTimer;
+use async_io::Timer as RealTimer;
 
 #[derive(Clone)]
 pub struct Timer {

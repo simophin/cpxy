@@ -1,9 +1,11 @@
 use std::net::{IpAddr, Ipv4Addr};
 
-use crate::rt::TimeoutExt;
+use async_net::TcpStream;
 use bytes::Buf;
+use smol_timeout::TimeoutExt;
 
 use super::*;
+use smol::block_on;
 
 async fn send_socks4_request(
     socks: &mut (impl AsyncRead + AsyncWrite + Unpin + Send + Sync),
