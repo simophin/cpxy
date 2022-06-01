@@ -53,6 +53,7 @@ async-stream = "0"
 orion = "0"
 scopeguard = "1"
 async-native-tls = { version = "0", features = ["vendored"] }
+dns-parser = "0"
 
 [dev-dependencies]
 maplit = "1"

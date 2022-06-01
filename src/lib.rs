@@ -5,6 +5,7 @@ mod broadcast;
 mod buf;
 mod client;
 mod counter;
+// mod dns;
 mod fetch;
 mod handshake;
 mod http;
