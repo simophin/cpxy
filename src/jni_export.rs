@@ -1,6 +1,6 @@
 use crate::controller::run_controller;
 use crate::io::bind_tcp;
-use crate::rt::{block_on, spawn, Task};
+use smol::{block_on, spawn, Task};
 use jni::objects::{JClass, JString};
 use jni::sys::{jint, jlong};
 use jni::JNIEnv;
