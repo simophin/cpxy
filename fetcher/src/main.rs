@@ -112,20 +112,20 @@ fn main() {
         })
     };
 
-    let download_ipv6 = {
-        let out_dir = out_dir.clone();
-        spawn(move || {
-            download_geo_ip::<u128>(
-                "https://raw.githubusercontent.com/sapics/ip-location-db/master/geo-whois-asn-country/geo-whois-asn-country-ipv6-num.csv",
-                &Path::new(out_dir.as_str()).join("geoip").join("ipv6.dat"))
-        })
-    };
+    // let download_ipv6 = {
+    //     let out_dir = out_dir.clone();
+    //     spawn(move || {
+    //         download_geo_ip::<u128>(
+    //             "https://raw.githubusercontent.com/sapics/ip-location-db/master/geo-whois-asn-country/geo-whois-asn-country-ipv6-num.csv",
+    //             &Path::new(out_dir.as_str()).join("geoip").join("ipv6.dat"))
+    //     })
+    // };
 
-    download_gfw_list(
-        "https://raw.githubusercontent.com/gfwlist/gfwlist/master/gfwlist.txt",
-        &Path::new(out_dir.as_str()).join("abp").join("gfw_list.dat"),
-    );
+    // download_gfw_list(
+    //     "https://raw.githubusercontent.com/gfwlist/gfwlist/master/gfwlist.txt",
+    //     &Path::new(out_dir.as_str()).join("abp").join("gfw_list.dat"),
+    // );
 
     download_ipv4.join().unwrap();
-    download_ipv6.join().unwrap();
+    // download_ipv6.join().unwrap();
 }

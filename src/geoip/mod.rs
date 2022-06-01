@@ -40,24 +40,7 @@ pub fn find_geoip(ip: &IpAddr) -> Option<CountryCode> {
                 _ => None,
             }
         }
-        IpAddr::V6(addr) => {
-            let needle = addr.octets().as_slice().get_u128();
-            lazy_static! {
-                static ref RECORDS_V6: &'static [Record<16>] =
-                    load_ip_dat(include_bytes!("ipv6.dat"));
-            }
-            match RECORDS_V6.binary_search_by_key(&needle, |r| u128::from_be_bytes(r.start)) {
-                Ok(index) => Some(RECORDS_V6[index].c),
-                Err(index)
-                    if index > 0
-                        && needle >= u128::from_be_bytes(RECORDS_V6[index - 1].start)
-                        && needle <= u128::from_be_bytes(RECORDS_V6[index - 1].end) =>
-                {
-                    Some(RECORDS_V6[index - 1].c)
-                }
-                _ => None,
-            }
-        }
+        IpAddr::V6(_) => None,
     }
 }
 
@@ -78,9 +61,6 @@ mod test {
             find_geoip(&"122.61.248.102".parse().unwrap()),
             Some("NZ".parse().unwrap())
         );
-        assert_eq!(
-            find_geoip(&"2001:4860:4860::8888".parse().unwrap()),
-            Some(us)
-        );
+        assert_eq!(find_geoip(&"2001:4860:4860::8888".parse().unwrap()), None);
     }
 }
