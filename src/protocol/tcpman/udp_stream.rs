@@ -1,12 +1,12 @@
 use std::{
     borrow::Cow,
-    io::IoSlice,
     net::{IpAddr, SocketAddr},
 };
 
 use anyhow::Context;
 use bytes::{Buf, Bytes};
 use futures::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
+use smallvec::SmallVec;
 
 use crate::{socks5::Address, utils::new_vec_uninitialised};
 use enum_primitive_derive::Primitive;
@@ -165,39 +165,24 @@ impl PacketWriter {
             }
         };
 
-        let mut written = 0usize;
+        let mut header: SmallVec<[u8; 9]> = Default::default();
 
         match addr {
             None => {
-                out.write_all_vectored(&mut [
-                    IoSlice::new(&[PacketType::PayloadOnly as u8]),
-                    IoSlice::new(&payload_len.to_be_bytes()),
-                    IoSlice::new(payload),
-                ])
-                .await?;
-                written += 3 + payload.len();
+                header.push(PacketType::PayloadOnly as u8);
+                header.extend_from_slice(&payload_len.to_be_bytes());
             }
             Some(Address::IP(SocketAddr::V4(addr))) => {
-                out.write_all_vectored(&mut [
-                    IoSlice::new(&[PacketType::WithV4Addr as u8]),
-                    IoSlice::new(&payload_len.to_be_bytes()),
-                    IoSlice::new(addr.ip().octets().as_ref()),
-                    IoSlice::new(addr.port().to_be_bytes().as_ref()),
-                    IoSlice::new(payload),
-                ])
-                .await?;
-                written += 9 + payload.len();
+                header.push(PacketType::WithV4Addr as u8);
+                header.extend_from_slice(&payload_len.to_be_bytes());
+                header.extend_from_slice(addr.ip().octets().as_ref());
+                header.extend_from_slice(addr.port().to_be_bytes().as_ref());
             }
             Some(Address::IP(SocketAddr::V6(addr))) => {
-                out.write_all_vectored(&mut [
-                    IoSlice::new(&[PacketType::WithV6Addr as u8]),
-                    IoSlice::new(&payload_len.to_be_bytes()),
-                    IoSlice::new(addr.ip().octets().as_ref()),
-                    IoSlice::new(addr.port().to_be_bytes().as_ref()),
-                    IoSlice::new(payload),
-                ])
-                .await?;
-                written += 21;
+                header.push(PacketType::WithV6Addr as u8);
+                header.extend_from_slice(&payload_len.to_be_bytes());
+                header.extend_from_slice(addr.ip().octets().as_ref());
+                header.extend_from_slice(addr.port().to_be_bytes().as_ref());
             }
             Some(Address::Name { host, port }) => {
                 let host = host.as_bytes();
@@ -206,21 +191,18 @@ impl PacketWriter {
                     .try_into()
                     .context("Converting name len to u16 int")?;
 
-                out.write_all_vectored(&mut [
-                    IoSlice::new(&[PacketType::WithDomainName as u8]),
-                    IoSlice::new(&payload_len.to_be_bytes()),
-                    IoSlice::new(&domain_name_len.to_be_bytes()),
-                    IoSlice::new(host),
-                    IoSlice::new(&port.to_be_bytes()),
-                    IoSlice::new(payload),
-                ])
-                .await?;
-
-                written += 3 + domain_name_len as usize + 4 + payload.len();
+                header.push(PacketType::WithDomainName as u8);
+                header.extend_from_slice(&payload_len.to_be_bytes());
+                header.extend_from_slice(&domain_name_len.to_be_bytes());
+                header.extend_from_slice(host);
+                header.extend_from_slice(&port.to_be_bytes());
             }
         }
 
-        Ok(written)
+        out.write_all(&header).await.context("Writing header")?;
+        out.write_all(payload).await.context("Writing payload")?;
+
+        Ok(header.len() + payload.len())
     }
 }
 

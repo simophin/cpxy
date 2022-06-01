@@ -1,6 +1,3 @@
-#![feature(map_first_last)]
-
-// pub mod bench_client;
 mod broadcast;
 mod buf;
 mod client;

@@ -1,5 +1,3 @@
-use std::io::IoSlice;
-
 use crate::parse::ParseError;
 use anyhow::bail;
 use bytes::Buf;
@@ -50,9 +48,8 @@ impl<'a> ClientGreeting<'a> {
     }
 
     pub async fn to_async_writer(&self, w: &mut (impl AsyncWrite + Unpin)) -> anyhow::Result<()> {
-        let hdrs = [0x5u8, self.auths.len().try_into()?];
-        let mut out = [IoSlice::new(&hdrs), IoSlice::new(self.auths)];
-        w.write_all_vectored(&mut out).await?;
+        w.write_all(&[0x5u8, self.auths.len().try_into()?]).await?;
+        w.write_all(self.auths).await?;
         Ok(())
     }
 

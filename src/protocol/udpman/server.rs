@@ -1,5 +1,5 @@
 use std::{
-    collections::BTreeMap,
+    collections::VecDeque,
     future::ready,
     net::SocketAddr,
     sync::{Arc, Weak},
@@ -18,7 +18,6 @@ use futures::{
     channel::mpsc::{channel, Sender},
     select, FutureExt, Sink, SinkExt, Stream, StreamExt,
 };
-use num_traits::PrimInt;
 use parking_lot::{Mutex, RwLock};
 use scopeguard::defer;
 use smol::{spawn, Task};
@@ -61,7 +60,7 @@ pub async fn serve(
         + Send
         + 'static,
 ) -> anyhow::Result<()> {
-    let connections: Arc<RwLock<BTreeMap<u16, Conn>>> = Default::default();
+    let connections: Arc<RwLock<ConnMap>> = Default::default();
     let (sink_tx, mut sink_rx) = channel::<(Message<'static>, SocketAddr)>(20);
 
     let task1: Task<anyhow::Result<()>> = {
@@ -85,7 +84,7 @@ pub async fn serve(
                         initial_data_nonce: None,
                     } => {
                         let mut map = connections.write();
-                        let conn_id = match find_available_conn_id(&map) {
+                        let conn_id = match map.find_available_id() {
                             Some(v) => v,
                             None => {
                                 log::warn!("Unable to find connection id for client {from}");
@@ -107,14 +106,14 @@ pub async fn serve(
                                 continue;
                             }
                         };
-                        map.insert(conn_id, conn);
+                        map.insert(conn);
                     }
                     Message::Data {
                         conn_id: Some(conn_id),
                         payload,
                         ..
                     } => {
-                        let send_result = if let Some(conn) = connections.read().get(&conn_id) {
+                        let send_result = if let Some(conn) = connections.read().get(conn_id) {
                             conn.incoming_tx.lock().try_send(payload.into())
                         } else {
                             log::warn!("Connection with ID {conn_id} does not exist");
@@ -125,7 +124,7 @@ pub async fn serve(
                             Err(e) => {
                                 log::error!("Error sending buf to conn_id {conn_id}: {e:?}");
                                 if e.is_disconnected() {
-                                    let _ = connections.write().remove(&conn_id);
+                                    let _ = connections.write().remove(conn_id);
                                 }
                             }
                             _ => {}
@@ -154,8 +153,60 @@ pub async fn serve(
 }
 
 struct Conn {
+    id: u16,
     incoming_tx: Mutex<Sender<Bytes>>,
     _task: Task<anyhow::Result<()>>,
+}
+
+#[derive(Default)]
+struct ConnMap(VecDeque<Conn>);
+
+impl ConnMap {
+    pub fn insert(&mut self, c: Conn) {
+        match self.0.binary_search_by_key(&c.id, |c| c.id) {
+            Ok(p) => {
+                self.0[p] = c;
+            }
+            Err(index) => {
+                self.0.insert(index, c);
+            }
+        };
+    }
+
+    pub fn get(&self, id: u16) -> Option<&Conn> {
+        self.0
+            .binary_search_by_key(&id, |c| c.id)
+            .ok()
+            .map(|i| &self.0[i])
+    }
+
+    pub fn remove(&mut self, id: u16) -> Option<Conn> {
+        self.0
+            .binary_search_by_key(&id, |c| c.id)
+            .ok()
+            .and_then(|i| self.0.remove(i))
+    }
+
+    pub fn find_available_id(&self) -> Option<u16> {
+        let max_key = self.0.back().map(|v| v.id).unwrap_or_default();
+
+        // Can we simply take next item? (No wrapping)
+        if let Some(next_key) = max_key.checked_add(1) {
+            return Some(next_key);
+        }
+
+        // Start from beginning
+        let mut expecting = 0;
+
+        for conn in &self.0 {
+            if expecting != conn.id {
+                return Some(expecting);
+            }
+            expecting = expecting.checked_add(1)?;
+        }
+
+        None
+    }
 }
 
 impl Conn {
@@ -166,7 +217,7 @@ impl Conn {
         dst: SocketAddr,
         conn_id: u16,
         mut outgoing_tx: Sender<(Message<'static>, SocketAddr)>,
-        connections: Weak<RwLock<BTreeMap<u16, Conn>>>,
+        connections: Weak<RwLock<ConnMap>>,
     ) -> anyhow::Result<Self> {
         log::debug!("Created UDP Connection(id = {conn_id}), src = {src}, dst = {dst}");
         let (incoming_tx, mut incoming_rx) = channel(10);
@@ -174,7 +225,7 @@ impl Conn {
             defer! {
                 if let Some(conns) = connections.upgrade() {
                     log::debug!("UDP Conn(id={conn_id}) deleted");
-                    let _ = conns.write().remove(&conn_id);
+                    let _ = conns.write().remove(conn_id);
                 }
             }
 
@@ -260,33 +311,9 @@ impl Conn {
         });
 
         Ok(Self {
+            id: conn_id,
             incoming_tx: Mutex::new(incoming_tx),
             _task,
         })
     }
-}
-
-fn find_available_conn_id<K: PrimInt + Ord, V>(map: &BTreeMap<K, V>) -> Option<K> {
-    let max_key = match map.last_key_value() {
-        Some(v) => v.0,
-        None => return K::from(0),
-    };
-
-    // Can we simply take next item? (No wrapping)
-    let inc = K::from(1)?;
-    if let Some(next_key) = max_key.checked_add(&inc) {
-        return Some(next_key);
-    }
-
-    // Start from beginning
-    let mut expecting = K::from(0)?;
-
-    for (k, _) in map {
-        if expecting != *k {
-            return Some(expecting);
-        }
-        expecting = expecting.checked_add(&inc)?;
-    }
-
-    None
 }
