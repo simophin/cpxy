@@ -75,15 +75,10 @@ android_logger = "0"
 
 
 [lib]
-crate-type = ["rlib", "dylib"]
 name = "proxy"
-
 
 # [target.'cfg(not(target_env = "msvc"))'.dependencies]
 # tikv-jemallocator = "0"
-
-[build]
-rustflags = ["-C", "link-arg=-fuse-ld=lld"]
 
 [profile.dev]
 incremental = true
