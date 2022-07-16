@@ -1,4 +1,4 @@
-use anyhow::{bail, Context};
+use anyhow::Context;
 use async_trait::async_trait;
 use chacha20::ChaCha20;
 use cipher::KeyIvInit;
@@ -9,28 +9,35 @@ use super::super::{AsyncStream, Protocol, Stats, TrafficType};
 use crate::{
     io::{connect_tcp_marked, union, AsyncStreamCounter},
     socks5::Address,
+    utils::write_bincode_lengthed_async,
 };
 
 pub struct FireTcp {
-    pub server: Address<'static>,
+    server: Address<'static>,
+}
+
+impl FireTcp {
+    pub fn new(server: Address<'static>) -> Self {
+        Self { server }
+    }
 }
 
 #[derive(Debug, Serialize, Deserialize)]
-struct CipherOption {
-    key: [u8; 32],
-    nonce: [u8; 12],
+pub struct CipherOption {
+    pub key: [u8; 32],
+    pub nonce: [u8; 12],
 }
 
 #[derive(Debug, Serialize, Deserialize)]
-struct Request {
-    addr: Address<'static>,
-    initial_data_len: usize,
-    est_cipher: Option<CipherOption>,
+pub struct Request {
+    pub addr: Address<'static>,
+    pub initial_data_len: usize,
+    pub est_cipher: Option<CipherOption>,
 }
 
-const INITIAL_CIPHER_LEN: usize = 512;
-const INITIAL_KEY: &'static [u8] = b"P2$3M$5RRsTY49oo#3xQwT3vE6MVDpck";
-const INITIAL_NONCE: &'static [u8] = b"oU151Hq8J@!q";
+pub const INITIAL_CIPHER_LEN: usize = 512;
+pub const INITIAL_KEY: &'static [u8] = b"P2$3M$5RRsTY49oo#3xQwT3vE6MVDpck";
+pub const INITIAL_NONCE: &'static [u8] = b"oU151Hq8J@!q";
 
 #[async_trait]
 impl Protocol for FireTcp {
@@ -74,18 +81,17 @@ impl Protocol for FireTcp {
         )
         .context("Unable to set establish cipher")?;
 
-        let req_buf = serde_json::to_vec(&Request {
-            addr: dst.clone().into_owned(),
-            initial_data_len: initial_data.map(|v| v.len()).unwrap_or_default(),
-            est_cipher,
-        })
-        .context("Unable to serialize request to json")?;
+        write_bincode_lengthed_async(
+            &mut w,
+            &Request {
+                addr: dst.clone().into_owned(),
+                initial_data_len: initial_data.map(|v| v.len()).unwrap_or_default(),
+                est_cipher,
+            },
+        )
+        .await
+        .context("Unable to send request")?;
 
-        let req_buf_len: u16 = req_buf.len().try_into().context("Request too big")?;
-        w.write_all(&req_buf_len.to_be_bytes())
-            .await
-            .context("Writing request len")?;
-        w.write_all(&req_buf).await.context("Sending request")?;
         if let Some(b) = initial_data {
             w.write_all(b).await.context("Sending initial data")?;
         }

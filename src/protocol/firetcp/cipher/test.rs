@@ -73,10 +73,10 @@ fn cipher_rw_with_establish_cipher_works() {
 
         test_echo_message(&rand::random::<[u8; 28]>(), &mut client_r, &mut client_w).await;
         client_r
-            .set_establish_cipher(ChaCha20::new_from_slices(&key, &nonce).unwrap())
+            .set_establish_cipher(Some(ChaCha20::new_from_slices(&key, &nonce).unwrap()))
             .unwrap();
         client_w
-            .set_establish_cipher(ChaCha20::new_from_slices(&key, &nonce).unwrap())
+            .set_establish_cipher(Some(ChaCha20::new_from_slices(&key, &nonce).unwrap()))
             .unwrap();
 
         test_echo_message(&rand::random::<[u8; 128]>(), &mut client_r, &mut client_w).await;
