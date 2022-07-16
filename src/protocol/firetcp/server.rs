@@ -17,26 +17,24 @@ use crate::utils::{race, read_bincode_lengthed_async};
 use super::cipher::CipherRead;
 use super::proto::{CipherOption, Request, INITIAL_CIPHER_LEN, INITIAL_KEY, INITIAL_NONCE};
 
-pub fn run_server(listener: TcpListener) -> Task<anyhow::Result<()>> {
-    spawn(async move {
-        let clients: Arc<Mutex<BTreeMap<SocketAddr, Task<()>>>> = Default::default();
-        loop {
-            let (client, addr) = listener.accept().await?;
-            log::info!("Accepted client from {addr}");
-            let clients_ref = Arc::downgrade(&clients);
-            clients.lock().insert(
-                addr,
-                spawn(async move {
-                    if let Err(e) = serve(client).await {
-                        log::error!("Error serving {addr}: {e:?}");
-                    }
-                    if let Some(clients) = clients_ref.upgrade() {
-                        clients.lock().remove(&addr);
-                    }
-                }),
-            );
-        }
-    })
+pub async fn run_server(listener: TcpListener) -> anyhow::Result<()> {
+    let clients: Arc<Mutex<BTreeMap<SocketAddr, Task<()>>>> = Default::default();
+    loop {
+        let (client, addr) = listener.accept().await?;
+        log::info!("Accepted client from {addr}");
+        let clients_ref = Arc::downgrade(&clients);
+        clients.lock().insert(
+            addr,
+            spawn(async move {
+                if let Err(e) = serve(client).await {
+                    log::error!("Error serving {addr}: {e:?}");
+                }
+                if let Some(clients) = clients_ref.upgrade() {
+                    clients.lock().remove(&addr);
+                }
+            }),
+        );
+    }
 }
 
 pub async fn serve(

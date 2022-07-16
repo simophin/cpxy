@@ -3,7 +3,7 @@ use async_net::UdpSocket;
 use clap::{Parser, Subcommand};
 use proxy::controller::run_controller;
 use proxy::io::bind_tcp;
-use proxy::protocol::{tcpman, udpman};
+use proxy::protocol::{firetcp, tcpman, udpman};
 use proxy::socks5::Address;
 use std::net::{IpAddr, SocketAddr};
 use std::path::Path;
@@ -32,6 +32,8 @@ enum Command {
         /// The UDPMan port to listen on
         #[clap(default_value_t = 3000, long)]
         udp_port: u16,
+        #[clap(long)]
+        firetcp_port: Option<u16>,
     },
 
     #[clap()]
@@ -68,10 +70,11 @@ fn main() -> anyhow::Result<()> {
                 host,
                 tcp_port,
                 udp_port,
+                firetcp_port,
             } => {
                 let tcp_addr = SocketAddr::new(host, tcp_port);
                 let udp_addr = SocketAddr::new(host, udp_port);
-                log::info!("Start server at TCPMan://{tcp_addr}, UDPMan://{udp_addr}");
+                log::info!("Start server at TCPMan://{tcp_addr}, UDPMan://{udp_addr}, FireTcp://{firetcp_port:?}");
 
                 let tcp_man_server_socket = bind_tcp(&Address::IP(tcp_addr))
                     .await
@@ -81,11 +84,24 @@ fn main() -> anyhow::Result<()> {
                     .await
                     .context("Binding UDPMan server socket")?;
 
-                proxy::utils::race(
+                let tcp_udp_man_result = proxy::utils::race(
                     tcpman::server::run_server(tcp_man_server_socket),
                     udpman::server::serve_socket(udp_man_server_socket),
-                )
-                .await
+                );
+
+                if let Some(firetcp_port) = firetcp_port {
+                    let firetcp_server_socket =
+                        bind_tcp(&Address::IP(SocketAddr::new(host, firetcp_port)))
+                            .await
+                            .context("Binding FireTCP server socket")?;
+                    proxy::utils::race(
+                        firetcp::server::run_server(firetcp_server_socket),
+                        tcp_udp_man_result,
+                    )
+                    .await
+                } else {
+                    tcp_udp_man_result.await
+                }
             }
             Command::Client {
                 config,

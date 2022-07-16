@@ -1,7 +1,7 @@
 import { Button, Dialog, DialogActions, DialogContent, DialogTitle, FormControl, FormControlLabel, MenuItem, Stack, Switch, TextField } from "@mui/material";
 import { forwardRef, useImperativeHandle, useRef, useState } from "react";
 import { BASE_URL } from "./config";
-import { ClientConfig, HttpProxyConfig, ProtocolConfig, Socks5Config, TcpManConfig, UdpManConfig, UpstreamUpdate } from "./models";
+import { ClientConfig, FireTcpConfig, HttpProxyConfig, ProtocolConfig, Socks5Config, TcpManConfig, UdpManConfig, UpstreamUpdate } from "./models";
 import { FindError, mandatory, useEditState, validAddress } from "./useEditState";
 import useHttp from "./useHttp";
 
@@ -178,6 +178,31 @@ const Socks5ConfigEdit = forwardRef(({ initial }: {
     </>;
 });
 
+const FireTcpConfigEdit = forwardRef(({ initial }: {
+    initial?: Socks5Config,
+}, ref) => {
+    const address = useEditState(initial?.address ?? '', mandatory('Address', validAddress));
+
+    useImperativeHandle(ref, () => ({
+        validate(): FireTcpConfig {
+            return {
+                type: 'firetcp',
+                address: address.validate(),
+            }
+        }
+    }), [address]);
+
+    return <>
+        <TextField
+            value={address.value}
+            label='Address'
+            margin='dense'
+            error={!!address.error}
+            helperText={address.error}
+            onChange={v => address.setValue(v.currentTarget.value)} />
+    </>;
+});
+
 export default function UpstreamEdit({ onChanged, onCancelled, editing, current_config }: Props) {
     const existing = editing ? current_config.upstreams[editing] : undefined;
     const name = useEditState(editing ?? '', mandatory('Name', uniqueUpstreamName(editing, current_config)));
@@ -266,6 +291,7 @@ export default function UpstreamEdit({ onChanged, onCancelled, editing, current_
                     margin='dense'>
                     <MenuItem value={'tcpman'}>TCPMan</MenuItem>
                     <MenuItem value={'udpman'}>UDPMan</MenuItem>
+                    <MenuItem value={'firetcp'}>FireTCP</MenuItem>
                     <MenuItem value={'socks5'}>Socks5 Proxy</MenuItem>
                     <MenuItem value={'http'}>HTTP Proxy</MenuItem>
                     <MenuItem value={'direct'}>Direct</MenuItem>
@@ -284,6 +310,10 @@ export default function UpstreamEdit({ onChanged, onCancelled, editing, current_
                     initial={existing?.protocol?.type === 'http' ? existing?.protocol : undefined} />}
 
                 {protoType === 'socks5' && <Socks5ConfigEdit
+                    ref={validatorRef}
+                    initial={existing?.protocol?.type === 'socks5' ? existing?.protocol : undefined} />}
+
+                {protoType === 'firetcp' && <FireTcpConfigEdit
                     ref={validatorRef}
                     initial={existing?.protocol?.type === 'socks5' ? existing?.protocol : undefined} />}
 

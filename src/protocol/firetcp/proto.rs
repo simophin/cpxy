@@ -12,13 +12,14 @@ use crate::{
     utils::write_bincode_lengthed_async,
 };
 
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
 pub struct FireTcp {
-    server: Address<'static>,
+    address: Address<'static>,
 }
 
 impl FireTcp {
-    pub fn new(server: Address<'static>) -> Self {
-        Self { server }
+    pub fn new(address: Address<'static>) -> Self {
+        Self { address }
     }
 }
 
@@ -53,7 +54,7 @@ impl Protocol for FireTcp {
         fwmark: Option<u32>,
     ) -> anyhow::Result<Box<dyn AsyncStream>> {
         let (r, w) = AsyncStreamCounter::new(
-            connect_tcp_marked(&self.server, fwmark)
+            connect_tcp_marked(&self.address, fwmark)
                 .await
                 .context("Connecting to firetcp server")?,
             stats.rx.clone(),

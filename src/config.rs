@@ -9,7 +9,7 @@ use std::time::UNIX_EPOCH;
 use crate::client::ClientStatistics;
 use crate::geoip::find_geoip;
 use crate::protocol::{
-    direct, socks5, tcpman, udpman, AsyncStream, BoxedSink, BoxedStream, Protocol, Stats,
+    direct, firetcp, socks5, tcpman, udpman, AsyncStream, BoxedSink, BoxedStream, Protocol, Stats,
     TrafficType,
 };
 use crate::rule::{RuleExecutionResult, RuleProtocol, RuleString};
@@ -29,6 +29,9 @@ pub enum UpstreamProtocol {
 
     #[serde(rename = "direct")]
     Direct(direct::Direct),
+
+    #[serde(rename = "firetcp")]
+    FireTcp(firetcp::FireTcp),
 }
 
 pub const fn default_upstream_enabled() -> bool {
@@ -181,6 +184,7 @@ impl Protocol for UpstreamProtocol {
             UpstreamProtocol::TcpMan(p) => p.supports(traffic_type),
             UpstreamProtocol::Direct(p) => p.supports(traffic_type),
             UpstreamProtocol::Socks5(p) => p.supports(traffic_type),
+            UpstreamProtocol::FireTcp(p) => p.supports(traffic_type),
         }
     }
 
@@ -196,6 +200,7 @@ impl Protocol for UpstreamProtocol {
             UpstreamProtocol::TcpMan(p) => p.new_stream(dst, initial_data, stats, fwmark).await,
             UpstreamProtocol::Direct(p) => p.new_stream(dst, initial_data, stats, fwmark).await,
             UpstreamProtocol::Socks5(p) => p.new_stream(dst, initial_data, stats, fwmark).await,
+            UpstreamProtocol::FireTcp(p) => p.new_stream(dst, initial_data, stats, fwmark).await,
         }
     }
 
@@ -211,6 +216,7 @@ impl Protocol for UpstreamProtocol {
             UpstreamProtocol::TcpMan(p) => p.new_datagram(dst, initial_data, stats, fwmark).await,
             UpstreamProtocol::Direct(p) => p.new_datagram(dst, initial_data, stats, fwmark).await,
             UpstreamProtocol::Socks5(p) => p.new_datagram(dst, initial_data, stats, fwmark).await,
+            UpstreamProtocol::FireTcp(p) => p.new_datagram(dst, initial_data, stats, fwmark).await,
         }
     }
 }

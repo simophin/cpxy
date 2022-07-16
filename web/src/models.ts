@@ -28,7 +28,12 @@ export interface HttpProxyConfig {
     ssl: boolean;
 }
 
-export type ProtocolConfig = TcpManConfig | UdpManConfig | DirectConfig | Socks5Config | HttpProxyConfig;
+export interface FireTcpConfig {
+    type: "firetcp",
+    address: string;
+}
+
+export type ProtocolConfig = TcpManConfig | UdpManConfig | DirectConfig | Socks5Config | HttpProxyConfig | FireTcpConfig;
 
 export type UpstreamConfig = {
     protocol: ProtocolConfig,

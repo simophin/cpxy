@@ -1,6 +1,8 @@
 mod cipher;
-pub mod proto;
+mod proto;
 pub mod server;
+
+pub use proto::FireTcp;
 
 #[cfg(test)]
 mod test {
