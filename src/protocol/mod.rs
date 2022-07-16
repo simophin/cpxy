@@ -9,6 +9,7 @@ use crate::counter::Counter;
 use crate::socks5::Address;
 
 pub mod direct;
+pub mod firetcp;
 pub mod http;
 pub mod socks5;
 pub mod tcpman;
