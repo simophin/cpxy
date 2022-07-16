@@ -38,14 +38,14 @@ where
         }
     }
 
-    pub fn set_establish_cipher(&mut self, cipher: EC) -> anyhow::Result<()> {
+    pub fn set_establish_cipher(&mut self, cipher: Option<EC>) -> anyhow::Result<()> {
         match &self.state {
             ReadState::Established { .. } => {
                 bail!("Connection already established, too late for cipher change")
             }
             ReadState::Init { .. } => {}
         };
-        self.establish_cipher.replace(cipher);
+        self.establish_cipher = cipher;
         Ok(())
     }
 }

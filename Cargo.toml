@@ -25,7 +25,7 @@ jni = "0"
 lazy_static = "1"
 log = "0"
 mime_guess = "2"
-rand = "0"
+rand = { version = "0", features = ["min_const_gen"] }
 regex = "1"
 rust-embed = "6"
 serde = {version = "1", features = ["derive"]}
