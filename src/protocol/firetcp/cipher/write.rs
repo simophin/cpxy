@@ -6,6 +6,8 @@ use pin_project_lite::pin_project;
 
 use anyhow::bail;
 
+use crate::utils::new_vec_uninitialised;
+
 use super::cipher_error_to_std;
 
 enum WriteState<IC, EC> {
@@ -17,7 +19,7 @@ pin_project! {
     pub struct CipherWrite<W, IC, EC> {
         #[pin]
         w: W,
-        buf: Vec<u8>,
+        buf: Box<[u8]>,
         establish_cipher: Option<EC>,
         state: WriteState<IC, EC>,
     }
@@ -32,7 +34,7 @@ where
         Self {
             w: r,
             establish_cipher: None,
-            buf: Vec::with_capacity(initial_size.max(512)),
+            buf: new_vec_uninitialised(initial_size.max(512)).into_boxed_slice(),
             state: WriteState::<_, EC>::Init {
                 bytes_left: initial_size,
                 cipher: initial_cipher,
@@ -68,11 +70,11 @@ impl<W: AsyncWrite, IC: StreamCipher + StreamCipherSeek, EC: StreamCipher + Stre
         match this.state {
             WriteState::Init { bytes_left, cipher } => {
                 let buf_to_write = buf.len().min(*bytes_left);
-                this.buf.resize(buf_to_write, 0);
+                let output = &mut this.buf[..buf_to_write];
                 cipher
-                    .apply_keystream_b2b(&buf[..buf_to_write], this.buf.as_mut())
+                    .apply_keystream_b2b(&buf[..buf_to_write], output)
                     .map_err(cipher_error_to_std)?;
-                let bytes_written = ready!(this.w.poll_write(cx, &this.buf))?;
+                let bytes_written = ready!(this.w.poll_write(cx, output))?;
                 if bytes_written < buf_to_write {
                     rewind(cipher, buf_to_write - bytes_written)?;
                 }
@@ -84,23 +86,21 @@ impl<W: AsyncWrite, IC: StreamCipher + StreamCipherSeek, EC: StreamCipher + Stre
                     };
                 }
 
-                this.buf.clear();
                 Poll::Ready(Ok(bytes_written))
             }
             WriteState::Established {
                 cipher: Some(cipher),
             } => {
-                let buf_to_write = buf.len().min(this.buf.capacity());
-                this.buf.resize(buf_to_write, 0);
+                let buf_to_write = buf.len().min(this.buf.len());
+                let output = &mut this.buf[..buf_to_write];
                 cipher
-                    .apply_keystream_b2b(&buf[..buf_to_write], this.buf.as_mut())
+                    .apply_keystream_b2b(&buf[..buf_to_write], output)
                     .map_err(cipher_error_to_std)?;
-                let bytes_written = ready!(this.w.poll_write(cx, &this.buf))?;
+                let bytes_written = ready!(this.w.poll_write(cx, output))?;
                 if bytes_written < buf_to_write {
                     rewind(cipher, buf_to_write - bytes_written)?;
                 }
 
-                this.buf.clear();
                 Poll::Ready(Ok(bytes_written))
             }
             WriteState::Established { .. } => this.w.poll_write(cx, buf),
