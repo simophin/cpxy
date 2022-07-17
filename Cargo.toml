@@ -75,10 +75,12 @@ android_logger = "0"
 
 
 [lib]
+crate-type = ["rlib", "dylib"]
 name = "proxy"
 
 # [target.'cfg(not(target_env = "msvc"))'.dependencies]
 # tikv-jemallocator = "0"
+
 
 [profile.dev]
 incremental = true

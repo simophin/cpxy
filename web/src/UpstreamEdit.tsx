@@ -179,7 +179,7 @@ const Socks5ConfigEdit = forwardRef(({ initial }: {
 });
 
 const FireTcpConfigEdit = forwardRef(({ initial }: {
-    initial?: Socks5Config,
+    initial?: FireTcpConfig,
 }, ref) => {
     const address = useEditState(initial?.address ?? '', mandatory('Address', validAddress));
 
@@ -315,7 +315,7 @@ export default function UpstreamEdit({ onChanged, onCancelled, editing, current_
 
                 {protoType === 'firetcp' && <FireTcpConfigEdit
                     ref={validatorRef}
-                    initial={existing?.protocol?.type === 'socks5' ? existing?.protocol : undefined} />}
+                    initial={existing?.protocol?.type === 'firetcp' ? existing?.protocol : undefined} />}
 
                 {(request.error) && <>
                     <p>Error saving configuration: <br />
