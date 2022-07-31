@@ -1,4 +1,5 @@
 target
 Dockerfile
-web
 android
+web/build
+web/node_modules
