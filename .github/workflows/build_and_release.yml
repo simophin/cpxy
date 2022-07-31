@@ -150,39 +150,3 @@ jobs:
         with:
           name: android_artifact
           path: app/android/app/build/outputs/apk/debug/app-debug.apk
-  release:
-    runs-on: self-hosted
-    if: startsWith(github.ref, 'refs/tags/')
-    needs: [build_linux, build_android]
-    steps:
-#    - name: Download apple artifacts
-#      uses: actions/download-artifact@v2
-#      with:
-#        name: apple_artifacts
-#    - name: Download windows artifacts
-#        uses: actions/download-artifact@v2
-#        with:
-#          name: windows_artifacts
-    - name: Download linux artifacts
-      uses: actions/download-artifact@v2
-      with:
-        name: linux_artifact
-
-    - name: Download android artifacts
-      uses: actions/download-artifact@v2
-      with:
-        name: android_artifact
-    - name: Rename artifacts
-      run: |
-        mv x86_64-unknown-linux-gnu/release/proxy proxy.linux.x86_64
-        mv aarch64-unknown-linux-gnu/release/proxy proxy.linux.aarch64
-        mv armv7-unknown-linux-gnueabihf/release/proxy proxy.linux.armv7
-        mv mips-unknown-linux-musl/release/proxy proxy.linux.mips
-#        mv x86_64-apple-darwin/release/proxy proxy.darwin.x86_64
-#        mv x86_64-pc-windows-msvc/release/proxy.exe proxy.win64.exe
-    - name: Create github release
-      uses: softprops/action-gh-release@v1
-      with:
-        files: |
-          ./proxy.*
-          ./*.apk
