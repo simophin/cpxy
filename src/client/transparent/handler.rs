@@ -101,8 +101,12 @@ impl UdpSession {
         let (tx, rx) = bounded(10);
         let dst_addr: Address = dst.into();
         let _task = spawn(async move {
-            let mut upstreams =
-                config.find_best_upstream(TrafficType::Datagram, &stats, &dst_addr)?;
+            let mut upstreams = config.find_best_upstream(
+                TrafficType::Datagram,
+                &stats,
+                &dst_addr,
+                Some(&initial_data),
+            )?;
             let mut result = Ok(());
             while let Some((name, upstream)) = upstreams.pop() {
                 log::debug!("Trying upstream {name} for UDP://{dst_addr}");

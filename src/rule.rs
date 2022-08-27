@@ -7,6 +7,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::{
     abp::{adblock_list_engine, gfw_list_engine},
+    dns::dns_host_matches,
     geoip::CountryCode,
     pattern::Pattern,
     socks5::Address,
@@ -20,6 +21,7 @@ pub enum RuleDestination {
     Network(IpNetwork),
     Port(u16),
     Domain(Pattern),
+    DnsHost(Pattern),
 }
 
 #[derive(Debug, ArgEnum, Clone, Copy, PartialEq, PartialOrd, Eq, Ord)]
@@ -80,6 +82,9 @@ impl FromStr for RuleDestination {
             }
             (Some(a), Some(p)) if a.eq_ignore_ascii_case("domain") => {
                 Ok(Self::Domain(p.parse().context("Parsing domain pattern")?))
+            }
+            (Some(a), Some(p)) if a.eq_ignore_ascii_case("dnshost") => {
+                Ok(Self::DnsHost(p.parse().context("Parsing host pattern")?))
             }
             _ => bail!("Invalid rule: {s}"),
         }
@@ -172,6 +177,7 @@ impl RuleString {
         target: &Address<'_>,
         proto: RuleProtocol,
         country: Option<CountryCode>,
+        initial_data: Option<&[u8]>,
     ) -> Option<TableExecuteResult<'a>> {
         if level > 10 {
             log::error!("Too many level of table executions");
@@ -203,6 +209,11 @@ impl RuleString {
                         _ => false,
                     },
                     RuleDestination::Port(p) => *p == target.get_port(),
+                    RuleDestination::DnsHost(p) => {
+                        target.get_port() == 53
+                            && initial_data.is_some()
+                            && dns_host_matches(initial_data.as_ref().unwrap(), p)
+                    }
                 };
 
                 if !matches_dest {
@@ -222,8 +233,14 @@ impl RuleString {
             log::debug!("Matched {rule:?}");
             match &rule.action {
                 RuleAction::Jump(table_name) => {
-                    match self.execute_table(level + 1, table_name.as_ref(), target, proto, country)
-                    {
+                    match self.execute_table(
+                        level + 1,
+                        table_name.as_ref(),
+                        target,
+                        proto,
+                        country,
+                        initial_data.clone(),
+                    ) {
                         Some(TableExecuteResult::Return) => {}
                         v => return v,
                     };
@@ -244,9 +261,10 @@ impl RuleString {
         target: &Address<'_>,
         proto: RuleProtocol,
         country: Option<CountryCode>,
+        initial_data: Option<&[u8]>,
     ) -> anyhow::Result<Option<RuleExecutionResult<'a>>> {
         // Start from main table
-        match self.execute_table(0, "main", target, proto, country) {
+        match self.execute_table(0, "main", target, proto, country, initial_data) {
             Some(TableExecuteResult::Proxy(name)) => Ok(Some(RuleExecutionResult::Proxy(name))),
             Some(TableExecuteResult::ProxyGroup(name)) => {
                 Ok(Some(RuleExecutionResult::ProxyGroup(name)))
@@ -361,6 +379,7 @@ mod tests {
                 &Default::default(),
                 RuleProtocol::Tcp,
                 Some("nz".parse().unwrap()),
+                None,
             )
             .unwrap();
 

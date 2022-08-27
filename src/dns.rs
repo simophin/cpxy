@@ -6,11 +6,13 @@ use std::{
 
 use anyhow::Context;
 use async_io::Timer;
-use dns_parser::{Packet, RData};
+use dns_parser::{Packet, QueryClass, RData};
 use lazy_static::lazy_static;
 use parking_lot::RwLock;
 use smol::spawn;
 use std::net::IpAddr;
+
+use crate::pattern::Pattern;
 
 #[derive(Debug)]
 struct Entry {
@@ -77,13 +79,13 @@ impl DnsCache {
                 _ => return Ok(()),
             };
 
-            self.address_map.write().insert(
-                addr,
-                Entry {
-                    host: answer.name.to_string().into(),
-                    created: Instant::now(),
-                },
-            );
+            let entry = Entry {
+                host: answer.name.to_string().into(),
+                created: Instant::now(),
+            };
+            log::info!("Caching DNS record: {entry:?}");
+
+            self.address_map.write().insert(addr, entry);
         }
 
         Ok(())
@@ -92,4 +94,19 @@ impl DnsCache {
     pub fn get(&self, ip: &IpAddr) -> Option<Arc<str>> {
         self.address_map.read().get(&ip).map(|e| e.host.clone())
     }
+}
+
+pub fn dns_host_matches(pkt: &[u8], pattern: &Pattern) -> bool {
+    let pkt = match Packet::parse(pkt) {
+        Ok(v) => v,
+        Err(_) => return false,
+    };
+
+    for q in pkt.questions {
+        if q.qclass == QueryClass::IN && pattern.matches(&q.qname.to_string()) {
+            return true;
+        }
+    }
+
+    false
 }

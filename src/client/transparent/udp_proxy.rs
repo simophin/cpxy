@@ -7,7 +7,10 @@ use parking_lot::Mutex;
 use smol::{channel::Receiver, spawn, Task};
 use smol_timeout::TimeoutExt;
 
-use crate::io::{get_one_off_udp_query_timeout, Timer};
+use crate::{
+    dns::DnsCache,
+    io::{get_one_off_udp_query_timeout, Timer},
+};
 
 use super::utils::bind_transparent_udp_for_sending;
 
@@ -82,6 +85,12 @@ pub async fn serve_udp_on_dgram(
 
                 timer.reset();
                 last_upstream_addr.lock().replace(from);
+
+                if from.port() == 53 {
+                    if let Err(e) = DnsCache::global().cache(&buf) {
+                        log::info!("Error caching DNS packet: {e:?}");
+                    }
+                }
 
                 let socket = sockets.get_mut(&from);
                 if socket.is_none() {

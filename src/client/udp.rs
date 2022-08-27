@@ -43,7 +43,8 @@ pub async fn serve_udp_proxy_conn(
     let pkt = rx.next().await.context("Waiting for first packet")??;
     let addr = pkt.addr().into_owned();
 
-    let mut upstreams = c.find_best_upstream(TrafficType::Datagram, stats, &addr)?;
+    let mut upstreams =
+        c.find_best_upstream(TrafficType::Datagram, stats, &addr, Some(pkt.payload()))?;
     let mut last_error = None;
 
     while let Some((name, upstream)) = upstreams.pop() {

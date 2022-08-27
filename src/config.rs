@@ -113,6 +113,7 @@ impl ClientConfig {
         t: TrafficType,
         stats: &ClientStatistics,
         target: &Address,
+        initial_data: Option<&[u8]>,
     ) -> anyhow::Result<Vec<(&str, &UpstreamConfig)>> {
         let country_code = match target {
             Address::IP(addr) => find_geoip(&addr.ip()),
@@ -130,6 +131,7 @@ impl ClientConfig {
                 TrafficType::Stream => RuleProtocol::Tcp,
             },
             country_code,
+            initial_data,
         )?;
 
         let mut upstreams: Vec<(&str, &UpstreamConfig, usize)> = match action {
