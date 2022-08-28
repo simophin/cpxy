@@ -204,6 +204,7 @@ pub enum RuleExecutionResult<'a> {
     Reject,
 }
 
+#[derive(Debug)]
 pub enum PacketDestination<'a> {
     IP {
         addr: SocketAddr,

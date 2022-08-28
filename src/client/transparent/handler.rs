@@ -2,6 +2,7 @@ use std::{collections::HashMap, net::SocketAddr, sync::Arc, time::Duration};
 
 use crate::{
     config::ClientConfig,
+    decision_log,
     protocol::{Protocol, TrafficType},
     socks5::Address,
 };
@@ -110,6 +111,10 @@ impl UdpSession {
             let mut result = Ok(());
             while let Some((name, upstream)) = upstreams.pop() {
                 log::debug!("Trying upstream {name} for UDP://{dst_addr}");
+                decision_log::print(
+                    "tproxy",
+                    format!("Trying upstream {name} for UDP://{dst_addr}"),
+                );
                 let (sink, stream) = match upstream
                     .protocol
                     .new_datagram(
@@ -123,12 +128,17 @@ impl UdpSession {
                 {
                     Ok(v) => v,
                     Err(e) => {
+                        decision_log::print(
+                            "tproxy",
+                            format!("Error using upstream {name} for UDP://{dst_addr}: {e:?}"),
+                        );
                         result = Err(e.into());
                         continue;
                     }
                 };
 
                 log::info!("Serving UDP://{dst} on upstream: {name}");
+                decision_log::print("tproxy", format!("Serving UDP://{dst} on upstream: {name}"));
                 result = super::udp_proxy::serve_udp_on_dgram(
                     sink.with(|(buf, addr)| ready(anyhow::Result::Ok((buf, Address::from(addr))))),
                     stream.filter_map(|item| {

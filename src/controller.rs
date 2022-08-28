@@ -3,7 +3,9 @@ use crate::broadcast::bounded;
 use crate::buf::RWBuffer;
 use crate::client::{run_client, ClientStatistics};
 use crate::config::{ClientConfig, UpstreamConfig};
+use crate::decision_log;
 use crate::http::{parse_request, write_http_response};
+use crate::http_path::HttpPath;
 use crate::socks5::Address;
 use anyhow::{anyhow, Context};
 use async_broadcast::Sender;
@@ -14,6 +16,7 @@ use rust_embed::RustEmbed;
 use serde::{Deserialize, Serialize};
 use smol::fs::File;
 use smol::spawn;
+use std::collections::HashSet;
 use std::path::PathBuf;
 use std::sync::Arc;
 
@@ -164,23 +167,46 @@ impl Controller {
     async fn dispatch(&mut self, r: impl AsyncRead + Unpin + Send + Sync) -> HttpResult<Response> {
         match parse_request(r, RWBuffer::new_vec_uninitialised(512)).await {
             Ok(mut r) => {
+                let path: HttpPath = r.path.parse()?;
                 log::debug!("Dispatching {} {}", r.method, r.path);
-                match (r.method.as_ref(), r.path.as_ref()) {
+                match (r.method.as_ref(), path.path.as_ref()) {
                     ("OPTIONS", _) => Ok(Response::Empty),
-                    ("GET", p) if p.starts_with("/api/config") => {
-                        self.get_config().and_then(json_response)
-                    }
-                    ("POST", p) if p.starts_with("/api/config") => self
+                    ("GET", "/api/config") => self.get_config().and_then(json_response),
+                    ("POST", "/api/config") => self
                         .set_basic_config(r.body_json().await?)
                         .await
                         .and_then(json_response),
-                    ("GET", p) if p.starts_with("/api/stats") => {
-                        self.get_stats().and_then(json_response)
+                    ("GET", "/api/stats") => self.get_stats().and_then(json_response),
+                    ("GET", "/api/logs") => {
+                        let start = match path.get("start") {
+                            Some(v) => {
+                                Some(v.parse().with_context(|| format!("Parsing start {v}"))?)
+                            }
+                            None => None,
+                        };
+                        let categories: HashSet<String> = path
+                            .queries
+                            .into_iter()
+                            .filter_map(|(name, value)| {
+                                if name == "category[]" {
+                                    Some(value)
+                                } else {
+                                    None
+                                }
+                            })
+                            .collect();
+
+                        json_response(decision_log::read_log_buffer(
+                            start,
+                            if categories.is_empty() {
+                                None
+                            } else {
+                                Some(categories)
+                            },
+                        ))
                     }
-                    (m, p)
-                        if p.starts_with("/api/gfwlist") || p.starts_with("/api/adblocklist") =>
-                    {
-                        let engine = if p.contains("gfwlist") {
+                    (m, "/api/gfwlist") | (m, "/api/adblocklist") => {
+                        let engine = if path.path.contains("gfwlist") {
                             gfw_list_engine()
                         } else {
                             adblock_list_engine()
@@ -225,11 +251,11 @@ impl Controller {
                             _ => Err(ErrorResponse::NotFound(original_p.to_string())),
                         }
                     }
-                    ("POST", p) if p.starts_with("/api/upstream") => self
+                    ("POST", "/api/upstream") => self
                         .update_upstreams(r.body_json().await?)
                         .await
                         .and_then(json_response),
-                    ("DELETE", p) if p.starts_with("/api/upstream") => self
+                    ("DELETE", "/api/upstream") => self
                         .delete_upstreams(r.body_json().await?)
                         .await
                         .and_then(json_response),
