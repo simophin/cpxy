@@ -6,7 +6,7 @@ pub use proto::FireTcp;
 
 #[cfg(test)]
 mod test {
-    use smol::future::block_on;
+    use smol::{future::block_on, spawn};
 
     use crate::{
         protocol::test::{test_protocol_http, test_protocol_tcp},
@@ -19,7 +19,7 @@ mod test {
     fn protocol_works() {
         block_on(async move {
             let (server, server_addr) = create_tcp_server().await;
-            let _task = run_server(server);
+            let _task = spawn(run_server(server));
 
             let protocol = FireTcp::new(server_addr.into());
 

@@ -7,12 +7,13 @@ use std::net::{IpAddr, Ipv4Addr, SocketAddr};
 use std::time::UNIX_EPOCH;
 
 use crate::client::ClientStatistics;
+use crate::dns::DnsCache;
 use crate::geoip::find_geoip;
 use crate::protocol::{
     direct, firetcp, socks5, tcpman, udpman, AsyncStream, BoxedSink, BoxedStream, Protocol, Stats,
     TrafficType,
 };
-use crate::rule::{RuleExecutionResult, RuleProtocol, RuleString};
+use crate::rule::{PacketDestination, RuleExecutionResult, RuleProtocol, RuleString};
 use crate::socks5::Address;
 
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
@@ -115,22 +116,25 @@ impl ClientConfig {
         target: &Address,
         initial_data: Option<&[u8]>,
     ) -> anyhow::Result<Vec<(&str, &UpstreamConfig)>> {
-        let country_code = match target {
-            Address::IP(addr) => find_geoip(&addr.ip()),
-            _ => None,
+        let pkt_dst = match target {
+            Address::IP(addr) => PacketDestination::IP {
+                addr: addr.clone(),
+                country_code: find_geoip(&addr.ip()),
+                resolved_host: DnsCache::global().get(&addr.ip()).into_iter().collect(),
+            },
+            Address::Name { host, port } => PacketDestination::Domain {
+                hostname: host.as_ref(),
+                port: *port,
+                resolved_ips: Default::default(),
+            },
         };
 
-        if let Some(c) = &country_code {
-            log::debug!("Got country code {c} for {target}");
-        }
-
         let action = self.traffic_rules.execute_rules(
-            target,
+            &pkt_dst,
             match t {
                 TrafficType::Datagram => RuleProtocol::Udp,
                 TrafficType::Stream => RuleProtocol::Tcp,
             },
-            country_code,
             initial_data,
         )?;
 
