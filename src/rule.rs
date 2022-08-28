@@ -1,4 +1,11 @@
-use std::{collections::HashMap, fmt::Debug, str::FromStr, sync::Arc};
+use std::{
+    borrow::Cow,
+    collections::HashMap,
+    fmt::Debug,
+    net::{IpAddr, SocketAddr},
+    str::FromStr,
+    sync::Arc,
+};
 
 use anyhow::{bail, Context};
 use clap::{ArgEnum, Parser};
@@ -6,12 +13,19 @@ use ipnetwork::IpNetwork;
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    abp::{adblock_list_engine, gfw_list_engine},
-    dns::dns_host_matches,
+    abp::{adblock_list_engine, gfw_list_engine, ABPEngine},
+    dns::dns_get_host_names,
     geoip::CountryCode,
     pattern::Pattern,
     socks5::Address,
 };
+
+#[derive(Debug, PartialEq, Eq, Clone)]
+pub enum DnsHostMatch {
+    Pattern(Pattern),
+    GfwList,
+    AdBlockList,
+}
 
 #[derive(Debug, PartialEq, Eq, Clone)]
 pub enum RuleDestination {
@@ -21,7 +35,7 @@ pub enum RuleDestination {
     Network(IpNetwork),
     Port(u16),
     Domain(Pattern),
-    DnsHost(Pattern),
+    DnsHost(DnsHostMatch),
 }
 
 #[derive(Debug, ArgEnum, Clone, Copy, PartialEq, PartialOrd, Eq, Ord)]
@@ -60,33 +74,54 @@ impl FromStr for RuleDestination {
     type Err = anyhow::Error;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
-        let mut splits = s.split(':');
-        match (splits.next(), splits.next()) {
-            (Some(a), None) if a.eq_ignore_ascii_case("gfwlist") => Ok(Self::GfwList),
-            (Some(a), None) if a.eq_ignore_ascii_case("adblocklist") => Ok(Self::AdBlockList),
-            (Some(a), Some(code)) if a.eq_ignore_ascii_case("geoip") => {
-                let c: CountryCode = code
-                    .parse()
-                    .with_context(|| format!("Parsing country code: {code}"))?;
-                Ok(Self::GeoIP(c))
+        let (name, args) = s.split_once(':').unwrap_or((s, ""));
+        match name {
+            "gfwlist" => {
+                if !args.is_empty() {
+                    bail!("{name} doesn't take any argument");
+                }
+                Ok(Self::GfwList)
             }
-            (Some(a), Some(network)) if a.eq_ignore_ascii_case("network") => {
-                let n: IpNetwork = network
-                    .parse()
-                    .with_context(|| format!("Parsing network: {network}"))?;
-                Ok(Self::Network(n))
+            "adblocklist" => {
+                if !args.is_empty() {
+                    bail!("{name} doesn't take any argument");
+                }
+                Ok(Self::AdBlockList)
             }
-            (Some(a), Some(p)) if a.eq_ignore_ascii_case("port") => {
-                let port: u16 = p.parse().context("Parsing port")?;
-                Ok(Self::Port(port))
+            "geoip" => {
+                Ok(Self::GeoIP(args.parse().with_context(|| {
+                    format!("Parsing args into country code: {args}")
+                })?))
             }
-            (Some(a), Some(p)) if a.eq_ignore_ascii_case("domain") => {
-                Ok(Self::Domain(p.parse().context("Parsing domain pattern")?))
+            "network" => {
+                Ok(Self::Network(args.parse().with_context(|| {
+                    format!("Parsing args into network: {args}")
+                })?))
             }
-            (Some(a), Some(p)) if a.eq_ignore_ascii_case("dnshost") => {
-                Ok(Self::DnsHost(p.parse().context("Parsing host pattern")?))
+            "port" => {
+                Ok(Self::Port(args.parse().with_context(|| {
+                    format!("Parsing args into port: {args}")
+                })?))
             }
-            _ => bail!("Invalid rule: {s}"),
+            "domain" => {
+                Ok(Self::Domain(args.parse().with_context(|| {
+                    format!("Parsing args into domain: {args}")
+                })?))
+            }
+            "dnshost" => {
+                let (arg1, arg2) = args.split_once(':').unwrap_or((args, ""));
+                Ok(Self::DnsHost(match (arg1, arg2) {
+                    ("gfwlist", "") => DnsHostMatch::GfwList,
+                    ("adblocklist", "") => DnsHostMatch::AdBlockList,
+                    ("matches", pattern) => DnsHostMatch::Pattern(
+                        pattern
+                            .parse()
+                            .with_context(|| format!("Parsing pattern: {pattern}"))?,
+                    ),
+                    _ => bail!("Unknown dnshost args: {args}"),
+                }))
+            }
+            _ => bail!("Unknown rule: {s}"),
         }
     }
 }
@@ -169,14 +204,26 @@ pub enum RuleExecutionResult<'a> {
     Reject,
 }
 
+pub enum PacketDestination<'a> {
+    IP {
+        addr: SocketAddr,
+        country_code: Option<CountryCode>,
+        resolved_host: Vec<Arc<str>>,
+    },
+    Domain {
+        hostname: &'a str,
+        port: u16,
+        resolved_ips: Vec<(Option<CountryCode>, IpAddr)>,
+    },
+}
+
 impl RuleString {
     fn execute_table<'a>(
         &'a self,
         level: usize,
         table_name: &str,
-        target: &Address<'_>,
+        target: &PacketDestination<'_>,
         proto: RuleProtocol,
-        country: Option<CountryCode>,
         initial_data: Option<&[u8]>,
     ) -> Option<TableExecuteResult<'a>> {
         if level > 10 {
@@ -196,25 +243,7 @@ impl RuleString {
             let mut matches_dest = true;
             for dest in &rule.dest {
                 // Match dest
-                matches_dest &= match dest {
-                    RuleDestination::GfwList => gfw_list_engine().matches(target),
-                    RuleDestination::AdBlockList => adblock_list_engine().matches(target),
-                    RuleDestination::GeoIP(c) => country == Some(*c),
-                    RuleDestination::Network(n) => match target {
-                        Address::IP(ip) => n.contains(ip.ip()),
-                        _ => false,
-                    },
-                    RuleDestination::Domain(p) => match target {
-                        Address::Name { host, .. } => p.matches(host.as_ref()),
-                        _ => false,
-                    },
-                    RuleDestination::Port(p) => *p == target.get_port(),
-                    RuleDestination::DnsHost(p) => {
-                        target.get_port() == 53
-                            && initial_data.is_some()
-                            && dns_host_matches(initial_data.as_ref().unwrap(), p)
-                    }
-                };
+                matches_dest &= dest.matches(target, initial_data);
 
                 if !matches_dest {
                     break;
@@ -238,7 +267,6 @@ impl RuleString {
                         table_name.as_ref(),
                         target,
                         proto,
-                        country,
                         initial_data.clone(),
                     ) {
                         Some(TableExecuteResult::Return) => {}
@@ -258,19 +286,112 @@ impl RuleString {
 
     pub fn execute_rules<'a>(
         &'a self,
-        target: &Address<'_>,
+        target: &PacketDestination<'_>,
         proto: RuleProtocol,
-        country: Option<CountryCode>,
         initial_data: Option<&[u8]>,
     ) -> anyhow::Result<Option<RuleExecutionResult<'a>>> {
         // Start from main table
-        match self.execute_table(0, "main", target, proto, country, initial_data) {
+        match self.execute_table(0, "main", target, proto, initial_data) {
             Some(TableExecuteResult::Proxy(name)) => Ok(Some(RuleExecutionResult::Proxy(name))),
             Some(TableExecuteResult::ProxyGroup(name)) => {
                 Ok(Some(RuleExecutionResult::ProxyGroup(name)))
             }
             Some(TableExecuteResult::Reject) => Ok(Some(RuleExecutionResult::Reject)),
             None | Some(TableExecuteResult::Return) => Ok(None),
+        }
+    }
+}
+
+impl RuleDestination {
+    fn matches(&self, target: &PacketDestination<'_>, initial_data: Option<&[u8]>) -> bool {
+        match (self, target) {
+            (RuleDestination::AdBlockList, pd) => {
+                Self::matches_abp_engine(adblock_list_engine(), pd)
+            }
+            (RuleDestination::GfwList, pd) => Self::matches_abp_engine(gfw_list_engine(), pd),
+            (RuleDestination::GeoIP(c), PacketDestination::IP { country_code, .. }) => {
+                country_code.as_ref() == Some(c)
+            }
+            (RuleDestination::GeoIP(c), PacketDestination::Domain { resolved_ips, .. }) => {
+                resolved_ips
+                    .iter()
+                    .find(|(code, _)| code.as_ref() == Some(c))
+                    .is_some()
+            }
+            (RuleDestination::Network(n), PacketDestination::IP { addr, .. }) => {
+                n.contains(addr.ip())
+            }
+            (RuleDestination::Network(n), PacketDestination::Domain { resolved_ips, .. }) => {
+                resolved_ips
+                    .iter()
+                    .find(|(_, addr)| n.contains(*addr))
+                    .is_some()
+            }
+            (RuleDestination::Domain(p), PacketDestination::Domain { hostname, .. }) => {
+                p.matches(*hostname)
+            }
+            (RuleDestination::Domain(p), PacketDestination::IP { resolved_host, .. }) => {
+                resolved_host
+                    .iter()
+                    .find(|h| p.matches(h.as_ref()))
+                    .is_some()
+            }
+            (RuleDestination::Port(p), pd) => *p == pd.port(),
+            (RuleDestination::DnsHost(p), pd) => {
+                pd.port() == 53
+                    && initial_data.is_some()
+                    && dns_get_host_names(initial_data.unwrap())
+                        .and_then(|mut host_names| host_names.position(|h| p.matches(h.as_str())))
+                        .is_some()
+            }
+        }
+    }
+
+    fn matches_abp_engine(engine: &ABPEngine, target: &PacketDestination<'_>) -> bool {
+        match target {
+            PacketDestination::Domain { hostname, port, .. } => engine.matches(&Address::Name {
+                host: Cow::Borrowed(*hostname),
+                port: *port,
+            }),
+            PacketDestination::IP {
+                addr,
+                resolved_host,
+                ..
+            } => resolved_host
+                .iter()
+                .filter(|h| {
+                    engine.matches(&Address::Name {
+                        host: Cow::Borrowed(h.as_ref()),
+                        port: addr.port(),
+                    })
+                })
+                .next()
+                .is_some(),
+        }
+    }
+}
+
+impl<'a> PacketDestination<'a> {
+    pub fn port(&self) -> u16 {
+        match self {
+            Self::Domain { port, .. } => *port,
+            Self::IP { addr, .. } => addr.port(),
+        }
+    }
+}
+
+impl DnsHostMatch {
+    fn matches(&self, s: &str) -> bool {
+        match self {
+            DnsHostMatch::Pattern(p) => p.matches(s),
+            DnsHostMatch::GfwList => gfw_list_engine().matches(&Address::Name {
+                host: Cow::Borrowed(s),
+                port: 80,
+            }),
+            DnsHostMatch::AdBlockList => adblock_list_engine().matches(&Address::Name {
+                host: Cow::Borrowed(s),
+                port: 80,
+            }),
         }
     }
 }
@@ -376,9 +497,12 @@ mod tests {
 
         let action = rules
             .execute_rules(
-                &Default::default(),
+                &PacketDestination::IP {
+                    addr: "1.2.3.4:443".parse().unwrap(),
+                    country_code: Some("nz".parse().unwrap()),
+                    resolved_host: Default::default(),
+                },
                 RuleProtocol::Tcp,
-                Some("nz".parse().unwrap()),
                 None,
             )
             .unwrap();

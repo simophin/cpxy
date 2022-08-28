@@ -12,8 +12,6 @@ use parking_lot::RwLock;
 use smol::spawn;
 use std::net::IpAddr;
 
-use crate::pattern::Pattern;
-
 #[derive(Debug)]
 struct Entry {
     host: Arc<str>,
@@ -96,17 +94,18 @@ impl DnsCache {
     }
 }
 
-pub fn dns_host_matches(pkt: &[u8], pattern: &Pattern) -> bool {
-    let pkt = match Packet::parse(pkt) {
-        Ok(v) => v,
-        Err(_) => return false,
-    };
-
-    for q in pkt.questions {
-        if q.qclass == QueryClass::IN && pattern.matches(&q.qname.to_string()) {
-            return true;
-        }
-    }
-
-    false
+pub fn dns_get_host_names<'a>(pkt: &'a [u8]) -> Option<impl Iterator<Item = String> + 'a> {
+    Some(
+        Packet::parse(pkt)
+            .ok()?
+            .questions
+            .into_iter()
+            .map_while(|q| {
+                if q.qclass == QueryClass::IN {
+                    Some(q.qname.to_string())
+                } else {
+                    None
+                }
+            }),
+    )
 }
