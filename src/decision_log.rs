@@ -24,6 +24,7 @@ struct LogBufferRead {
     buf: &'static LogBuffer,
     start_seq_exclusive: Option<u64>,
     categories: Option<HashSet<String>>,
+    earliest_exclusive: Option<DateTime<Utc>>,
 }
 
 fn log_buffer() -> &'static LogBuffer {
@@ -36,11 +37,13 @@ fn log_buffer() -> &'static LogBuffer {
 pub fn read_log_buffer(
     start_seq_exclusive: Option<u64>,
     categories: Option<HashSet<String>>,
+    earliest_exclusive: Option<DateTime<Utc>>,
 ) -> impl Serialize + 'static {
     LogBufferRead {
         buf: log_buffer(),
         start_seq_exclusive,
         categories,
+        earliest_exclusive,
     }
 }
 
@@ -53,7 +56,7 @@ pub fn print(category: &'static str, args: impl ToString) {
     guard.push_back(LogEntry {
         category,
         seq,
-        time: Default::default(),
+        time: std::time::SystemTime::now().into(),
         msg,
     });
     while guard.len() > MAX_LOG_ENTRY {
@@ -67,7 +70,12 @@ impl Serialize for LogBufferRead {
         S: serde::Serializer,
     {
         serializer.collect_seq(self.buf.queue.read().iter().filter(
-            |LogEntry { category, seq, .. }| {
+            |LogEntry {
+                 category,
+                 seq,
+                 time,
+                 ..
+             }| {
                 match &self.categories {
                     Some(values) if !values.contains(*category) => return false,
                     _ => {}
@@ -75,6 +83,11 @@ impl Serialize for LogBufferRead {
 
                 match &self.start_seq_exclusive {
                     Some(s) if seq <= s => return false,
+                    _ => {}
+                }
+
+                match &self.earliest_exclusive {
+                    Some(d) if time <= d => return false,
                     _ => {}
                 }
 

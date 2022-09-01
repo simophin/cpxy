@@ -102,6 +102,7 @@ impl Controller {
             .with_context(|| format!("Flushing file: {:?}", self.config_file))?;
 
         log::info!("Config written successfully to {:?}", self.config_file);
+        decision_log::print("controller", format!("Config {config:?} applied"));
         self.current = (config.clone(), stats.clone());
         let _ = self.broadcaster.broadcast((config.clone(), stats)).await;
         Ok(())
@@ -184,6 +185,14 @@ impl Controller {
                             }
                             None => None,
                         };
+
+                        let earliest = match path.get("earliest") {
+                            Some(v) => {
+                                Some(v.parse().with_context(|| format!("Parsing start {v}"))?)
+                            }
+                            None => None,
+                        };
+
                         let categories: HashSet<String> = path
                             .queries
                             .into_iter()
@@ -203,6 +212,7 @@ impl Controller {
                             } else {
                                 Some(categories)
                             },
+                            earliest,
                         ))
                     }
                     (m, "/api/gfwlist") | (m, "/api/adblocklist") => {
@@ -327,6 +337,8 @@ pub async fn run_controller(
     } else {
         Default::default()
     };
+
+    decision_log::print("controller", format!("Config {config:?} loaded"));
 
     let stats = Arc::new(ClientStatistics::new(&config));
     let (broadcaster, rx) = bounded(Some((config.clone(), stats.clone())), 1);
