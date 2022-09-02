@@ -3,7 +3,6 @@ use crate::broadcast::bounded;
 use crate::buf::RWBuffer;
 use crate::client::{run_client, ClientStatistics};
 use crate::config::{ClientConfig, UpstreamConfig};
-use crate::decision_log;
 use crate::http::{parse_request, write_http_response};
 use crate::http_path::HttpPath;
 use crate::socks5::Address;
@@ -16,7 +15,6 @@ use rust_embed::RustEmbed;
 use serde::{Deserialize, Serialize};
 use smol::fs::File;
 use smol::spawn;
-use std::collections::HashSet;
 use std::path::PathBuf;
 use std::sync::Arc;
 
@@ -102,7 +100,6 @@ impl Controller {
             .with_context(|| format!("Flushing file: {:?}", self.config_file))?;
 
         log::info!("Config written successfully to {:?}", self.config_file);
-        decision_log::print("controller", format!("Config {config:?} applied"));
         self.current = (config.clone(), stats.clone());
         let _ = self.broadcaster.broadcast((config.clone(), stats)).await;
         Ok(())
@@ -178,43 +175,6 @@ impl Controller {
                         .await
                         .and_then(json_response),
                     ("GET", "/api/stats") => self.get_stats().and_then(json_response),
-                    ("GET", "/api/logs") => {
-                        let start = match path.get("start") {
-                            Some(v) => {
-                                Some(v.parse().with_context(|| format!("Parsing start {v}"))?)
-                            }
-                            None => None,
-                        };
-
-                        let earliest = match path.get("earliest") {
-                            Some(v) => {
-                                Some(v.parse().with_context(|| format!("Parsing start {v}"))?)
-                            }
-                            None => None,
-                        };
-
-                        let categories: HashSet<String> = path
-                            .queries
-                            .into_iter()
-                            .filter_map(|(name, value)| {
-                                if name == "category[]" {
-                                    Some(value)
-                                } else {
-                                    None
-                                }
-                            })
-                            .collect();
-
-                        json_response(decision_log::read_log_buffer(
-                            start,
-                            if categories.is_empty() {
-                                None
-                            } else {
-                                Some(categories)
-                            },
-                            earliest,
-                        ))
-                    }
                     (m, "/api/gfwlist") | (m, "/api/adblocklist") => {
                         let engine = if path.path.contains("gfwlist") {
                             gfw_list_engine()
@@ -337,8 +297,6 @@ pub async fn run_controller(
     } else {
         Default::default()
     };
-
-    decision_log::print("controller", format!("Config {config:?} loaded"));
 
     let stats = Arc::new(ClientStatistics::new(&config));
     let (broadcaster, rx) = bounded(Some((config.clone(), stats.clone())), 1);

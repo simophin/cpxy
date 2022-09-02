@@ -53,15 +53,3 @@ impl FromStr for HttpPath {
         })
     }
 }
-
-impl HttpPath {
-    pub fn get(&self, needle: &str) -> Option<&str> {
-        self.queries.iter().find_map(|(name, value)| {
-            if name.as_str() == needle {
-                Some(value.as_ref())
-            } else {
-                None
-            }
-        })
-    }
-}

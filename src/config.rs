@@ -7,7 +7,6 @@ use std::net::{IpAddr, Ipv4Addr, SocketAddr};
 use std::time::UNIX_EPOCH;
 
 use crate::client::ClientStatistics;
-use crate::decision_log;
 use crate::dns::DnsCache;
 use crate::geoip::find_geoip;
 use crate::protocol::{
@@ -180,10 +179,6 @@ impl ClientConfig {
 
         upstreams.sort_by_key(|(_, _, score)| *score);
         let result = upstreams.into_iter().map(|(n, c, _)| (n, c)).collect();
-        decision_log::print(
-            "routing",
-            format!("Selected {action:?} for {pkt_dst:?}. Upstreams: {result:?}"),
-        );
         Ok(result)
     }
 }

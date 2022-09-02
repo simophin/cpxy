@@ -2,7 +2,6 @@ mod broadcast;
 mod buf;
 mod client;
 mod counter;
-mod decision_log;
 mod dns;
 mod fetch;
 mod handshake;
