@@ -14,5 +14,5 @@ for ((i=0; i<${#configs[@]}; )); do
   target=${configs[i++]}
   echo Buildling $target
   rm -rf target/release
-  cross build --package cjk-proxy --release --target=$target
+  cross build --package cpxy --release --target=$target
 done

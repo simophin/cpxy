@@ -7,16 +7,16 @@
         {
             "type": "lldb",
             "request": "launch",
-            "name": "Debug unit tests in library 'cjk-proxy'",
+            "name": "Debug unit tests in library 'cpxy'",
             "cargo": {
                 "args": [
                     "test",
                     "--no-run",
                     "--lib",
-                    "--package=cjk-proxy"
+                    "--package=cpxy"
                 ],
                 "filter": {
-                    "name": "cjk-proxy",
+                    "name": "cpxy",
                     "kind": "lib"
                 }
             },
@@ -31,7 +31,7 @@
                 "args": [
                     "build",
                     "--bin=proxy",
-                    "--package=cjk-proxy"
+                    "--package=cpxy"
                 ],
                 "filter": {
                     "name": "proxy",
@@ -55,7 +55,7 @@
                 "args": [
                     "build",
                     "--bin=proxy",
-                    "--package=cjk-proxy"
+                    "--package=cpxy"
                 ],
                 "filter": {
                     "name": "proxy",
@@ -80,7 +80,7 @@
                 "args": [
                     "build",
                     "--bin=proxy",
-                    "--package=cjk-proxy"
+                    "--package=cpxy"
                 ],
                 "filter": {
                     "name": "proxy",
@@ -105,7 +105,7 @@
                     "test",
                     "--no-run",
                     "--bin=proxy",
-                    "--package=cjk-proxy"
+                    "--package=cpxy"
                 ],
                 "filter": {
                     "name": "proxy",
@@ -123,7 +123,7 @@
                 "args": [
                     "build",
                     "--bin=vpn",
-                    "--package=cjk-proxy"
+                    "--package=cpxy"
                 ],
                 "filter": {
                     "name": "vpn",

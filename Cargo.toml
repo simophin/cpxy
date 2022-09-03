@@ -1,6 +1,6 @@
 [package]
 edition = "2021"
-name = "cjk-proxy"
+name = "cpxy"
 version = "0.1.0"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
@@ -75,7 +75,7 @@ android_logger = "0"
 
 [lib]
 crate-type = ["rlib", "dylib"]
-name = "proxy"
+name = "cpxy"
 
 # [target.'cfg(not(target_env = "msvc"))'.dependencies]
 # tikv-jemallocator = "0"

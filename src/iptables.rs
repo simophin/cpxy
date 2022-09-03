@@ -3,7 +3,7 @@ mod linux {
     use anyhow::{anyhow, Context};
     use std::{error::Error, process::Command};
 
-    const CHAIN_NAME: &str = "cjk-proxy";
+    const CHAIN_NAME: &str = "cpxy";
     const TPROXY_MARK: u32 = 121;
     const ROUTING_TABLE_NUMBER: u32 = 99;
 

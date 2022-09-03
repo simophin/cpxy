@@ -1,11 +1,11 @@
 use anyhow::Context;
 use async_net::UdpSocket;
 use clap::{Parser, Subcommand};
+use cpxy::controller::run_controller;
+use cpxy::io::bind_tcp;
+use cpxy::protocol::{firetcp, tcpman, udpman};
+use cpxy::socks5::Address;
 use futures::{select, FutureExt};
-use proxy::controller::run_controller;
-use proxy::io::bind_tcp;
-use proxy::protocol::{firetcp, tcpman, udpman};
-use proxy::socks5::Address;
 use std::net::{IpAddr, SocketAddr};
 use std::path::Path;
 

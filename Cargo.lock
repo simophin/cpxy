@@ -405,68 +405,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "cjk-proxy"
-version = "0.1.0"
-dependencies = [
- "adblock",
- "android_logger",
- "anyhow",
- "async-broadcast",
- "async-io",
- "async-native-tls",
- "async-net",
- "async-stream",
- "async-trait",
- "atomic",
- "base64",
- "bit",
- "byteorder",
- "bytes",
- "cc",
- "chacha20",
- "chrono",
- "cipher",
- "clap",
- "derive_more",
- "dirs",
- "dns-parser",
- "either",
- "enum-primitive-derive",
- "env_logger",
- "futures",
- "futures-util",
- "httparse",
- "interfaces",
- "ipnetwork",
- "iptables",
- "jni",
- "lazy_static 1.4.0",
- "libc",
- "log 0.4.17",
- "maplit",
- "mime_guess",
- "nix",
- "num-traits",
- "orion",
- "parking_lot",
- "pin-project-lite 0.2.9",
- "rand",
- "regex 1.6.0",
- "rust-embed",
- "scopeguard",
- "serde",
- "serde_json",
- "serde_with",
- "serde_yaml",
- "siphasher",
- "smallvec",
- "smol",
- "smol-timeout",
- "urlencoding",
- "uuid",
-]
-
-[[package]]
 name = "clap"
 version = "3.2.20"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -553,6 +491,68 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "dc948ebb96241bb40ab73effeb80d9f93afaad49359d159a5e61be51619fe813"
 dependencies = [
  "libc",
+]
+
+[[package]]
+name = "cpxy"
+version = "0.1.0"
+dependencies = [
+ "adblock",
+ "android_logger",
+ "anyhow",
+ "async-broadcast",
+ "async-io",
+ "async-native-tls",
+ "async-net",
+ "async-stream",
+ "async-trait",
+ "atomic",
+ "base64",
+ "bit",
+ "byteorder",
+ "bytes",
+ "cc",
+ "chacha20",
+ "chrono",
+ "cipher",
+ "clap",
+ "derive_more",
+ "dirs",
+ "dns-parser",
+ "either",
+ "enum-primitive-derive",
+ "env_logger",
+ "futures",
+ "futures-util",
+ "httparse",
+ "interfaces",
+ "ipnetwork",
+ "iptables",
+ "jni",
+ "lazy_static 1.4.0",
+ "libc",
+ "log 0.4.17",
+ "maplit",
+ "mime_guess",
+ "nix",
+ "num-traits",
+ "orion",
+ "parking_lot",
+ "pin-project-lite 0.2.9",
+ "rand",
+ "regex 1.6.0",
+ "rust-embed",
+ "scopeguard",
+ "serde",
+ "serde_json",
+ "serde_with",
+ "serde_yaml",
+ "siphasher",
+ "smallvec",
+ "smol",
+ "smol-timeout",
+ "urlencoding",
+ "uuid",
 ]
 
 [[package]]
@@ -1237,9 +1237,9 @@ dependencies = [
 
 [[package]]
 name = "once_cell"
-version = "1.13.1"
+version = "1.14.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "074864da206b4973b84eb91683020dbefd6a8c3f0f38e054d93954e891935e4e"
+checksum = "2f7254b99e31cad77da24b08ebf628882739a608578bb1bcdfc1f9c21260d7c0"
 
 [[package]]
 name = "opaque-debug"
@@ -1776,9 +1776,9 @@ dependencies = [
 
 [[package]]
 name = "serde_yaml"
-version = "0.9.10"
+version = "0.9.11"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "7a09f551ccc8210268ef848f0bab37b306e87b85b2e017b899e7fb815f5aed62"
+checksum = "89f31df3f50926cdf2855da5fd8812295c34752cb20438dae42a67f79e021ac3"
 dependencies = [
  "indexmap",
  "itoa",
@@ -2075,9 +2075,9 @@ dependencies = [
 
 [[package]]
 name = "urlencoding"
-version = "2.1.0"
+version = "2.1.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "68b90931029ab9b034b300b797048cf23723400aa757e8a2bfb9d748102f9821"
+checksum = "e8db7427f936968176eaa7cdf81b7f98b980b18495ec28f1b5791ac3bfe3eea9"
 
 [[package]]
 name = "utf8-ranges"
