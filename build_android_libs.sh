@@ -17,5 +17,5 @@ for ((i=0; i<${#configs[@]}; )); do
   echo "Building ${target}"
   cross build --package cpxy --release --lib --target $target || exit 1
   mkdir -pv $LIBS_ROOT/$android_target
-  cp -v target/$target/release/libproxy.so $LIBS_ROOT/$android_target/
+  cp -v target/$target/release/libcpxy.so $LIBS_ROOT/$android_target/
 done

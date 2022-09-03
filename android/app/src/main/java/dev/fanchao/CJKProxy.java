@@ -10,6 +10,6 @@ public class CJKProxy {
     public native static void stop(long instance);
 
     static {
-        System.loadLibrary("proxy");
+        System.loadLibrary("cpxy");
     }
 }
