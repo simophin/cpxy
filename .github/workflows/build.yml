@@ -80,7 +80,7 @@ jobs:
           path: web/build
 
       - name: Build Linux app
-        run: cross --release --target=${{ matrix.target }}
+        run: cross build --release --target=${{ matrix.target }}
 
       - name: Rename artifact
         run: target/${{ matrix.target }}/release/cpxy cpxy.${{ matrix.target }}
