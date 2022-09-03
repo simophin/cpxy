@@ -2,7 +2,7 @@ FROM node:lts
 RUN mkdir /app
 
 COPY ./web /app/
-RUN cd /app && yarn install && yarn build
+RUN cd /app && yarn install --frozen-lockfile --network-timeout 1000000 && yarn build
 
 FROM rust
 
