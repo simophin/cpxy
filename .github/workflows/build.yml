@@ -117,7 +117,7 @@ jobs:
       - name: Rename artifacts
         run: |
           for i in aarch64 mipsel x86_64; do
-            mv $i-unknown-linux-musl/target/release cpxy.$i
+            mv $i-unknown-linux-musl/release/cpxy cpxy.$i
           done
       - name: Release
         uses: softprops/action-gh-release@v1
