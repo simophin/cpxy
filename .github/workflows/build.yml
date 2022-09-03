@@ -85,7 +85,7 @@ jobs:
         run: cross build --release --target=${{ matrix.target }}
 
       - name: Rename artifact
-        run: target/${{ matrix.target }}/release/cpxy cpxy.${{ matrix.target }}
+        run: cp target/${{ matrix.target }}/release/cpxy cpxy.${{ matrix.target }}
 
       - name: Upload Linux app
         uses: actions/upload-artifact@v3
