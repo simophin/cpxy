@@ -3,12 +3,11 @@ FROM alpine:latest
 
 ARG TARGETARCH
 
-WORKDIR /app
-
-COPY *musl .
+COPY cpxy.* /app/
 COPY docker .
 
-RUN cp $(sh TARGETARCH=$TARGETARCH docker/platform.sh)/release/cpxy /usr/local/bin/
+RUN cp /app/cpxy.$(sh TARGETARCH=$TARGETARCH docker/platform.sh) /usr/local/bin/ &&
+    rm -rfv /app
 
 EXPOSE 80/tcp
 EXPOSE 3000/udp
