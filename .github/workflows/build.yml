@@ -38,7 +38,6 @@ jobs:
       - uses: actions-rs/toolchain@v1
         with:
           toolchain: stable
-          use-cross: true
 
       # Install node toolchain
       - uses: actions/setup-node@v3
@@ -70,7 +69,6 @@ jobs:
       - uses: actions-rs/toolchain@v1
         with:
           toolchain: stable
-          use-cross: true
 
       # Install node toolchain
       - uses: actions/setup-node@v3
@@ -130,6 +128,7 @@ jobs:
 
   dockerPublish:
     runs-on: ubuntu-latest
+    needs: buildLinuxApps
     steps:
       - name: Checkout repository
         uses: actions/checkout@v3
