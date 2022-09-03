@@ -58,6 +58,7 @@ jobs:
         run: ./build_linux.sh
 
   dockerPublish:
+    runs-on: ubuntu-latest
     permissions:
       contents: read
       packages: write
