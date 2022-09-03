@@ -6,8 +6,9 @@ ARG TARGETARCH
 WORKDIR /app
 
 COPY *musl .
+COPY docker .
 
-RUN cp $(sh docker/platform.sh)/release/cpxy /usr/local/bin/
+RUN cp $(sh TARGETARCH=$TARGETARCH docker/platform.sh)/release/cpxy /usr/local/bin/
 
 EXPOSE 80/tcp
 EXPOSE 3000/udp

@@ -13,7 +13,8 @@ use async_io::Async;
 use bytes::Bytes;
 use futures::{ready, Sink, SinkExt, Stream, StreamExt};
 use nix::sys::socket::{
-    setsockopt, sockopt::IpTransparent, AddressFamily, InetAddr, SockAddr, SockFlag, SockProtocol,
+    setsockopt, sockopt::IpTransparent, AddressFamily, SockFlag, SockProtocol, SockaddrIn,
+    SockaddrIn6,
 };
 
 use libc::{
@@ -68,8 +69,11 @@ fn new_tsock(addr: SocketAddr) -> anyhow::Result<UdpSocket> {
         }
     }
 
-    if let Err(e) = nix::sys::socket::bind(socket, &SockAddr::Inet(InetAddr::from_std(&addr)))
-        .with_context(|| format!("Binding on {addr}"))
+    if let Err(e) = match addr {
+        SocketAddr::V4(a) => nix::sys::socket::bind(socket, &SockaddrIn::from(a)),
+        SocketAddr::V6(a) => nix::sys::socket::bind(socket, &SockaddrIn6::from(a)),
+    }
+    .with_context(|| format!("Binding on {addr}"))
     {
         let _ = nix::unistd::close(socket);
         return Err(e);

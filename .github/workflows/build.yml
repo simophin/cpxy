@@ -152,6 +152,10 @@ jobs:
           registry: ghcr.io
           username: ${{ github.repository_owner }}
           password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Download Linux apps
+        uses: actions/download-artifact@v3
+        with:
+          name: linux_apps
       - name: Build and push
         uses: docker/build-push-action@v3
         with:
