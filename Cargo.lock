@@ -534,7 +534,7 @@ dependencies = [
  "log 0.4.17",
  "maplit",
  "mime_guess",
- "nix",
+ "nix 0.25.0",
  "num-traits",
  "orion",
  "parking_lot",
@@ -1009,7 +1009,7 @@ dependencies = [
  "handlebars",
  "lazy_static 1.4.0",
  "libc",
- "nix",
+ "nix 0.23.1",
  "serde",
  "serde_derive",
 ]
@@ -1030,7 +1030,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "1c488ad8e743814579544d5a17bda107cd7a4009ade4d55ce94f4c3ec0281147"
 dependencies = [
  "lazy_static 1.4.0",
- "nix",
+ "nix 0.23.1",
  "regex 1.6.0",
 ]
 
@@ -1205,6 +1205,20 @@ dependencies = [
  "cfg-if",
  "libc",
  "memoffset",
+]
+
+[[package]]
+name = "nix"
+version = "0.25.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e322c04a9e3440c327fca7b6c8a63e6890a32fa2ad689db972425f07e0d22abb"
+dependencies = [
+ "autocfg",
+ "bitflags",
+ "cfg-if",
+ "libc",
+ "memoffset",
+ "pin-utils",
 ]
 
 [[package]]
