@@ -42,16 +42,20 @@ jobs:
           java-version: '17'
 
       # Build web app
-      - run: cd web && yarn install && yarn build
+      - name: Build web app
+        run: cd web && yarn install && yarn build
 
       # Run test
-      - run: cargo test
+      - name: Run test
+        run: cargo test
 
       # Build Android App
-      - run: ./build_android_libs.sh && cd android && ./gradlew assembleDebug
+      - name: Build Android App
+        run: ./build_android_libs.sh && cd android && ./gradlew assembleDebug
 
       # Build linux apps
-      - run ./build_linux.sh
+      - name: Build Linux apps
+        run: ./build_linux.sh
 
   dockerPublish:
     permissions:
