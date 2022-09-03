@@ -1,4 +1,4 @@
-import { Settings, Terminal } from '@mui/icons-material';
+import { Settings } from '@mui/icons-material';
 import { AppBar, Button, Toolbar, Typography } from '@mui/material';
 import { Box } from '@mui/system';
 import { useState } from 'react';
