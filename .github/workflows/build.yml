@@ -10,6 +10,7 @@ on:
     branches: [ "master" ]
     tags:
       - 'v*.*.*'
+  pull_reuqest:
 
 jobs:
   test:
