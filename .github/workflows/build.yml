@@ -12,14 +12,56 @@ on:
       - 'v*.*.*'
 
 jobs:
-  testAndBuildRaw:
+  test:
     runs-on: ubuntu-latest
-    permissions:
-      contents: read
-      packages: write
-      # This is used to complete the identity challenge
-      # with sigstore/fulcio when running outside of PRs.
-      id-token: write
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v3
+
+      # Install rust toolchain
+      - uses: actions-rs/toolchain@v1
+        with:
+          toolchain: stable
+
+      # Run test
+      - name: Run test
+        run: cargo test
+
+  buildLinuxApps:
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/')
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v3
+
+      # Install rust toolchain
+      - uses: actions-rs/toolchain@v1
+        with:
+          toolchain: stable
+          use-cross: true
+
+      # Install node toolchain
+      - uses: actions/setup-node@v3
+        with:
+          node-version: 16
+
+      # Build web app
+      - name: Build web app
+        run: cd web && yarn install && yarn build
+
+      # Build linux apps
+      - name: Build Linux apps
+        run: ./build_linux.sh
+
+      - name: Upload linux apps
+        uses: actions/upload-artifact@v3
+        with:
+          name: linux_apps
+          path: target/*/release/cpxy
+
+  buildAndroidApp:
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/')
     steps:
       - name: Checkout repository
         uses: actions/checkout@v3
@@ -45,17 +87,41 @@ jobs:
       - name: Build web app
         run: cd web && yarn install && yarn build
 
-      # Run test
-      - name: Run test
-        run: cargo test
-
-      # Build Android App
-      - name: Build Android App
-        run: ./build_android_libs.sh && cd android && ./gradlew assembleDebug
-
       # Build linux apps
       - name: Build Linux apps
-        run: ./build_linux.sh
+        run: ./build_android_libs.sh
+
+      # Build Android app
+      - name: Build Android app
+        run: cd android && ./gradlew assembleRelease
+
+      - name: Upload Android app
+        uses: actions/upload-artifact@v3
+        with:
+          name: android_app
+          path: android/app/build/outputs/apk/release/app-release.apk
+
+  release:
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/')
+    needs:
+      - buildLinuxApps
+      - buildAndroidApp
+    steps:
+      - name: Download Linux apps
+        uses: actions/download-artifact@v3
+        with:
+          name: linux_apps
+      - name: Download Android apps
+        uses: actions/download-artifact@v3
+        with:
+          name: android_app
+      - name: Release
+        uses: softprops/action-gh-release@v1
+        with:
+          files: |
+            target/*/release/cpxy
+            android/app/build/outputs/apk/release/app-release.apk
 
   dockerPublish:
     runs-on: ubuntu-latest
@@ -78,10 +144,10 @@ jobs:
             type=semver,pattern={{version}}
             type=semver,pattern={{major}}.{{minor}}
       - name: Set up QEMU
-        uses: docker/setup-qemu-action@v1
+        uses: docker/setup-qemu-action@v2
       - name: Set up Docker Buildx
         id: buildx
-        uses: docker/setup-buildx-action@v1
+        uses: docker/setup-buildx-action@v2
       - name: Login to GHCR
         uses: docker/login-action@v1
         with:
@@ -89,9 +155,9 @@ jobs:
           username: ${{ github.repository_owner }}
           password: ${{ secrets.GITHUB_TOKEN }}
       - name: Build and push
-        uses: docker/build-push-action@v2
+        uses: docker/build-push-action@v3
         with:
           context: .
-          platforms: linux/amd64,linux/arm/v7
+          platforms: linux/amd64,linux/arm64
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
