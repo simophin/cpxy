@@ -3,7 +3,7 @@ FROM alpine:latest
 
 ARG APP_SRC
 
-COPY APP_SRC /usr/local/bin/
+COPY ${APP_SRC} /usr/local/bin/
 
 EXPOSE 80/tcp
 EXPOSE 3000/udp
