@@ -127,7 +127,7 @@ jobs:
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
           build-args: |
-            APP_SRC=target/${{ matrix.target }}/release/cpxy
+            APP_SRC=cpxy.${{ matrix.target }}
 
   buildAndroidLibs:
     runs-on: ubuntu-latest
