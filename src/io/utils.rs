@@ -4,6 +4,8 @@ use futures::{AsyncRead, AsyncWrite};
 
 use crate::counter::Counter;
 use pin_project_lite::pin_project;
+
+#[cfg(unix)]
 use std::os::unix::prelude::AsRawFd;
 
 pin_project! {
@@ -91,6 +93,7 @@ impl<S: AsyncWrite> AsyncWrite for AsyncStreamCounter<S> {
     }
 }
 
+#[cfg(unix)]
 pub trait AsRawFdExt: AsRawFd {
     #[cfg(target_os = "linux")]
     fn set_sock_mark(&self, mark: u32) -> std::io::Result<()> {
