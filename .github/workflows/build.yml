@@ -107,7 +107,7 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v3
 
-       - name: Set up rust
+      - name: Set up rust
         run: rustup toolchain install stable --profile minimal
 
       - name: Rust caching
