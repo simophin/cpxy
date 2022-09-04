@@ -101,7 +101,7 @@ jobs:
         id: meta
         uses: docker/metadata-action@v4
         with:
-          images: ghcr.io/cpxy
+          images: ghcr.io/cjk-proxy
           tags: |
             type=ref,event=branch
             type=semver,pattern={{version}}
