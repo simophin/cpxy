@@ -122,9 +122,9 @@ jobs:
           file: Dockerfile.cp
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
-          build-args:
-            - TARGETARCH=${{ steps.docker_arch_meta.TARGETARCH }}
-            - APP_SRC=target/${{ matrix.target }}/release/cpxy
+          build-args: |
+            TARGETARCH=${{ steps.docker_arch_meta.TARGETARCH }}
+            APP_SRC=target/${{ matrix.target }}/release/cpxy
 
   buildAndroidLibs:
     runs-on: ubuntu-latest
