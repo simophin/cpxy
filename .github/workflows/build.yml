@@ -126,6 +126,7 @@ jobs:
           file: Dockerfile.cp
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
+          push: true
           build-args: |
             APP_SRC=cpxy.${{ matrix.target }}
 
