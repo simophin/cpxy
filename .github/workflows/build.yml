@@ -233,6 +233,7 @@ jobs:
         run: |
           for i in $(ls *linux*); do
             mv $i/cpxy $i/cpxy-$i
+          done
       - name: Release
         uses: softprops/action-gh-release@v1
         with:
