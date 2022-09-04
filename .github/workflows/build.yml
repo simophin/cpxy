@@ -56,6 +56,9 @@ jobs:
   buildLinuxApps:
     runs-on: ubuntu-latest
     needs: buildWebApp
+    permissions:
+      contents: read
+      packages: write
     strategy:
       matrix:
         target: 
