@@ -122,7 +122,7 @@ jobs:
         uses: docker/build-push-action@v3
         with:
           context: .
-          platforms: linux/${{ steps.docker_arch_meta.TARGETARCH }}
+          platforms: linux/${{ steps.docker_arch_meta.outputs.TARGETARCH }}
           file: Dockerfile.cp
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
