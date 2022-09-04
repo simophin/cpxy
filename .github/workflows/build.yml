@@ -74,6 +74,8 @@ jobs:
 
       - name: Rust caching
         uses: Swatinem/rust-cache@v2
+        with:
+          key: ${{ matrix.target }}
 
       - name: Download web app
         uses: actions/download-artifact@v3
@@ -151,6 +153,8 @@ jobs:
 
       - name: Rust caching
         uses: Swatinem/rust-cache@v2
+        with:
+          key: ${{ matrix.target }}
 
       - name: Download web app
         uses: actions/download-artifact@v3
@@ -220,9 +224,10 @@ jobs:
           name: android_app
           path: android/app/build/outputs/apk/release/app-release.apk
 
-  release:
+  archiveAndRelease:
+    permissions:
+      contents: write
     runs-on: ubuntu-latest
-    if: startsWith(github.ref, 'refs/tags/')
     needs:
       - buildLinuxApps
       - buildAndroidApp
@@ -230,13 +235,11 @@ jobs:
       - name: Download all artifacts
         uses: actions/download-artifact@v3
       - name: Rename artifacts
-        run: |
-          for i in $(ls app-*linux*); do
-            mv $i/cpxy $i/cpxy-$i
-          done
+        run: tar zcfv linux-apps.tar.gz app-*
       - name: Release
         uses: softprops/action-gh-release@v1
+        if: startsWith(github.ref, 'refs/tags/')
         with:
           files: |
-            */cpxy-*
+            linux-apps.tar.gz
             app-release.apk
