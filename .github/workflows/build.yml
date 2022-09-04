@@ -229,9 +229,13 @@ jobs:
     steps:
       - name: Download all artifacts
         uses: actions/download-artifact@v3
+      - name: Rename artifacts
+        run: |
+          for i in $(ls *linux*); do
+            mv $i/cpxy $i/cpxy-$i
       - name: Release
         uses: softprops/action-gh-release@v1
         with:
           files: |
-            */cpxy
+            */cpxy-*
             app-release.apk
