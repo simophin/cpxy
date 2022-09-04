@@ -117,6 +117,8 @@ jobs:
           registry: ghcr.io
           username: ${{ github.repository_owner }}
           password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Rename artifact
+        run: cp -v target/${{ matrix.target }}/release/cpxy ./
       - name: Build and push
         if: steps.docker_arch_meta.outputs.TARGETARCH != ''
         uses: docker/build-push-action@v3
@@ -128,7 +130,7 @@ jobs:
           labels: ${{ steps.meta.outputs.labels }}
           push: true
           build-args: |
-            APP_SRC=target/${{ matrix.target }}/release/cpxy
+            APP_SRC=cpxy
 
   buildAndroidLibs:
     runs-on: ubuntu-latest
