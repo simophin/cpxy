@@ -1,7 +1,6 @@
 # This Dockerfile will only copy the built files
 FROM alpine:latest
 
-ARG TARGETARCH
 ARG APP_SRC
 
 COPY APP_SRC /usr/local/bin/
