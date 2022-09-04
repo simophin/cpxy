@@ -7,9 +7,9 @@ name: Docker
 
 on:
   push:
-    branches: [ "master" ]
+    branches: ["master"]
     tags:
-      - 'v*.*.*'
+      - "v*.*.*"
   pull_request:
 
 jobs:
@@ -22,7 +22,7 @@ jobs:
         uses: actions/setup-node@v3
         with:
           node-version: 16
-          cache: 'yarn'
+          cache: "yarn"
           cache-dependency-path: web/yarn.lock
 
       - name: Build web app
@@ -44,6 +44,11 @@ jobs:
       - name: Set up rust
         run: rustup toolchain install stable --profile minimal
 
+      - name: Rust caching
+        uses: Swatinem/rust-cache@v2
+        with:
+          key: test
+
       - name: Download web app
         uses: actions/download-artifact@v3
         with:
@@ -61,7 +66,7 @@ jobs:
       packages: write
     strategy:
       matrix:
-        target: 
+        target:
           - x86_64-unknown-linux-musl
           - aarch64-unknown-linux-musl
           - mipsel-unknown-linux-musl
@@ -139,7 +144,7 @@ jobs:
     needs: buildWebApp
     strategy:
       matrix:
-        target: 
+        target:
           - armv7-linux-androideabi
           - aarch64-linux-android
           - i686-linux-android
@@ -181,8 +186,8 @@ jobs:
       - name: Set up Java
         uses: actions/setup-java@v3
         with:
-          distribution: 'temurin' # See 'Supported distributions' for available options
-          java-version: '17'
+          distribution: "temurin" # See 'Supported distributions' for available options
+          java-version: "17"
 
       - name: Download web app
         uses: actions/download-artifact@v3
@@ -201,7 +206,7 @@ jobs:
         with:
           name: android-lib-aarch64-linux-android
           path: android/app/src/main/jniLibs/arm64-v8a
-      
+
       - name: Download i686 lib
         uses: actions/download-artifact@v3
         with:
@@ -224,6 +229,60 @@ jobs:
           name: android_app
           path: android/app/build/outputs/apk/release/app-release.apk
 
+  buildWindowsApp:
+    runs-on: windows-latest
+    needs: buildWebApp
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v3
+      - name: Set up rust
+        run: rustup toolchain install stable --profile minimal
+
+      - name: Rust caching
+        uses: Swatinem/rust-cache@v2
+
+      - name: Download web app
+        uses: actions/download-artifact@v3
+        with:
+          name: web_app
+          path: web/build
+
+      - name: Build Windows app
+        run: cargo build --release
+
+      - name: Upload Windows app
+        uses: actions/upload-artifact@v3
+        with:
+          name: windows-app
+          path: target/release/cpxy
+
+  buildMacApp:
+    runs-on: macos-latest
+    needs: buildWebApp
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v3
+      - name: Set up rust
+        run: rustup toolchain install stable --profile minimal
+
+      - name: Rust caching
+        uses: Swatinem/rust-cache@v2
+
+      - name: Download web app
+        uses: actions/download-artifact@v3
+        with:
+          name: web_app
+          path: web/build
+
+      - name: Build Mac app
+        run: cargo build --release
+
+      - name: Upload Mac app
+        uses: actions/upload-artifact@v3
+        with:
+          name: mac-app
+          path: target/release/cpxy
+
   archiveAndRelease:
     permissions:
       contents: write
@@ -231,15 +290,23 @@ jobs:
     needs:
       - buildLinuxApps
       - buildAndroidApp
+      - buildWindowsApp
+      - buildMacApp
     steps:
       - name: Download all artifacts
         uses: actions/download-artifact@v3
-      - name: Rename artifacts
+      - name: Archive Linux artifacts
         run: tar zcfv linux-apps.tar.gz app-*
+      - name: Archive Windows artifacts
+        run: zip windows-app.zip windows-app
+      - name: Archive Mac artifacts
+        run: zip mac-app.zip mac-app
       - name: Release
         uses: softprops/action-gh-release@v1
         if: startsWith(github.ref, 'refs/tags/')
         with:
           files: |
             linux-apps.tar.gz
+            windows-app.zip
+            mac-app.zip
             app-release.apk
