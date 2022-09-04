@@ -89,7 +89,7 @@ jobs:
           path: web/build
 
       - name: Build Linux app
-        run: cargo install cross && cross build --release --target=${{ matrix.target }}
+        run: cargo install cross && cross build --bin --release --target=${{ matrix.target }}
 
       - name: Upload Linux app
         uses: actions/upload-artifact@v3
@@ -253,7 +253,7 @@ jobs:
           path: web/build
 
       - name: Build ${{ matrix.os }} app
-        run: cargo build --release
+        run: cargo build --bin --release
 
       - name: Upload ${{ matrix.os }} app
         uses: actions/upload-artifact@v3
