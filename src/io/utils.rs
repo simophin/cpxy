@@ -109,4 +109,18 @@ pub trait AsRawFdExt: AsRawFd {
     }
 }
 
+#[cfg(unix)]
 impl<T: AsRawFd> AsRawFdExt for T {}
+
+#[cfg(not(unix))]
+pub trait AsRawFdExt {
+    fn set_sock_mark(&self, _mark: u32) -> std::io::Result<()> {
+        Ok(())
+    }
+}
+
+#[cfg(not(unix))]
+impl AsRawFdExt for async_net::TcpStream {}
+
+#[cfg(not(unix))]
+impl AsRawFdExt for async_net::UdpSocket {}

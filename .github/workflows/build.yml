@@ -1,4 +1,4 @@
-name: Docker
+name: Test and build apps
 
 # This workflow uses actions that are not certified by GitHub.
 # They are provided by a third-party and are governed by
@@ -94,7 +94,7 @@ jobs:
       - name: Upload Linux app
         uses: actions/upload-artifact@v3
         with:
-          name: app-${{ matrix.target }}
+          name: linux-app-${{ matrix.target }}
           path: target/${{ matrix.target }}/release/cpxy
 
       - name: Determine docker arch
@@ -229,9 +229,14 @@ jobs:
           name: android_app
           path: android/app/build/outputs/apk/release/app-release.apk
 
-  buildWindowsApp:
-    runs-on: windows-latest
+  buildPlatformNativeApps:
+    runs-on: ${{ matrix.os }}-latest
     needs: buildWebApp
+    strategy:
+      matrix:
+        os:
+          - windows
+          - macos
     steps:
       - name: Checkout repository
         uses: actions/checkout@v3
@@ -247,40 +252,13 @@ jobs:
           name: web_app
           path: web/build
 
-      - name: Build Windows app
+      - name: Build ${{ matrix.os }} app
         run: cargo build --release
 
-      - name: Upload Windows app
+      - name: Upload ${{ matrix.os }} app
         uses: actions/upload-artifact@v3
         with:
-          name: windows-app
-          path: target/release/cpxy
-
-  buildMacApp:
-    runs-on: macos-latest
-    needs: buildWebApp
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v3
-      - name: Set up rust
-        run: rustup toolchain install stable --profile minimal
-
-      - name: Rust caching
-        uses: Swatinem/rust-cache@v2
-
-      - name: Download web app
-        uses: actions/download-artifact@v3
-        with:
-          name: web_app
-          path: web/build
-
-      - name: Build Mac app
-        run: cargo build --release
-
-      - name: Upload Mac app
-        uses: actions/upload-artifact@v3
-        with:
-          name: mac-app
+          name: ${{ matrix.os }}-app
           path: target/release/cpxy
 
   archiveAndRelease:
@@ -290,17 +268,16 @@ jobs:
     needs:
       - buildLinuxApps
       - buildAndroidApp
-      - buildWindowsApp
-      - buildMacApp
+      - buildPlatformNativeApps
     steps:
       - name: Download all artifacts
         uses: actions/download-artifact@v3
       - name: Archive Linux artifacts
-        run: tar zcfv linux-apps.tar.gz app-*
+        run: tar zcfv linux-apps.tar.gz linux-app-*
       - name: Archive Windows artifacts
         run: zip windows-app.zip windows-app
       - name: Archive Mac artifacts
-        run: zip mac-app.zip mac-app
+        run: zip macos-app.zip macos-app
       - name: Release
         uses: softprops/action-gh-release@v1
         if: startsWith(github.ref, 'refs/tags/')
@@ -308,5 +285,5 @@ jobs:
           files: |
             linux-apps.tar.gz
             windows-app.zip
-            mac-app.zip
+            macos-app.zip
             app-release.apk
