@@ -84,14 +84,11 @@ jobs:
       - name: Build Linux app
         run: cargo install cross && cross build --release --target=${{ matrix.target }}
 
-      - name: Rename artifact
-        run: cp target/${{ matrix.target }}/release/cpxy cpxy.${{ matrix.target }}
-
       - name: Upload Linux app
         uses: actions/upload-artifact@v3
         with:
           name: app-${{ matrix.target }}
-          path: cpxy.${{ matrix.target }}
+          path: target/${{ matrix.target }}/release/cpxy
 
       - name: Determine docker arch
         id: docker_arch_meta
@@ -131,7 +128,7 @@ jobs:
           labels: ${{ steps.meta.outputs.labels }}
           push: true
           build-args: |
-            APP_SRC=cpxy.${{ matrix.target }}
+            APP_SRC=target/${{ matrix.target }}/release/cpxy
 
   buildAndroidLibs:
     runs-on: ubuntu-latest
@@ -234,5 +231,5 @@ jobs:
         uses: softprops/action-gh-release@v1
         with:
           files: |
-            */cpxy.*
+            */cpxy
             app-release.apk

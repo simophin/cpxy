@@ -1,5 +1,5 @@
 # This Dockerfile will only copy the built files
-FROM alpine:latest
+FROM debian:latest
 
 ARG APP_SRC
 
