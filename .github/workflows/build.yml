@@ -231,7 +231,7 @@ jobs:
         uses: actions/download-artifact@v3
       - name: Rename artifacts
         run: |
-          for i in $(ls *linux*); do
+          for i in $(ls app-*linux*); do
             mv $i/cpxy $i/cpxy-$i
           done
       - name: Release
