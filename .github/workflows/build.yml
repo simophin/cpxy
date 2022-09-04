@@ -259,7 +259,7 @@ jobs:
         uses: actions/upload-artifact@v3
         with:
           name: ${{ matrix.os }}-app
-          path: target/release/cpxy
+          path: target/release/cpxy*
 
   archiveAndRelease:
     permissions:
