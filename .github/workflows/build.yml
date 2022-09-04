@@ -92,7 +92,7 @@ jobs:
 
       - name: Determine docker arch
         id: docker_arch_meta
-        run: echo "::set-output name=TARGETARCH:`scripts/rust-target-to-docker.sh ${{ matrix.target }}`"
+        run: echo "::set-output name=TARGETARCH::`scripts/rust-target-to-docker.sh ${{ matrix.target }}`"
       - name: Docker meta
         if: steps.docker_arch_meta.outputs.TARGETARCH != ''
         id: meta
