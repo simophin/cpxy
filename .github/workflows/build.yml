@@ -188,6 +188,7 @@ jobs:
         with:
           distribution: "temurin" # See 'Supported distributions' for available options
           java-version: "17"
+          cache: "gradle"
 
       - name: Download web app
         uses: actions/download-artifact@v3
@@ -274,7 +275,7 @@ jobs:
         uses: actions/download-artifact@v3
       - name: Archive Linux artifacts
         run: |
-          for i in `ls linux-app-*-musl`; do
+          for i in linux-app-*; do
             tar zcfv $i.tar.gz $i/cpxy
           done
       - name: Archive Windows artifacts
