@@ -274,7 +274,7 @@ jobs:
         uses: actions/download-artifact@v3
       - name: Archive Linux artifacts
         run: |
-          for i in `ls linux-app-*`; do
+          for i in `ls linux-app-*-musl`; do
             tar zcfv $i.tar.gz $i/cpxy
           done
       - name: Archive Windows artifacts
