@@ -273,17 +273,20 @@ jobs:
       - name: Download all artifacts
         uses: actions/download-artifact@v3
       - name: Archive Linux artifacts
-        run: tar zcfv linux-apps.tar.gz linux-app-*
+        run: |
+          for i in `ls linux-app-*`; do
+            tar zcfv $i.tar.gz $i/cpxy
+          done
       - name: Archive Windows artifacts
-        run: zip -r windows-app.zip windows-app
+        run: zip -r windows-app.zip windows-app/cpxy.exe
       - name: Archive Mac artifacts
-        run: zip -r macos-app.zip macos-app
+        run: zip -r macos-app.zip macos-app/cpxy
       - name: Release
         uses: softprops/action-gh-release@v1
         if: startsWith(github.ref, 'refs/tags/')
         with:
           files: |
-            linux-apps.tar.gz
+            linux-app-*.tar.gz
             windows-app.zip
             macos-app.zip
             app-release.apk
