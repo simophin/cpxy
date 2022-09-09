@@ -126,7 +126,7 @@ jobs:
       - name: Rename artifact
         run: cp -v target/${{ matrix.target }}/release/cpxy ./
       - name: Build and push
-        if: steps.docker_arch_meta.outputs.TARGETARCH != ''
+        if: steps.docker_arch_meta.outputs.TARGETARCH != '' && github.event_name != 'pull_request'
         uses: docker/build-push-action@v3
         with:
           context: .
