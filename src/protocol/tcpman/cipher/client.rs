@@ -56,6 +56,7 @@ pub async fn connect(
     stream: impl AsyncRead + AsyncWrite + Unpin + Send + Sync + 'static,
     send_strategy: EncryptionStrategy,
     recv_strategy: EncryptionStrategy,
+    auth: Option<impl Display>,
     mut initial_data: impl AsMut<[u8]> + Send,
 ) -> anyhow::Result<impl AsyncRead + AsyncWrite + Unpin + Send + Sync> {
     let (cipher_type, wr_cipher, key, iv) = super::suite::pick_cipher();
@@ -80,6 +81,10 @@ pub async fn connect(
             INITIAL_DATA_HEADER,
             Base64Display::with_config(initial_data.as_mut(), INITIAL_DATA_CONFIG),
         )?;
+
+    if let Some(auth) = auth {
+        builder.put_header_text("Authorization", auth)?;
+    }
 
     let (r, w) = negotiate_websocket(builder, stream).await?.split();
 

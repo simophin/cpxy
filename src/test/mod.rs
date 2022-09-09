@@ -144,6 +144,7 @@ pub async fn run_test_client(upstream_address: SocketAddr) -> (Task<()>, SocketA
                                 address: Address::IP(upstream_address),
                                 ssl: false,
                                 allows_udp: true,
+                                credentials: None,
                             }),
                             enabled: true,
                             groups: Default::default(),
