@@ -104,7 +104,9 @@ jobs:
 
   publishDockerImages:
     runs-on: ubuntu-latest
-    needs: buildLinuxApps
+    needs:
+      - buildLinuxApps
+      - test
     if: github.event_name == 'push'
     steps:
       - uses: actions/checkout@v3
@@ -274,7 +276,6 @@ jobs:
       - buildAndroidApp
       - buildPlatformNativeApps
       - publishDockerImages
-      - test
     steps:
       - name: Download all artifacts
         uses: actions/download-artifact@v3
