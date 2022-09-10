@@ -5,6 +5,7 @@ export interface TcpManConfig {
     address: string;
     ssl: boolean;
     allows_udp: boolean;
+    credentials?: Credentials,
 }
 
 export interface UdpManConfig {
@@ -31,6 +32,12 @@ export interface HttpProxyConfig {
 export interface FireTcpConfig {
     type: "firetcp",
     address: string;
+    password: string;
+}
+
+export interface Credentials {
+    username: string;
+    password: string;
 }
 
 export type ProtocolConfig = TcpManConfig | UdpManConfig | DirectConfig | Socks5Config | HttpProxyConfig | FireTcpConfig;

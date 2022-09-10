@@ -30,7 +30,7 @@ jobs:
       - name: Upload web app
         uses: actions/upload-artifact@v3
         with:
-          name: web_app
+          name: web-app
           path: web/build/*
 
   test:
@@ -51,7 +51,7 @@ jobs:
       - name: Download web app
         uses: actions/download-artifact@v3
         with:
-          name: web_app
+          name: web-app
           path: web/build
 
       - name: Run test
@@ -84,7 +84,7 @@ jobs:
       - name: Download web app
         uses: actions/download-artifact@v3
         with:
-          name: web_app
+          name: web-app
           path: web/build
 
       - name: Build Linux app
@@ -163,7 +163,7 @@ jobs:
       - name: Download web app
         uses: actions/download-artifact@v3
         with:
-          name: web_app
+          name: web-app
           path: web/build
 
       - name: Build Android lib
@@ -192,7 +192,7 @@ jobs:
       - name: Download web app
         uses: actions/download-artifact@v3
         with:
-          name: web_app
+          name: web-app
           path: web/build
 
       - name: Download armv7 lib
@@ -226,7 +226,7 @@ jobs:
       - name: Upload Android app
         uses: actions/upload-artifact@v3
         with:
-          name: android_app
+          name: android-app
           path: android/app/build/outputs/apk/release/app-release.apk
 
   buildPlatformNativeApps:
@@ -249,7 +249,7 @@ jobs:
       - name: Download web app
         uses: actions/download-artifact@v3
         with:
-          name: web_app
+          name: web-app
           path: web/build
 
       - name: Build ${{ matrix.os }} app

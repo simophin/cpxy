@@ -18,7 +18,12 @@ use crate::{
 #[derive(Debug, Deserialize, Serialize, PartialEq, Eq, Clone)]
 pub struct FireTcp {
     address: Address<'static>,
+    #[serde(default = "default_key")]
     password: PasswordedKey,
+}
+
+fn default_key() -> PasswordedKey {
+    PasswordedKey::new("")
 }
 
 impl FireTcp {
