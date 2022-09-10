@@ -154,13 +154,14 @@ impl ClientConfig {
                 .upstreams
                 .get(name)
                 .into_iter()
+                .filter(|c| c.enabled)
                 .map(move |config| (name, config, 0))
                 .collect(),
             Some(RuleExecutionResult::ProxyGroup(name)) => self
                 .upstreams
                 .iter()
                 .filter_map(|(n, c)| {
-                    if !c.protocol.supports(t) {
+                    if !c.protocol.supports(t) || !c.enabled {
                         return None;
                     }
 
