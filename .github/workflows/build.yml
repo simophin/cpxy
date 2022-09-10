@@ -89,7 +89,10 @@ jobs:
           path: web/build
 
       - name: Build Linux app
-        run: cargo install cross && cross build --bin cpxy --release --target=${{ matrix.target }}
+        run: |
+          cargo install cross && \
+          cross build --bin cpxy --release --target=${{ matrix.target }} && \
+          chmod +x target/${{ matrix.target }}/release/cpxy
 
       - name: Upload Linux app
         uses: actions/upload-artifact@v3
