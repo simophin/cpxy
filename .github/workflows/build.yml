@@ -98,9 +98,10 @@ jobs:
 
       - name: Determine docker arch
         id: docker_arch_meta
+        if: github.event_name != 'pull_request'
         run: echo "::set-output name=TARGETARCH::`scripts/rust-target-to-docker.sh ${{ matrix.target }}`"
       - name: Docker meta
-        if: steps.docker_arch_meta.outputs.TARGETARCH != ''
+        if: steps.docker_arch_meta.outputs.TARGETARCH != '' && github.event_name != 'pull_request'
         id: meta
         uses: docker/metadata-action@v4
         with:
@@ -110,20 +111,21 @@ jobs:
             type=semver,pattern={{version}}
             type=semver,pattern={{major}}.{{minor}}
       - name: Set up QEMU
-        if: steps.docker_arch_meta.outputs.TARGETARCH != ''
+        if: steps.docker_arch_meta.outputs.TARGETARCH != '' && github.event_name != 'pull_request'
         uses: docker/setup-qemu-action@v2
       - name: Set up Docker Buildx
-        if: steps.docker_arch_meta.outputs.TARGETARCH != ''
+        if: steps.docker_arch_meta.outputs.TARGETARCH != '' && github.event_name != 'pull_request'
         id: buildx
         uses: docker/setup-buildx-action@v2
       - name: Login to GHCR
-        if: steps.docker_arch_meta.outputs.TARGETARCH != ''
+        if: steps.docker_arch_meta.outputs.TARGETARCH != '' && github.event_name != 'pull_request'
         uses: docker/login-action@v1
         with:
           registry: ghcr.io
           username: ${{ github.repository_owner }}
           password: ${{ secrets.GITHUB_TOKEN }}
-      - name: Rename artifact
+      - name: Rename artifact for docker build
+        if: steps.docker_arch_meta.outputs.TARGETARCH != '' && github.event_name != 'pull_request'
         run: cp -v target/${{ matrix.target }}/release/cpxy ./
       - name: Build and push
         if: steps.docker_arch_meta.outputs.TARGETARCH != '' && github.event_name != 'pull_request'
