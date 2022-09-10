@@ -5,21 +5,30 @@ use cipher::KeyIvInit;
 use futures::{AsyncReadExt, AsyncWriteExt};
 use serde::{Deserialize, Serialize};
 
-use super::super::{AsyncStream, Protocol, Stats, TrafficType};
+use super::{
+    super::{AsyncStream, Protocol, Stats, TrafficType},
+    pw::PasswordedKey,
+};
 use crate::{
     io::{connect_tcp_marked, union, AsyncStreamCounter},
     socks5::Address,
     utils::write_bincode_lengthed_async,
 };
 
-#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
+#[derive(Debug, Deserialize, Serialize, PartialEq, Eq, Clone)]
 pub struct FireTcp {
     address: Address<'static>,
+    #[serde(default = "default_key")]
+    password: PasswordedKey,
+}
+
+fn default_key() -> PasswordedKey {
+    PasswordedKey::new("")
 }
 
 impl FireTcp {
-    pub fn new(address: Address<'static>) -> Self {
-        Self { address }
+    pub fn new(address: Address<'static>, password: PasswordedKey) -> Self {
+        Self { address, password }
     }
 }
 
@@ -37,8 +46,6 @@ pub struct Request {
 }
 
 pub const INITIAL_CIPHER_LEN: usize = 512;
-pub const INITIAL_KEY: &'static [u8] = b"P2$3M$5RRsTY49oo#3xQwT3vE6MVDpck";
-pub const INITIAL_NONCE: &'static [u8] = b"oU151Hq8J@!q";
 
 #[async_trait]
 impl Protocol for FireTcp {
@@ -65,7 +72,8 @@ impl Protocol for FireTcp {
         let mut w = super::cipher::CipherWrite::<_, _, ChaCha20>::new(
             w,
             INITIAL_CIPHER_LEN,
-            ChaCha20::new_from_slices(INITIAL_KEY, INITIAL_NONCE).unwrap(),
+            ChaCha20::new_from_slices(self.password.init_key(), self.password.init_nonce())
+                .unwrap(),
         );
 
         let est_cipher = match dst.get_port() {

@@ -5,6 +5,7 @@ pub mod server;
 mod udp_stream;
 
 use std::borrow::Cow;
+use std::fmt::Display;
 
 use anyhow::Context;
 use async_trait::async_trait;
@@ -23,10 +24,17 @@ use self::{
 use super::{AsyncStream, BoxedSink, BoxedStream, Protocol, Stats, TrafficType};
 
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
+pub struct Credentials {
+    username: String,
+    password: String,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
 pub struct TcpMan {
     pub address: Address<'static>,
     pub ssl: bool,
     pub allows_udp: bool,
+    pub credentials: Option<Credentials>,
 }
 
 impl TcpMan {
@@ -52,6 +60,7 @@ impl TcpMan {
             AsyncStreamCounter::new(stream, stats.rx.clone(), stats.tx.clone()),
             EncryptionStrategy::new_send(true, dst.get_port(), self.ssl),
             EncryptionStrategy::new_receive(true, dst.get_port()),
+            self.credentials.as_ref().map(|c| c.to_header_value()),
             initial_data,
         )
         .await
@@ -114,6 +123,15 @@ impl Protocol for TcpMan {
     }
 }
 
+impl Credentials {
+    pub fn to_header_value(&self) -> impl Display {
+        format!(
+            "Basic {}",
+            base64::encode(format!("{}:{}", self.username, self.password))
+        )
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use smol::spawn;
@@ -133,6 +151,7 @@ mod tests {
                 address: addr.into(),
                 ssl: false,
                 allows_udp: true,
+                credentials: None,
             };
 
             test_protocol_http(&p).await;

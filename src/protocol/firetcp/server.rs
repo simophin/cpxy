@@ -15,18 +15,21 @@ use crate::io::connect_tcp;
 use crate::utils::{race, read_bincode_lengthed_async};
 
 use super::cipher::CipherRead;
-use super::proto::{CipherOption, Request, INITIAL_CIPHER_LEN, INITIAL_KEY, INITIAL_NONCE};
+use super::proto::{CipherOption, Request, INITIAL_CIPHER_LEN};
+use super::pw::PasswordedKey;
 
-pub async fn run_server(listener: TcpListener) -> anyhow::Result<()> {
+pub async fn run_server(listener: TcpListener, password: PasswordedKey) -> anyhow::Result<()> {
     let clients: Arc<Mutex<BTreeMap<SocketAddr, Task<()>>>> = Default::default();
+    let password = Arc::new(password);
     loop {
         let (client, addr) = listener.accept().await?;
         log::info!("Accepted client from {addr}");
         let clients_ref = Arc::downgrade(&clients);
+        let password = password.clone();
         clients.lock().insert(
             addr,
             spawn(async move {
-                if let Err(e) = serve(client).await {
+                if let Err(e) = serve(client, &password).await {
                     log::error!("Error serving {addr}: {e:?}");
                 }
                 if let Some(clients) = clients_ref.upgrade() {
@@ -39,13 +42,14 @@ pub async fn run_server(listener: TcpListener) -> anyhow::Result<()> {
 
 pub async fn serve(
     stream: impl AsyncRead + AsyncWrite + Unpin + Send + Sync + 'static,
+    password: &PasswordedKey,
 ) -> anyhow::Result<()> {
     let (r, mut w) = stream.split();
 
     let mut r = CipherRead::<_, _, ChaCha20>::new(
         r,
         INITIAL_CIPHER_LEN,
-        ChaCha20::new_from_slices(INITIAL_KEY, INITIAL_NONCE).unwrap(),
+        ChaCha20::new_from_slices(password.init_key(), password.init_nonce()).unwrap(),
     );
 
     let Request {

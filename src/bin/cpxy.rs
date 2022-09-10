@@ -1,11 +1,13 @@
 use anyhow::Context;
-use async_net::UdpSocket;
+use async_net::{TcpListener, UdpSocket};
 use clap::{Parser, Subcommand};
 use cpxy::controller::run_controller;
 use cpxy::io::bind_tcp;
 use cpxy::protocol::{firetcp, tcpman, udpman};
 use cpxy::socks5::Address;
-use futures::{select, FutureExt};
+use futures::future::select_all;
+use futures::Future;
+use smol::{spawn, Task};
 use std::net::{IpAddr, SocketAddr};
 use std::path::Path;
 
@@ -28,13 +30,13 @@ enum Command {
         #[clap(default_value = "0.0.0.0", long)]
         host: IpAddr,
         /// The TCPMan port to listen on
-        #[clap(default_value_t = 80, long)]
-        tcp_port: u16,
+        #[clap(long)]
+        tcpman_port: Option<u16>,
         /// The UDPMan port to listen on
-        #[clap(default_value_t = 3000, long)]
-        udp_port: u16,
-        #[clap(default_value_t = 4289, long)]
-        firetcp_port: u16,
+        #[clap(long)]
+        udpman_port: Option<u16>,
+        #[clap(long)]
+        firetcp_port: Option<u16>,
     },
 
     #[clap()]
@@ -49,12 +51,34 @@ enum Command {
         #[clap(default_value_t = 4000, long)]
         controller_port: u16,
     },
-    #[clap()]
-    Bench {
-        #[clap(long)]
-        /// Path to the configuration file
-        config: String,
-    },
+}
+
+async fn start_serving_tcp<Fut: Future<Output = anyhow::Result<()>> + Send + Sync + 'static>(
+    service_name: &str,
+    host: IpAddr,
+    port: u16,
+    run: impl FnOnce(TcpListener) -> Fut,
+) -> anyhow::Result<Task<anyhow::Result<()>>> {
+    let addr = SocketAddr::new(host, port);
+    let listener = bind_tcp(&Address::IP(addr))
+        .await
+        .with_context(|| format!("Binding on {addr} for {service_name}"))?;
+    log::info!("{service_name} started on {addr}");
+    Ok(spawn(run(listener)))
+}
+
+async fn start_serving_udp<Fut: Future<Output = anyhow::Result<()>> + Send + Sync + 'static>(
+    service_name: &str,
+    host: IpAddr,
+    port: u16,
+    run: impl FnOnce(UdpSocket) -> Fut,
+) -> anyhow::Result<Task<anyhow::Result<()>>> {
+    let addr = SocketAddr::new(host, port);
+    let listener = UdpSocket::bind(addr)
+        .await
+        .with_context(|| format!("Binding on {addr} for {service_name}"))?;
+    log::info!("{service_name} started on {addr}");
+    Ok(spawn(run(listener)))
 }
 
 fn main() -> anyhow::Result<()> {
@@ -69,33 +93,37 @@ fn main() -> anyhow::Result<()> {
         match cmd {
             Command::Server {
                 host,
-                tcp_port,
-                udp_port,
+                tcpman_port,
+                udpman_port,
                 firetcp_port,
             } => {
-                let tcp_addr = SocketAddr::new(host, tcp_port);
-                let udp_addr = SocketAddr::new(host, udp_port);
-                let firetcp_addr = SocketAddr::new(host, firetcp_port);
-                log::info!("Start server at TCPMan://{tcp_addr}, UDPMan://{udp_addr}, FireTcp://{firetcp_addr}");
+                let mut tasks = Vec::<Task<anyhow::Result<()>>>::new();
 
-                let tcp_man_server_socket = bind_tcp(&Address::IP(tcp_addr))
-                    .await
-                    .context("Binding TCPMan server socket")?;
-
-                let udp_man_server_socket = UdpSocket::bind(udp_addr)
-                    .await
-                    .context("Binding UDPMan server socket")?;
-
-                let firetcp_server_socket =
-                    bind_tcp(&Address::IP(SocketAddr::new(host, firetcp_port)))
-                        .await
-                        .context("Binding FireTCP server socket")?;
-
-                select! {
-                    r1 = tcpman::server::run_server(tcp_man_server_socket).fuse() => r1,
-                    r2 = udpman::server::serve_socket(udp_man_server_socket).fuse() => r2,
-                    r3 = firetcp::server::run_server(firetcp_server_socket).fuse() => r3,
+                if let Some(port) = tcpman_port {
+                    tasks.push(
+                        start_serving_tcp("tcpman", host, port, tcpman::server::run_server).await?,
+                    );
                 }
+
+                if let Some(port) = firetcp_port {
+                    let password = std::env::var("FIRETCP_PASSWORD")
+                        .context("Firetcp password must be given via env FIRETCP_PASSWORD")?;
+                    tasks.push(
+                        start_serving_tcp("firetcp", host, port, move |listener| async {
+                            firetcp::server::run_server(listener, password.into()).await
+                        })
+                        .await?,
+                    );
+                }
+
+                if let Some(port) = udpman_port {
+                    tasks.push(
+                        start_serving_udp("udpman", host, port, udpman::server::serve_socket)
+                            .await?,
+                    )
+                }
+
+                select_all(tasks).await.0
             }
             Command::Client {
                 config,
@@ -111,10 +139,6 @@ fn main() -> anyhow::Result<()> {
                     Path::new(&config),
                 )
                 .await
-            }
-            Command::Bench { config: _config } => {
-                todo!()
-                // proxy::bench_client::run_perf_tests(Path::new(&config)).await
             }
         }
     })

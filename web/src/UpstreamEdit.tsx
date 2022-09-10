@@ -53,6 +53,9 @@ const TcpManConfigEdit = forwardRef(({ initial }: { initial?: TcpManConfig }, re
     const address = useEditState(initial?.address ?? '', mandatory('Address', validAddress));
     const [ssl, setSsl] = useState(initial?.ssl === true);
     const [allowsUdp, setAllowsUdp] = useState(initial?.allows_udp === true);
+    const [hasCreds, setHasCreds] = useState(Boolean(initial?.credentials));
+    const username = useEditState(initial?.credentials?.username ?? '', mandatory('Username'));
+    const password = useEditState(initial?.credentials?.password ?? '', mandatory('Password'));
 
     useImperativeHandle(ref, () => ({
         validate(): TcpManConfig {
@@ -61,6 +64,10 @@ const TcpManConfigEdit = forwardRef(({ initial }: { initial?: TcpManConfig }, re
                 address: address.validate(),
                 ssl,
                 allows_udp: allowsUdp,
+                credentials: hasCreds ? {
+                    username: username.validate(),
+                    password: password.validate(),
+                } : undefined,
             };
         }
     }), [address, allowsUdp, ssl]);
@@ -98,6 +105,36 @@ const TcpManConfigEdit = forwardRef(({ initial }: { initial?: TcpManConfig }, re
                     label="Allows UDP" />
             </FormControl>
         </div>
+
+        <div>
+            <FormControl>
+                <FormControlLabel
+                    control={<Switch
+                        checked={hasCreds}
+                        onChange={v => setHasCreds(v.currentTarget.checked)}
+                    />}
+                    labelPlacement='start'
+                    label="HTTP Auth" />
+            </FormControl>
+        </div>
+
+        {hasCreds && <TextField
+            value={username.value}
+            label='Username'
+            margin='dense'
+            error={!!username.error}
+            helperText={username.error}
+            onChange={v => username.setValue(v.currentTarget.value)}
+        />}
+
+        {hasCreds && <TextField
+            value={password.value}
+            label='Password'
+            margin='dense'
+            error={!!password.error}
+            helperText={password.error}
+            onChange={v => password.setValue(v.currentTarget.value)}
+        />}
     </>;
 });
 
@@ -182,12 +219,14 @@ const FireTcpConfigEdit = forwardRef(({ initial }: {
     initial?: FireTcpConfig,
 }, ref) => {
     const address = useEditState(initial?.address ?? '', mandatory('Address', validAddress));
+    const password = useEditState(initial?.password ?? '', mandatory('Password'));
 
     useImperativeHandle(ref, () => ({
         validate(): FireTcpConfig {
             return {
                 type: 'firetcp',
                 address: address.validate(),
+                password: password.validate(),
             }
         }
     }), [address]);
@@ -200,6 +239,14 @@ const FireTcpConfigEdit = forwardRef(({ initial }: {
             error={!!address.error}
             helperText={address.error}
             onChange={v => address.setValue(v.currentTarget.value)} />
+
+        <TextField
+            value={password.value}
+            label='Password'
+            margin='dense'
+            error={!!password.error}
+            helperText={password.error}
+            onChange={v => password.setValue(v.currentTarget.value)} />
     </>;
 });
 

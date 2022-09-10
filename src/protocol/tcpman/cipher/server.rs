@@ -165,6 +165,7 @@ mod test {
                 stream,
                 EncryptionStrategy::FirstN(5.try_into().unwrap()),
                 EncryptionStrategy::Always,
+                Option::<&str>::None,
                 data.to_vec(),
             )
             .await

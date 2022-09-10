@@ -3,9 +3,7 @@ use byteorder::{BigEndian, WriteBytesExt};
 use bytes::{Buf, Bytes};
 use enum_primitive_derive::Primitive;
 use futures::{Sink, SinkExt, Stream, StreamExt};
-use lazy_static::lazy_static;
 use num_traits::FromPrimitive;
-use orion::aead::SecretKey;
 use std::io::Write;
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr};
 
@@ -371,15 +369,6 @@ pub fn new_message_sink_stream(
         })),
         Box::pin(stream.map(|m| m.and_then(Message::parse))),
     )
-}
-
-#[allow(dead_code)]
-fn secret_key() -> &'static SecretKey {
-    lazy_static! {
-        static ref KEY: SecretKey =
-            SecretKey::from_slice(b"=DW5<W;FJ;nPMA`&6cCpzm7jJNp3`J4a").unwrap();
-    }
-    &KEY
 }
 
 #[cfg(test)]
