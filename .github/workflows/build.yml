@@ -292,4 +292,4 @@ jobs:
             linux-app-*.tar.gz
             windows-app.zip
             macos-app.zip
-            app-release.apk
+            android-app/app-release.apk
