@@ -274,6 +274,7 @@ jobs:
       - buildAndroidApp
       - buildPlatformNativeApps
       - publishDockerImages
+      - test
     steps:
       - name: Download all artifacts
         uses: actions/download-artifact@v3
