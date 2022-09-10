@@ -1,6 +1,8 @@
 # This Dockerfile will only copy the built files
 FROM debian:latest
 
+ARG TARGETPLATFORM
+
 COPY ${TARGETPLATFORM}/cpxy /usr/local/bin/
 
 RUN chmod +x /usr/local/bin/cpxy
