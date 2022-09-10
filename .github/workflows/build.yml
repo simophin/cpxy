@@ -107,6 +107,7 @@ jobs:
     needs: buildLinuxApps
     if: github.event_name == 'push'
     steps:
+      - uses: actions/checkout@v3
       - name: Docker meta
         id: meta
         uses: docker/metadata-action@v4
@@ -272,6 +273,7 @@ jobs:
       - buildLinuxApps
       - buildAndroidApp
       - buildPlatformNativeApps
+      - publishDockerImages
     steps:
       - name: Download all artifacts
         uses: actions/download-artifact@v3
