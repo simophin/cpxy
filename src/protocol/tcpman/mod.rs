@@ -13,6 +13,7 @@ use bytes::Bytes;
 use futures::{AsyncRead, AsyncReadExt, AsyncWrite};
 use serde::{Deserialize, Serialize};
 
+use crate::fetch::connect_http_stream;
 use crate::io::{connect_tcp_marked, AsyncStreamCounter};
 use crate::{socks5::Address, url::HttpUrl};
 
@@ -48,6 +49,10 @@ impl TcpMan {
         let stream = connect_tcp_marked(&self.address, fwmark)
             .await
             .context("Connect to TCPMan server")?;
+
+        let stream = connect_http_stream(self.ssl, &self.address, stream)
+            .await
+            .context("Connect to TLS stream")?;
 
         let initial_data = req.to_vec();
 

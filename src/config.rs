@@ -143,7 +143,7 @@ impl ClientConfig {
                 .upstreams
                 .iter()
                 .filter_map(|(n, c)| {
-                    if !c.protocol.supports(t) {
+                    if !c.protocol.supports(t) || !c.enabled {
                         return None;
                     }
 

@@ -24,12 +24,21 @@ pub async fn negotiate_websocket(
         .await
         .context("Sending request")?;
 
-    let http_stream = parse_response(stream, RWBuffer::new_vec_uninitialised(512))
+    let mut http_stream = parse_response(stream, RWBuffer::new_vec_uninitialised(512))
         .await
         .context("Parsing initial response")?;
 
-    if http_stream.status_code != 101 {
-        bail!("Expecting 101 response but got {}", http_stream.status_code);
+    let status_code = http_stream.status_code;
+    if status_code != 101 {
+        bail!(
+            "Expecting 101 response but got {}. Body: {:?}",
+            status_code,
+            http_stream
+                .body()
+                .await
+                .ok()
+                .and_then(|v| String::from_utf8(v).ok())
+        );
     }
 
     Ok(http_stream)
