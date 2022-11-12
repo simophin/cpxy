@@ -8,7 +8,7 @@ use std::{
 };
 
 use anyhow::{bail, Context};
-use clap::{ArgEnum, Parser};
+use clap::{Parser, ValueEnum};
 use ipnetwork::IpNetwork;
 use serde::{Deserialize, Serialize};
 
@@ -38,7 +38,7 @@ pub enum RuleDestination {
     DnsHost(DnsHostMatch),
 }
 
-#[derive(Debug, ArgEnum, Clone, Copy, PartialEq, PartialOrd, Eq, Ord)]
+#[derive(Debug, ValueEnum, Clone, Copy, PartialEq, PartialOrd, Eq, Ord)]
 pub enum RuleProtocol {
     Tcp,
     Udp,
@@ -62,11 +62,11 @@ enum TableExecuteResult<'a> {
 
 #[derive(Debug, Parser, PartialEq, Eq, Clone)]
 pub struct Rule {
-    #[clap(short, parse(try_from_str))]
+    #[clap(short)]
     dest: Vec<RuleDestination>,
-    #[clap(arg_enum, short)]
+    #[clap(short)]
     proto: Option<RuleProtocol>,
-    #[clap(short, parse(try_from_str))]
+    #[clap(short)]
     action: RuleAction,
 }
 

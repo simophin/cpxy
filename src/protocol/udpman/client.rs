@@ -185,7 +185,7 @@ mod tests {
 
     #[test]
     fn udpman_works() {
-        std::env::set_var("RUST_LOG", "debug");
+        // std::env::set_var("RUST_LOG", "debug");
         let _ = env_logger::try_init();
         block_on(async move {
             let (server_socket, server_addr) = create_udp_socket().await;
