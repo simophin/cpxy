@@ -6,11 +6,11 @@ version = "0.1.0"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-adblock = {version = "0", default-features = false, features = ["full-regex-handling", "embedded-domain-resolver"]}
+adblock = { version = "0", default-features = false, features = ["full-regex-handling", "embedded-domain-resolver"] }
 anyhow = "1"
 async-broadcast = "0"
 async-io = "1"
-async-native-tls = {version = "0", features = ["vendored"]}
+async-native-tls = { version = "0", features = ["vendored"] }
 async-net = "1"
 async-stream = "0"
 async-trait = "0"
@@ -18,11 +18,11 @@ atomic = "0"
 base64 = "0"
 bit = "0"
 byteorder = "1"
-bytes = {version = "1", features = ["serde"]}
+bytes = { version = "1", features = ["serde"] }
 chacha20 = "0"
-chrono = {version = "0", features = ["serde"]}
+chrono = { version = "0", features = ["serde"] }
 cipher = "0"
-clap = {version = "4", features = ["derive"]}
+clap = { version = "4", features = ["derive"] }
 derive_more = "0"
 dirs = "4"
 dns-parser = "0"
@@ -41,20 +41,20 @@ mime_guess = "2"
 num-traits = "0"
 parking_lot = "0"
 pin-project-lite = "0"
-rand = {version = "0", features = ["min_const_gen"]}
+rand = { version = "0", features = ["min_const_gen"] }
 regex = "1"
 rust-embed = "6"
 scopeguard = "1"
-serde = {version = "1", features = ["derive"]}
+serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 serde_with = "2"
 serde_yaml = "0"
 siphasher = "0"
-smallvec = {version = "1", features = ["const_generics", "write"]}
-smol = {version = "1"}
-smol-timeout = {version = "0"}
+smallvec = { version = "1", features = ["const_generics", "write"] }
+smol = { version = "1" }
+smol-timeout = { version = "0" }
 urlencoding = "2"
-uuid = {version = "1", features = ["v4"]}
+uuid = { version = "1", features = ["v4"] }
 blake2 = "0"
 
 [dev-dependencies]
@@ -85,3 +85,6 @@ incremental = true
 
 [profile.release]
 strip = "symbols"
+
+[profile.bench]
+debug = true
