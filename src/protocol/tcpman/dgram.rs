@@ -44,3 +44,31 @@ pub fn create_udp_sink(
 
     tx.sink_err_into()
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::test::echo_tcp_server;
+    use async_net::TcpStream;
+    use futures_util::AsyncReadExt;
+
+    #[test]
+    fn udp_sink_stream_works() {
+        smol::block_on(async move {
+            let (_task, addr) = echo_tcp_server().await;
+            let (r, w) = TcpStream::connect(addr).await.expect("To connect").split();
+            let mut stream = create_udp_stream(r, None);
+            let mut sink = create_udp_sink(w);
+
+            let data = Bytes::from_static(b"hello, world");
+            let addr: Address = "localhost:53".parse().unwrap();
+            sink.send((data.clone(), addr.clone().into_owned()))
+                .await
+                .unwrap();
+
+            let received = stream.next().await.unwrap().unwrap();
+            assert_eq!(&data, &received.0);
+            assert_eq!(&addr, &received.1);
+        });
+    }
+}

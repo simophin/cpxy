@@ -170,7 +170,7 @@ mod tests {
 
     #[test]
     fn sink_stream_works() {
-        std::env::set_var("RUST_LOG", "info");
+        // std::env::set_var("RUST_LOG", "info");
         let _ = env_logger::try_init();
         smol::block_on(async move {
             let (_task, echo_addr) = echo_udp_server().await;

@@ -108,7 +108,7 @@ pub async fn test_protocol_udp(p: &(impl Protocol + Send + Sync)) {
     assert_eq!(echo_addr.port(), initial_reply.1.get_port());
 
     let mut test_data = Box::pin(stream! {
-        for i in 0..1000 {
+        for i in 0..10 {
             let mut buf = vec![0u8; 0];
             write!(&mut buf, "Test data {i}").unwrap();
             yield Bytes::from(buf);

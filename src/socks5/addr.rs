@@ -175,6 +175,10 @@ impl<'a> Address<'a> {
     }
 
     pub fn parse(mut buf: &'a [u8]) -> Result<Option<(usize, Self)>, ParseError> {
+        if !buf.has_remaining() {
+            return Ok(None);
+        }
+
         let mut position = 1;
         match buf.get_u8() {
             0x1 => {
