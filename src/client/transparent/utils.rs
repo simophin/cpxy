@@ -86,7 +86,7 @@ fn new_tsock(addr: SocketAddr) -> anyhow::Result<UdpSocket> {
     })?)
 }
 
-pub fn bind_transparent_udp_for_reciving(
+pub fn bind_transparent_udp_for_receiving(
     addr: SocketAddr,
 ) -> anyhow::Result<impl Stream<Item = (Bytes, SocketAddr, SocketAddr)> + Unpin + Send + Sync + Sized>
 {

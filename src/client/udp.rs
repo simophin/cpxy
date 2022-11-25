@@ -12,8 +12,8 @@ use futures::{
 use smol_timeout::TimeoutExt;
 
 use crate::{
-    config::ClientConfig, handshake::Handshaker, socks5::UdpRepr as Socks5UdpRepr,
-    udp_relay::new_udp_relay,
+    config::ClientConfig, handshake::Handshaker, socks5::new_udp_relay,
+    socks5::UdpRepr as Socks5UdpRepr,
 };
 use smol::spawn;
 

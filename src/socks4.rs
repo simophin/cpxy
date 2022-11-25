@@ -13,7 +13,7 @@ pub struct Request<'a> {
     pub addr: Address<'a>,
 }
 
-pub fn parse_socks4_request<'a>(mut buf: &'a [u8]) -> anyhow::Result<Option<(usize, Request<'a>)>> {
+pub fn parse_socks4_request(mut buf: &[u8]) -> anyhow::Result<Option<(usize, Request)>> {
     if buf.remaining() < 9 {
         return Ok(None);
     }
