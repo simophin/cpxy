@@ -15,7 +15,7 @@ use smol::{
 };
 
 use super::super::ClientStatistics;
-use super::utils::bind_transparent_udp_for_reciving;
+use super::utils::bind_transparent_udp_for_receiving;
 
 struct UdpSession {
     tx: Sender<Bytes>,
@@ -33,7 +33,7 @@ pub async fn serve_udp_transparent_proxy(
     config: Arc<ClientConfig>,
     stats: Arc<ClientStatistics>,
 ) -> anyhow::Result<Task<anyhow::Result<()>>> {
-    let mut socket = bind_transparent_udp_for_reciving(addr).context("Binding UDP socket")?;
+    let mut socket = bind_transparent_udp_for_receiving(addr).context("Binding UDP socket")?;
     log::info!("Started UDP transparent proxy at {addr}");
     Ok(spawn(async move {
         let mut sessions: HashMap<UdpSessionKey, UdpSession> = Default::default();
