@@ -43,6 +43,12 @@ pub async fn serve_udp_on_dgram(
             "Received one off reply from {dst}: {} bytes. Sending back to {src}",
             data.len()
         );
+
+        if dst.port() == 53 {
+            if let Err(e) = DnsCache::global().cache(&data) {
+                log::info!("Error caching DNS packet: {e:?}");
+            }
+        }
         return bind_transparent_udp_for_sending(dst)
             .context("Binding TProxy for sending")?
             .send((data, src))

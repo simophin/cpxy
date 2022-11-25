@@ -130,7 +130,7 @@ impl UdpSession {
 
                 log::info!("Serving UDP://{dst} on upstream: {name}");
                 result = super::udp_proxy::serve_udp_on_dgram(
-                    sink.with(|(buf, addr)| ready(anyhow::Result::Ok((buf, Address::from(addr))))),
+                    sink.with(|(buf, addr)| ready(Ok((buf, Address::from(addr))))),
                     stream.filter_map(|item| {
                         ready(match item {
                             Ok((buf, Address::IP(addr))) => Some(Ok((buf, addr))),
