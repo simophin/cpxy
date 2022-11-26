@@ -1,3 +1,4 @@
+use std::fmt::{Debug, Formatter};
 use std::{
     borrow::Cow,
     io::Read,
@@ -250,6 +251,22 @@ pub fn gfw_list_engine() -> &'static ABPEngine {
         };
     }
     &ENGINE
+}
+
+impl PartialEq for ABPEngine {
+    fn eq(&self, other: &Self) -> bool {
+        (self as *const ABPEngine) == (other as *const ABPEngine)
+    }
+}
+
+impl Eq for ABPEngine {}
+
+impl Debug for ABPEngine {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("ABPEngine")
+            .field("url", &self.rule_url)
+            .finish()
+    }
 }
 
 #[cfg(test)]

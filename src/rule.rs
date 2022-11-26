@@ -21,21 +21,18 @@ use crate::{
 };
 
 #[derive(Debug, PartialEq, Eq, Clone)]
-pub enum DnsHostMatch {
+pub enum HostMatch {
     Pattern(Pattern),
-    GfwList,
-    AdBlockList,
+    HostList(&'static ABPEngine),
 }
 
 #[derive(Debug, PartialEq, Eq, Clone)]
 pub enum RuleDestination {
-    GfwList,
-    AdBlockList,
     GeoIP(CountryCode),
     Network(IpNetwork),
     Port(u16),
-    Domain(Pattern),
-    DnsHost(DnsHostMatch),
+    Domain(HostMatch),
+    DnsHost(HostMatch),
 }
 
 #[derive(Debug, ValueEnum, Clone, Copy, PartialEq, PartialOrd, Eq, Ord)]
@@ -76,18 +73,6 @@ impl FromStr for RuleDestination {
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         let (name, args) = s.split_once(':').unwrap_or((s, ""));
         match name {
-            "gfwlist" => {
-                if !args.is_empty() {
-                    bail!("{name} doesn't take any argument");
-                }
-                Ok(Self::GfwList)
-            }
-            "adblocklist" => {
-                if !args.is_empty() {
-                    bail!("{name} doesn't take any argument");
-                }
-                Ok(Self::AdBlockList)
-            }
             "geoip" => {
                 Ok(Self::GeoIP(args.parse().with_context(|| {
                     format!("Parsing args into country code: {args}")
@@ -109,17 +94,9 @@ impl FromStr for RuleDestination {
                 })?))
             }
             "dnshost" => {
-                let (arg1, arg2) = args.split_once(':').unwrap_or((args, ""));
-                Ok(Self::DnsHost(match (arg1, arg2) {
-                    ("gfwlist", "") => DnsHostMatch::GfwList,
-                    ("adblocklist", "") => DnsHostMatch::AdBlockList,
-                    ("matches", pattern) => DnsHostMatch::Pattern(
-                        pattern
-                            .parse()
-                            .with_context(|| format!("Parsing pattern: {pattern}"))?,
-                    ),
-                    _ => bail!("Unknown dnshost args: {args}"),
-                }))
+                Ok(Self::DnsHost(args.parse().with_context(|| {
+                    format!("Parsing args into dnshost: {args}")
+                })?))
             }
             _ => bail!("Unknown rule: {s}"),
         }
@@ -276,7 +253,7 @@ impl RuleString {
                 }
                 RuleAction::Proxy(name) => return Some(TableExecuteResult::Proxy(name.as_ref())),
                 RuleAction::ProxyGroup(name) => {
-                    return Some(TableExecuteResult::ProxyGroup(name.as_ref()))
+                    return Some(TableExecuteResult::ProxyGroup(name.as_ref()));
                 }
                 RuleAction::Reject => return Some(TableExecuteResult::Reject),
                 RuleAction::Return => return Some(TableExecuteResult::Return),
@@ -306,10 +283,6 @@ impl RuleString {
 impl RuleDestination {
     fn matches(&self, target: &PacketDestination<'_>, initial_data: Option<&[u8]>) -> bool {
         match (self, target) {
-            (RuleDestination::AdBlockList, pd) => {
-                Self::matches_abp_engine(adblock_list_engine(), pd)
-            }
-            (RuleDestination::GfwList, pd) => Self::matches_abp_engine(gfw_list_engine(), pd),
             (RuleDestination::GeoIP(c), PacketDestination::IP { country_code, .. }) => {
                 country_code.as_ref() == Some(c)
             }
@@ -347,29 +320,6 @@ impl RuleDestination {
             }
         }
     }
-
-    fn matches_abp_engine(engine: &ABPEngine, target: &PacketDestination<'_>) -> bool {
-        match target {
-            PacketDestination::Domain { hostname, port, .. } => engine.matches(&Address::Name {
-                host: Cow::Borrowed(*hostname),
-                port: *port,
-            }),
-            PacketDestination::IP {
-                addr,
-                resolved_host,
-                ..
-            } => resolved_host
-                .iter()
-                .filter(|h| {
-                    engine.matches(&Address::Name {
-                        host: Cow::Borrowed(h.as_ref()),
-                        port: addr.port(),
-                    })
-                })
-                .next()
-                .is_some(),
-        }
-    }
 }
 
 impl<'a> PacketDestination<'a> {
@@ -381,19 +331,31 @@ impl<'a> PacketDestination<'a> {
     }
 }
 
-impl DnsHostMatch {
+impl HostMatch {
     fn matches(&self, s: &str) -> bool {
         match self {
-            DnsHostMatch::Pattern(p) => p.matches(s),
-            DnsHostMatch::GfwList => gfw_list_engine().matches(&Address::Name {
-                host: Cow::Borrowed(s),
-                port: 80,
-            }),
-            DnsHostMatch::AdBlockList => adblock_list_engine().matches(&Address::Name {
+            HostMatch::Pattern(p) => p.matches(s),
+            HostMatch::HostList(engine) => engine.matches(&Address::Name {
                 host: Cow::Borrowed(s),
                 port: 80,
             }),
         }
+    }
+}
+
+impl FromStr for HostMatch {
+    type Err = anyhow::Error;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        let mut splits = s.split(':');
+        Ok(match (splits.next(), splits.next()) {
+            (Some("list"), Some("gfw")) => Self::HostList(gfw_list_engine()),
+            (Some("list"), Some("adblock")) => Self::HostList(adblock_list_engine()),
+            (Some("matches"), Some(p)) => Self::Pattern(p.parse()?),
+            _ => bail!(
+                "Invalid host match string: {s}. Expect: list:gfw, list:adblock or matches:pattern"
+            ),
+        })
     }
 }
 
@@ -439,7 +401,8 @@ mod tests {
     fn rule_parsing_works() {
         let rules = "\
         main:\n\
-            test -d gfwlist -p tcp -a proxy:proxy1\n\
+            test -d domain:list:gfw -p tcp -a proxy:proxy1\n\
+            test -d domain:list:adblock -p tcp -a proxy:proxy1\n\
             test -d geoip:cn -d geoip:us -p udp -a reject\n\
             test -d geoip:nz -a jump:nz\n\
             test -a reject\n\
@@ -451,7 +414,12 @@ mod tests {
         let expect = hashmap! {
             "main".to_string() => vec![
                 Rule {
-                    dest: vec![RuleDestination::GfwList],
+                    dest: vec![RuleDestination::Domain(HostMatch::HostList(gfw_list_engine()))],
+                    proto: Some(RuleProtocol::Tcp),
+                    action: RuleAction::Proxy("proxy1".into()),
+                },
+                Rule {
+                    dest: vec![RuleDestination::Domain(HostMatch::HostList(adblock_list_engine()))],
                     proto: Some(RuleProtocol::Tcp),
                     action: RuleAction::Proxy("proxy1".into()),
                 },

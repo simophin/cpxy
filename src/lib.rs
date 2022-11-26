@@ -12,6 +12,7 @@ mod parse;
 mod pattern;
 pub mod protocol;
 mod rule;
+mod sni;
 mod socks4;
 pub mod socks5;
 pub mod url;
