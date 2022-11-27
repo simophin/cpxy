@@ -328,8 +328,7 @@ impl RuleDestination {
         if let Some(initial_data) = initial_data {
             let header = match target.port() {
                 80 => extract_http_host_header(initial_data),
-                443 => extract_ssl_sni_host(initial_data),
-                _ => None,
+                _ => extract_ssl_sni_host(initial_data),
             };
 
             if let Some(host) = header {
