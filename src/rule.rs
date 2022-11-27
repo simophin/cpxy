@@ -238,7 +238,7 @@ impl RuleString {
                 continue;
             }
 
-            log::debug!("Matched {rule:?}");
+            log::debug!("Matched {rule:?} in table {table_name}");
             match &rule.action {
                 RuleAction::Jump(table_name) => {
                     match self.execute_table(
@@ -252,11 +252,18 @@ impl RuleString {
                         v => return v,
                     };
                 }
-                RuleAction::Proxy(name) => return Some(TableExecuteResult::Proxy(name.as_ref())),
+                RuleAction::Proxy(name) => {
+                    log::debug!("Using proxy {name} for target={target:?}, proto={proto:?}");
+                    return Some(TableExecuteResult::Proxy(name.as_ref()));
+                }
                 RuleAction::ProxyGroup(name) => {
+                    log::debug!("Using proxy group {name} for target={target:?}, proto={proto:?}");
                     return Some(TableExecuteResult::ProxyGroup(name.as_ref()));
                 }
-                RuleAction::Reject => return Some(TableExecuteResult::Reject),
+                RuleAction::Reject => {
+                    log::debug!("Reject target={target:?}, proto={proto:?}");
+                    return Some(TableExecuteResult::Reject);
+                }
                 RuleAction::Return => return Some(TableExecuteResult::Return),
             }
         }
@@ -284,32 +291,67 @@ impl RuleString {
 impl RuleDestination {
     fn matches(&self, target: &PacketDestination<'_>, initial_data: Option<&[u8]>) -> bool {
         match (self, target) {
-            (RuleDestination::GeoIP(c), PacketDestination::IP { country_code, .. }) => {
-                country_code.as_ref() == Some(c)
+            (
+                RuleDestination::GeoIP(c),
+                PacketDestination::IP {
+                    country_code, addr, ..
+                },
+            ) => {
+                if country_code.as_ref() == Some(c) {
+                    log::debug!("IP {addr} matches geoip:{c}");
+                    true
+                } else {
+                    false
+                }
             }
             (RuleDestination::GeoIP(c), PacketDestination::Domain { resolved_ips, .. }) => {
-                resolved_ips
+                if let Some((_, addr)) = resolved_ips
                     .iter()
                     .find(|(code, _)| code.as_ref() == Some(c))
-                    .is_some()
+                {
+                    log::debug!("Resolved IP {addr} matches geoip:{c}");
+                    true
+                } else {
+                    false
+                }
             }
             (RuleDestination::Network(n), PacketDestination::IP { addr, .. }) => {
-                n.contains(addr.ip())
+                if n.contains(addr.ip()) {
+                    log::debug!("IP {addr} matches network:{n}");
+                    true
+                } else {
+                    false
+                }
             }
             (RuleDestination::Network(n), PacketDestination::Domain { resolved_ips, .. }) => {
-                resolved_ips
-                    .iter()
-                    .find(|(_, addr)| n.contains(*addr))
-                    .is_some()
+                if let Some((_, addr)) = resolved_ips.iter().find(|(_, addr)| n.contains(*addr)) {
+                    log::debug!("Resolved IP {addr} matches network:{n}");
+                    true
+                } else {
+                    false
+                }
             }
             (RuleDestination::Domain(p), dst) => Self::domain_matches(p, dst, initial_data),
-            (RuleDestination::Port(p), pd) => *p == pd.port(),
+            (RuleDestination::Port(p), pd) => {
+                if *p == pd.port() {
+                    log::debug!("Dst port matches port:{p}");
+                    true
+                } else {
+                    false
+                }
+            }
             (RuleDestination::DnsHost(p), pd) => {
-                pd.port() == 53
+                if pd.port() == 53
                     && initial_data.is_some()
                     && dns_get_host_names(initial_data.unwrap())
                         .and_then(|mut host_names| host_names.position(|h| p.matches(h.as_str())))
                         .is_some()
+                {
+                    log::debug!("DNS request matches dnshost:{p:?}");
+                    true
+                } else {
+                    false
+                }
             }
         }
     }
@@ -321,28 +363,47 @@ impl RuleDestination {
     ) -> bool {
         // Do we have a definite domain name?
         if let PacketDestination::Domain { hostname, .. } = target {
-            return host_match.matches(*hostname);
+            if host_match.matches(*hostname) {
+                log::debug!("Dst domain {hostname} matches {host_match:?}");
+                return true;
+            } else {
+                return false;
+            }
         }
 
         // Can we extract the real host from HTTP/HTTPs?
         if let Some(initial_data) = initial_data {
-            let header = match target.port() {
-                80 => extract_http_host_header(initial_data),
-                _ => extract_ssl_sni_host(initial_data),
-            };
+            if let Some(host) = extract_http_host_header(initial_data) {
+                if host_match.matches(host) {
+                    log::debug!("Http host {host} matches {host_match:?}");
+                    return true;
+                } else {
+                    return false;
+                }
+            }
 
-            if let Some(host) = header {
-                return host_match.matches(host);
+            if let Some(host) = extract_ssl_sni_host(initial_data) {
+                if host_match.matches(host) {
+                    log::debug!("TLS SNI {host} matches {host_match:?}");
+                    return true;
+                } else {
+                    return false;
+                }
             }
         }
 
         // Now we have to trust the "resolved DOMAIN", this is the last resort and less accurate
         if let PacketDestination::IP { resolved_host, .. } = target {
-            return resolved_host
+            if let Some(host) = resolved_host
                 .iter()
                 .filter(|h| host_match.matches(h.as_ref()))
                 .next()
-                .is_some();
+            {
+                log::debug!("Reverse-resolved host {host} matches {host_match:?}");
+                return true;
+            } else {
+                return false;
+            }
         }
 
         false

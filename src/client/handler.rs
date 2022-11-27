@@ -1,6 +1,7 @@
 use std::sync::Arc;
 
 use crate::{
+    client::tcp::serve_tcp_tproxy_conn,
     io::{bind_tcp, TcpStreamExt},
     iptables as ipt,
 };
@@ -124,9 +125,13 @@ async fn serve_proxy_conn(
     config: Arc<ClientConfig>,
     stats: Arc<ClientStatistics>,
 ) -> anyhow::Result<()> {
+    if let Some(orig_dst) = socks.get_original_dst() {
+        log::info!("Requesting to proxy to {orig_dst} transparently");
+        return serve_tcp_tproxy_conn(orig_dst.into(), &config, &stats, socks).await;
+    }
+
     let mut buf = RWBuffer::new_vec_uninitialised(512);
-    let transparent_addr = socks.get_original_dst();
-    let (hs, req) = Handshaker::start(&mut socks, transparent_addr, &mut buf)
+    let (hs, req) = Handshaker::start(&mut socks, &mut buf)
         .await
         .context("Handshaking")?;
     log::info!("Requesting to proxy {req:?}");
