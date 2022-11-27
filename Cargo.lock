@@ -72,7 +72,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b5e9dd62f37dea550caf48c77591dc50bd1a378ce08855be1a0c42a97b7550fb"
 dependencies = [
  "android_log-sys",
- "env_logger",
+ "env_logger 0.9.3",
  "log 0.4.17",
  "once_cell",
 ]
@@ -549,7 +549,7 @@ dependencies = [
  "dns-parser",
  "either",
  "enum-primitive-derive",
- "env_logger",
+ "env_logger 0.10.0",
  "futures",
  "futures-util",
  "httparse",
@@ -776,8 +776,18 @@ version = "0.9.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "a12e6657c4c97ebab115a42dcee77225f7f482cdd841cf7088c657a42e9e00e7"
 dependencies = [
- "atty",
+ "log 0.4.17",
+ "regex 1.7.0",
+]
+
+[[package]]
+name = "env_logger"
+version = "0.10.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "85cdab6a89accf66733ad5a1693a4dcced6aeff64602b634530dd73c1f3ee9f0"
+dependencies = [
  "humantime",
+ "is-terminal",
  "log 0.4.17",
  "regex 1.7.0",
  "termcolor",
