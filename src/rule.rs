@@ -12,6 +12,7 @@ use clap::{Parser, ValueEnum};
 use ipnetwork::IpNetwork;
 use serde::{Deserialize, Serialize};
 
+use crate::sni::{extract_http_host_header, extract_ssl_sni_host};
 use crate::{
     abp::{adblock_list_engine, gfw_list_engine, ABPEngine},
     dns::dns_get_host_names,
@@ -301,15 +302,7 @@ impl RuleDestination {
                     .find(|(_, addr)| n.contains(*addr))
                     .is_some()
             }
-            (RuleDestination::Domain(p), PacketDestination::Domain { hostname, .. }) => {
-                p.matches(*hostname)
-            }
-            (RuleDestination::Domain(p), PacketDestination::IP { resolved_host, .. }) => {
-                resolved_host
-                    .iter()
-                    .find(|h| p.matches(h.as_ref()))
-                    .is_some()
-            }
+            (RuleDestination::Domain(p), dst) => Self::domain_matches(p, dst, initial_data),
             (RuleDestination::Port(p), pd) => *p == pd.port(),
             (RuleDestination::DnsHost(p), pd) => {
                 pd.port() == 53
@@ -319,6 +312,41 @@ impl RuleDestination {
                         .is_some()
             }
         }
+    }
+
+    fn domain_matches(
+        host_match: &HostMatch,
+        target: &PacketDestination<'_>,
+        initial_data: Option<&[u8]>,
+    ) -> bool {
+        // Do we have a definite domain name?
+        if let PacketDestination::Domain { hostname, .. } = target {
+            return host_match.matches(*hostname);
+        }
+
+        // Can we extract the real host from HTTP/HTTPs?
+        if let Some(initial_data) = initial_data {
+            let header = match target.port() {
+                80 => extract_http_host_header(initial_data),
+                443 => extract_ssl_sni_host(initial_data),
+                _ => None,
+            };
+
+            if let Some(host) = header {
+                return host_match.matches(host);
+            }
+        }
+
+        // Now we have to trust the "resolved DOMAIN", this is the last resort and less accurate
+        if let PacketDestination::IP { resolved_host, .. } = target {
+            return resolved_host
+                .iter()
+                .filter(|h| host_match.matches(h.as_ref()))
+                .next()
+                .is_some();
+        }
+
+        false
     }
 }
 
