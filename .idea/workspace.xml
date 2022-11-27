@@ -7,15 +7,20 @@
     <cargoProject FILE="$PROJECT_DIR$/Cargo.toml" />
   </component>
   <component name="ChangeListManager">
-    <list default="true" id="998b8231-524b-486c-9a00-9672a65c1a7c" name="Changes" comment="tidy up">
-      <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/client/transparent/handler.rs" beforeDir="false" afterPath="$PROJECT_DIR$/src/client/transparent/handler.rs" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/client/transparent/udp_proxy.rs" beforeDir="false" afterPath="$PROJECT_DIR$/src/client/transparent/udp_proxy.rs" afterDir="false" />
+    <list default="true" id="998b8231-524b-486c-9a00-9672a65c1a7c" name="Changes" comment="SNI matching">
+      <change beforePath="$PROJECT_DIR$/src/rule.rs" beforeDir="false" afterPath="$PROJECT_DIR$/src/rule.rs" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
     <option name="HIGHLIGHT_NON_ACTIVE_CHANGELIST" value="false" />
     <option name="LAST_RESOLUTION" value="IGNORE" />
+  </component>
+  <component name="FileTemplateManagerImpl">
+    <option name="RECENT_TEMPLATES">
+      <list>
+        <option value="Rust File" />
+      </list>
+    </option>
   </component>
   <component name="FormatOnSaveOptions">
     <option name="myRunOnSave" value="true" />
@@ -23,7 +28,7 @@
   <component name="Git.Settings">
     <option name="RECENT_BRANCH_BY_REPOSITORY">
       <map>
-        <entry key="$PROJECT_DIR$" value="master" />
+        <entry key="$PROJECT_DIR$" value="clean-up" />
       </map>
     </option>
     <option name="RECENT_GIT_ROOT_PATH" value="$PROJECT_DIR$" />
@@ -55,6 +60,7 @@
   <component name="ProjectId" id="26DY1Xw8WeiCe5Ps4fic7RUiVOc" />
   <component name="ProjectLevelVcsManager">
     <OptionsSetting value="false" id="Update" />
+    <ConfirmationsSetting value="2" id="Add" />
   </component>
   <component name="ProjectViewState">
     <option name="hideEmptyMiddlePackages" value="true" />
@@ -62,6 +68,7 @@
   </component>
   <component name="PropertiesComponent">{
   &quot;keyToString&quot;: {
+    &quot;Git.Branch.Popup.ShowAllRemotes&quot;: &quot;true&quot;,
     &quot;RunOnceActivity.OpenProjectViewOnStart&quot;: &quot;true&quot;,
     &quot;RunOnceActivity.ShowReadmeOnStart&quot;: &quot;true&quot;,
     &quot;WebServerToolWindowFactoryState&quot;: &quot;false&quot;,
@@ -78,7 +85,7 @@
       <recent name="$PROJECT_DIR$/src/socks5" />
     </key>
   </component>
-  <component name="RunManager" selected="Cargo.Test">
+  <component name="RunManager" selected="Cargo.Test sni::tests::extract_tls_sni_works">
     <configuration name="Test protocol::tcpman::dgram::tests::udp_sink_stream_works" type="CargoCommandRunConfiguration" factoryName="Cargo Command" temporary="true">
       <option name="command" value="test --package cpxy --lib protocol::tcpman::dgram::tests::udp_sink_stream_works -- --exact" />
       <option name="workingDirectory" value="file://$PROJECT_DIR$" />
@@ -113,6 +120,57 @@
         <option name="CARGO.BUILD_TASK_PROVIDER" enabled="true" />
       </method>
     </configuration>
+    <configuration name="Test rule::tests" type="CargoCommandRunConfiguration" factoryName="Cargo Command" temporary="true">
+      <option name="command" value="test --package cpxy --lib rule::tests" />
+      <option name="workingDirectory" value="file://$PROJECT_DIR$" />
+      <option name="channel" value="DEFAULT" />
+      <option name="requiredFeatures" value="true" />
+      <option name="allFeatures" value="false" />
+      <option name="emulateTerminal" value="false" />
+      <option name="withSudo" value="false" />
+      <option name="buildTarget" value="REMOTE" />
+      <option name="backtrace" value="SHORT" />
+      <envs />
+      <option name="isRedirectInput" value="false" />
+      <option name="redirectInputPath" value="" />
+      <method v="2">
+        <option name="CARGO.BUILD_TASK_PROVIDER" enabled="true" />
+      </method>
+    </configuration>
+    <configuration name="Test sni::tests" type="CargoCommandRunConfiguration" factoryName="Cargo Command" temporary="true">
+      <option name="command" value="test --package cpxy --lib sni::tests" />
+      <option name="workingDirectory" value="file://$PROJECT_DIR$" />
+      <option name="channel" value="DEFAULT" />
+      <option name="requiredFeatures" value="true" />
+      <option name="allFeatures" value="false" />
+      <option name="emulateTerminal" value="false" />
+      <option name="withSudo" value="false" />
+      <option name="buildTarget" value="REMOTE" />
+      <option name="backtrace" value="SHORT" />
+      <envs />
+      <option name="isRedirectInput" value="false" />
+      <option name="redirectInputPath" value="" />
+      <method v="2">
+        <option name="CARGO.BUILD_TASK_PROVIDER" enabled="true" />
+      </method>
+    </configuration>
+    <configuration name="Test sni::tests::extract_tls_sni_works" type="CargoCommandRunConfiguration" factoryName="Cargo Command" temporary="true">
+      <option name="command" value="test --package cpxy --lib sni::tests::extract_tls_sni_works -- --exact" />
+      <option name="workingDirectory" value="file://$PROJECT_DIR$" />
+      <option name="channel" value="DEFAULT" />
+      <option name="requiredFeatures" value="true" />
+      <option name="allFeatures" value="false" />
+      <option name="emulateTerminal" value="false" />
+      <option name="withSudo" value="false" />
+      <option name="buildTarget" value="REMOTE" />
+      <option name="backtrace" value="SHORT" />
+      <envs />
+      <option name="isRedirectInput" value="false" />
+      <option name="redirectInputPath" value="" />
+      <method v="2">
+        <option name="CARGO.BUILD_TASK_PROVIDER" enabled="true" />
+      </method>
+    </configuration>
     <configuration name="Test" type="CargoCommandRunConfiguration" factoryName="Cargo Command" nameIsGenerated="true">
       <option name="command" value="test" />
       <option name="workingDirectory" value="file://$PROJECT_DIR$" />
@@ -132,11 +190,17 @@
     </configuration>
     <list>
       <item itemvalue="Cargo.Test" />
+      <item itemvalue="Cargo.Test sni::tests::extract_tls_sni_works" />
+      <item itemvalue="Cargo.Test sni::tests" />
       <item itemvalue="Cargo.Test protocol::tcpman::dgram::tests::udp_sink_stream_works" />
       <item itemvalue="Cargo.Test protocol::tcpman::tests::tcpman_works" />
+      <item itemvalue="Cargo.Test rule::tests" />
     </list>
     <recent_temporary>
       <list>
+        <item itemvalue="Cargo.Test sni::tests::extract_tls_sni_works" />
+        <item itemvalue="Cargo.Test sni::tests" />
+        <item itemvalue="Cargo.Test rule::tests" />
         <item itemvalue="Cargo.Test protocol::tcpman::tests::tcpman_works" />
         <item itemvalue="Cargo.Test protocol::tcpman::dgram::tests::udp_sink_stream_works" />
       </list>
@@ -191,7 +255,28 @@
       <option name="project" value="LOCAL" />
       <updated>1669362971814</updated>
     </task>
-    <option name="localTasksCounter" value="3" />
+    <task id="LOCAL-00003" summary="tidy up">
+      <created>1669364268968</created>
+      <option name="number" value="00003" />
+      <option name="presentableId" value="LOCAL-00003" />
+      <option name="project" value="LOCAL" />
+      <updated>1669364268968</updated>
+    </task>
+    <task id="LOCAL-00004" summary="Change how domain matching works">
+      <created>1669506506464</created>
+      <option name="number" value="00004" />
+      <option name="presentableId" value="LOCAL-00004" />
+      <option name="project" value="LOCAL" />
+      <updated>1669506506464</updated>
+    </task>
+    <task id="LOCAL-00005" summary="SNI matching">
+      <created>1669534415277</created>
+      <option name="number" value="00005" />
+      <option name="presentableId" value="LOCAL-00005" />
+      <option name="project" value="LOCAL" />
+      <updated>1669534415277</updated>
+    </task>
+    <option name="localTasksCounter" value="6" />
     <servers />
   </component>
   <component name="TypeScriptGeneratedFilesManager">
@@ -212,7 +297,9 @@
     <MESSAGE value="Removed UDP" />
     <MESSAGE value="Removed DNS" />
     <MESSAGE value="tidy up" />
-    <option name="LAST_COMMIT_MESSAGE" value="tidy up" />
+    <MESSAGE value="Change how domain matching works" />
+    <MESSAGE value="SNI matching" />
+    <option name="LAST_COMMIT_MESSAGE" value="SNI matching" />
   </component>
   <component name="XSLT-Support.FileAssociations.UIState">
     <expand />
