@@ -49,7 +49,6 @@ enum HandshakeType {
     Socks4,
     Http,
     HttpTcpChannel,
-    Transparent,
 }
 
 pub struct Handshaker(HandshakeType);
@@ -72,19 +71,8 @@ pub enum HandshakeRequest<'a> {
 impl Handshaker {
     pub async fn start(
         stream: &mut (impl AsyncRead + AsyncWrite + Unpin + Send + Sync),
-        transparent_addr: Option<SocketAddr>,
         buf: &mut RWBuffer,
     ) -> anyhow::Result<(Handshaker, HandshakeRequest<'static>)> {
-        if let Some(orig) = transparent_addr {
-            log::info!("Redirecting transparent proxy to: {orig}");
-            return Ok((
-                Handshaker(HandshakeType::Transparent),
-                HandshakeRequest::TCP {
-                    dst: Address::IP(orig),
-                },
-            ));
-        }
-
         let mut parse_state = ParseState::Init;
         let proxy_state: ProxyState;
 
@@ -208,7 +196,6 @@ impl Handshaker {
                 stream.write_all(b"HTTP/1.1 200 OK\r\n\r\n").await?;
                 Ok(())
             }
-            (HandshakeType::Transparent, _) => Ok(()),
         }
     }
 
@@ -233,10 +220,6 @@ impl Handshaker {
                 stream
                     .write_all(b"HTTP/1.1 500 Internal server error\r\n\r\n")
                     .await?;
-                Ok(())
-            }
-            HandshakeType::Transparent => {
-                stream.close().await?;
                 Ok(())
             }
         }
