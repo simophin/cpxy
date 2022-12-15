@@ -4,9 +4,16 @@ use super::strategy::EncryptionStrategy;
 use super::stream::CipherStream;
 use crate::{http::HttpRequestBuilder, url::HttpUrl, ws::negotiate_websocket};
 use anyhow::{anyhow, Context};
-use base64::{display::Base64Display, URL_SAFE_NO_PAD};
+use base64::{
+    alphabet, decode_engine,
+    display::Base64Display,
+    engine::fast_portable::{self, FastPortable},
+};
 use cipher::StreamCipher;
 use futures::{AsyncRead, AsyncReadExt, AsyncWrite};
+
+pub const BASE64_ENGINE: &FastPortable =
+    &FastPortable::from(&alphabet::URL_SAFE, fast_portable::NO_PAD);
 
 pub struct CipherParams<'a> {
     pub key: Cow<'a, [u8]>,
@@ -20,8 +27,8 @@ impl<'a> Display for CipherParams<'a> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.write_fmt(format_args!(
             "/{}/{}/{}/{}/{}",
-            base64::display::Base64Display::with_config(self.key.as_ref(), URL_SAFE_NO_PAD),
-            base64::display::Base64Display::with_config(self.iv.as_ref(), URL_SAFE_NO_PAD),
+            base64::display::Base64Display::from(self.key.as_ref(), BASE64_ENGINE),
+            base64::display::Base64Display::from(self.iv.as_ref(), BASE64_ENGINE),
             self.send_strategy,
             self.recv_strategy,
             self.cipher_type
@@ -37,8 +44,8 @@ impl FromStr for CipherParams<'static> {
         let _ = ss.next();
         match (ss.next(), ss.next(), ss.next(), ss.next(), ss.next()) {
             (Some(k), Some(iv), Some(ss), Some(rs), Some(t)) => Ok(Self {
-                key: Cow::Owned(base64::decode_config(k, URL_SAFE_NO_PAD).context("Decoding key")?),
-                iv: Cow::Owned(base64::decode_config(iv, URL_SAFE_NO_PAD).context("Decoding iv")?),
+                key: Cow::Owned(decode_engine(k, BASE64_ENGINE).context("Decoding key")?),
+                iv: Cow::Owned(decode_engine(iv, BASE64_ENGINE).context("Decoding iv")?),
                 send_strategy: ss.parse().context("parse send_strategy")?,
                 recv_strategy: rs.parse().context("parse recv_strategy")?,
                 cipher_type: t.parse().context("parse cipher_type")?,
@@ -48,7 +55,6 @@ impl FromStr for CipherParams<'static> {
     }
 }
 
-pub const INITIAL_DATA_CONFIG: base64::Config = base64::URL_SAFE_NO_PAD;
 pub const INITIAL_DATA_HEADER: &'static str = "X-Cache-Key";
 
 pub async fn connect(
@@ -79,7 +85,7 @@ pub async fn connect(
         .put_header_text("Host", url.address.get_host())?
         .put_header_text(
             INITIAL_DATA_HEADER,
-            Base64Display::with_config(initial_data.as_mut(), INITIAL_DATA_CONFIG),
+            Base64Display::from(initial_data.as_mut(), BASE64_ENGINE),
         )?;
 
     if let Some(auth) = auth {
