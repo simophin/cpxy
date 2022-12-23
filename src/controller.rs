@@ -1,12 +1,10 @@
-use crate::abp::{adblock_list_engine, gfw_list_engine};
 use crate::broadcast::bounded;
 use crate::buf::RWBuffer;
 use crate::client::{run_client, ClientStatistics};
 use crate::config::{ClientConfig, UpstreamConfig};
 use crate::http::{parse_request, write_http_response};
 use crate::http_path::HttpPath;
-use crate::socks5::Address;
-use anyhow::{anyhow, Context};
+use anyhow::{Context};
 use async_broadcast::Sender;
 use async_net::TcpListener;
 use chrono::{DateTime, Utc};
@@ -175,37 +173,6 @@ impl Controller {
                         .await
                         .and_then(json_response),
                     ("GET", "/api/stats") => self.get_stats().and_then(json_response),
-                    (m, "/api/gfwlist") | (m, "/api/adblocklist") => {
-                        let engine = if path.path.contains("gfwlist") {
-                            gfw_list_engine()
-                        } else {
-                            adblock_list_engine()
-                        };
-
-                        match m {
-                            "GET" => engine
-                                .get_last_updated()
-                                .map(|last_updated| RuleResult {
-                                    last_updated,
-                                    num_rules: None,
-                                })
-                                .map_err(|e| ErrorResponse::Generic(e))
-                                .and_then(json_response),
-                            "POST" => engine
-                                .update(&Address::IP(self.current.0.socks5_address))
-                                .await
-                                .and_then(|num_rules| {
-                                    Ok(RuleResult {
-                                        num_rules: Some(num_rules),
-                                        last_updated: engine.get_last_updated()?,
-                                    })
-                                })
-                                .map_err(|e| ErrorResponse::Generic(e))
-                                .and_then(json_response),
-                            _ => Err(ErrorResponse::InvalidRequest(anyhow!("Unknown method {m}"))),
-                        }
-                    }
-
                     // This MUST BE the last GET resource
                     ("GET", original_p) => {
                         let p = if original_p == "/" || original_p.is_empty() {

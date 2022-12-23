@@ -26,7 +26,6 @@ pub mod io;
 #[cfg(test)]
 mod test;
 
-mod abp;
 pub mod config;
 pub mod controller;
 mod geoip;

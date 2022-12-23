@@ -6,7 +6,6 @@ version = "0.1.0"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-adblock = { version = "0", default-features = false, features = ["full-regex-handling", "embedded-domain-resolver"] }
 anyhow = "1"
 async-broadcast = "0"
 async-io = "1"

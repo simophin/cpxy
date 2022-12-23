@@ -39,31 +39,6 @@ export default function BasicSettingsEdit({ onSaved, onCancelled, current_config
     const request = useHttp(`${BASE_URL}/api/config`, { headers: { "Content-Type": "application/json" } });
     const [snackbar, showSnackbar] = useSnackbar();
     const trafficRules = useEditState(current_config.traffic_rules ?? '');
-    const gfwListRequest = useHttp<RuleResult>(`${BASE_URL}/api/gfwlist`, { timeoutMills: 40000 });
-    const adBlockListRequest = useHttp<RuleResult>(`${BASE_URL}/api/adblocklist`, { timeoutMills: 40000 });
-
-    useEffect(() => {
-        gfwListRequest.execute('get');
-        adBlockListRequest.execute('get');
-    }, []);
-
-    const handleUpdateGfw = async () => {
-        try {
-            const { num_rules } = await gfwListRequest.execute('post');
-            showSnackbar(`Updated ${num_rules} items`)
-        } catch (e: any) {
-            showSnackbar(`Error updating GFW List: ${e.message}`)
-        }
-    };
-
-    const handleUpdateAbp = async () => {
-        try {
-            const { num_rules } = await adBlockListRequest.execute('post');
-            showSnackbar(`Updated ${num_rules} items`)
-        } catch (e: any) {
-            showSnackbar(`Error updating GFW List: ${e.message}`)
-        }
-    };
 
     const handleSave = async () => {
         try {
@@ -153,19 +128,7 @@ export default function BasicSettingsEdit({ onSaved, onCancelled, current_config
                             label="Set Router Rules (Linux only)" />
                     </FormControl>
                 </div>
-
-                <div style={{ marginTop: 8 }}>
-                    <b>GFW List: </b>{gfwListRequest.data ? formatDate(gfwListRequest.data.last_updated)
-                        : (gfwListRequest.error ? 'Error' : 'Loading')} &nbsp;
-                    <a href="#" onClick={handleUpdateGfw}>Update</a>
-                </div>
-
-                <div style={{ marginTop: 8 }}>
-                    <b>Adblock List: </b>{adBlockListRequest.data ? formatDate(adBlockListRequest.data.last_updated)
-                        : (adBlockListRequest.error ? 'Error' : 'Loading')} &nbsp;
-                    <a onClick={handleUpdateAbp} href="#">Update</a>
-                </div>
-
+                
                 {request.error && `Error: ${request.error}`}
             </Stack>
         </DialogContent>
