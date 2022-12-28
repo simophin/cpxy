@@ -1,5 +1,5 @@
 # This Dockerfile will only copy the built files
-FROM debian:latest
+FROM scratch
 
 ARG TARGETPLATFORM
 

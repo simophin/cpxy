@@ -3,3 +3,4 @@ Dockerfile
 android
 web/build
 web/node_modules
+.git

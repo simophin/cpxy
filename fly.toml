@@ -1,0 +1,30 @@
+# fly.toml file generated for cpxy-server on 2022-12-28T16:08:23+13:00
+
+app = "cpxy-server"
+kill_signal = "SIGINT"
+kill_timeout = 5
+
+[env]
+  RUST_LOG = "info"
+
+[experimental]
+  cmd = ["server", "--tcpman-port=80"]
+
+[[services]]
+  internal_port = 80
+  protocol = "tcp"
+  script_checks = []
+  [[services.ports]]
+    force_https = false
+    handlers = ["http"]
+    port = 80
+
+  [[services.ports]]
+    handlers = ["tls", "http"]
+    port = 443
+
+  [[services.tcp_checks]]
+    grace_period = "1s"
+    interval = "15s"
+    restart_limit = 0
+    timeout = "2s"

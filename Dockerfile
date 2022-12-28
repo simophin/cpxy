@@ -1,19 +1,32 @@
 FROM node:lts
-RUN mkdir /app
 
-COPY ./web /app/
-RUN cd /app && yarn install --frozen-lockfile --network-timeout 1000000 && yarn build
+WORKDIR /app
 
-FROM rust
+COPY ./web ./
+RUN yarn install --frozen-lockfile --network-timeout 1000000 && yarn build
 
-RUN mkdir /app
-COPY . /app/
-COPY --from=0 /app/build /app/web/build
+FROM messense/rust-musl-cross:x86_64-musl
 
-RUN cd /app && cargo build --release -p cpxy
+WORKDIR /app
 
-FROM ubuntu
-COPY --from=1 /app/target/release/cpxy /usr/local/bin/
+ARG TARGET=x86_64-unknown-linux-musl 
+
+# RUN rustup target add $TARGET
+
+# Download rust deps
+COPY Cargo.toml Cargo.lock ./
+RUN mkdir -p web/build src && touch src/lib.rs && cargo build --target=$TARGET --release
+
+# Do the real build now
+COPY . ./
+COPY --from=0 /app/build web/build
+
+RUN cargo build --target=$TARGET --release -p cpxy
+
+RUN mv -v target/$TARGET/release/cpxy ./
+
+FROM scratch
+COPY --from=1 /app/cpxy /usr/local/bin/
 
 EXPOSE 80/tcp
 EXPOSE 3000/udp
