@@ -16,7 +16,7 @@ dependencies = [
  "itertools",
  "once_cell",
  "percent-encoding",
- "regex 1.7.0",
+ "regex 1.7.1",
  "rmp-serde 0.13.7",
  "rmp-serde 0.15.5",
  "seahash",
@@ -562,7 +562,7 @@ dependencies = [
  "parking_lot",
  "pin-project-lite 0.2.9",
  "rand",
- "regex 1.7.0",
+ "regex 1.7.1",
  "rust-embed",
  "scopeguard",
  "serde",
@@ -774,7 +774,7 @@ dependencies = [
  "humantime",
  "is-terminal",
  "log 0.4.17",
- "regex 1.7.0",
+ "regex 1.7.1",
  "termcolor",
 ]
 
@@ -1156,7 +1156,7 @@ checksum = "1c488ad8e743814579544d5a17bda107cd7a4009ade4d55ce94f4c3ec0281147"
 dependencies = [
  "lazy_static 1.4.0",
  "nix 0.23.1",
- "regex 1.7.0",
+ "regex 1.7.1",
 ]
 
 [[package]]
@@ -1772,9 +1772,9 @@ dependencies = [
 
 [[package]]
 name = "regex"
-version = "1.7.0"
+version = "1.7.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e076559ef8e241f2ae3479e36f97bd5741c0330689e217ad51ce2c76808b868a"
+checksum = "48aaa5748ba571fb95cd2c85c09f629215d3a6ece942baa100950af03a34f733"
 dependencies = [
  "aho-corasick 0.7.19",
  "memchr",
