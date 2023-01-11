@@ -13,6 +13,7 @@ use adblock::{
     lists::{FilterSet, ParseOptions},
 };
 use anyhow::{anyhow, bail};
+use base64::Engine as Base64Engine;
 use chrono::{DateTime, Utc};
 use futures::AsyncWriteExt;
 use lazy_static::lazy_static;
@@ -136,7 +137,7 @@ async fn update_engine(
     if is_base64 {
         // Remove new lines first
         body.retain(|x| *x != b'\r' && *x != b'\n');
-        body = base64::decode(body)?;
+        body = base64::engine::general_purpose::STANDARD.decode(body)?;
     }
 
     let mut filter_set = FilterSet::new(true);

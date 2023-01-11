@@ -9,6 +9,7 @@ use std::fmt::Display;
 
 use anyhow::Context;
 use async_trait::async_trait;
+use base64::Engine;
 use bytes::Bytes;
 use futures::{AsyncRead, AsyncReadExt, AsyncWrite};
 use serde::{Deserialize, Serialize};
@@ -132,7 +133,8 @@ impl Credentials {
     pub fn to_header_value(&self) -> impl Display {
         format!(
             "Basic {}",
-            base64::encode(format!("{}:{}", self.username, self.password))
+            base64::engine::general_purpose::STANDARD
+                .encode(format!("{}:{}", self.username, self.password))
         )
     }
 }
