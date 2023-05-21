@@ -10,19 +10,18 @@ struct Instance(u16, Task<anyhow::Result<()>>);
 
 #[no_mangle]
 pub extern "system" fn Java_dev_fanchao_CJKProxy_start(
-    env: JNIEnv,
+    mut env: JNIEnv,
     _: JClass,
     config_path: JString,
 ) -> jlong {
     #[cfg(target_os = "android")]
     android_logger::init_once(
         android_logger::Config::default()
-            .with_min_level(log::Level::Info)
             .with_tag("proxy_rust"),
     );
 
     let config_path: String = env
-        .get_string(config_path)
+        .get_string(&config_path)
         .expect("To get config string")
         .into();
 
@@ -67,7 +66,7 @@ pub extern "system" fn Java_dev_fanchao_CJKProxy_getPort(
 }
 
 #[no_mangle]
-pub extern "system" fn Java_dev_fanchao_CJKProxy_stop(env: JNIEnv, _: JClass, instance: jlong) {
+pub extern "system" fn Java_dev_fanchao_CJKProxy_stop(mut env: JNIEnv, _: JClass, instance: jlong) {
     if instance == 0 {
         let _ = env.throw_new(
             "java.lang.NullPointerException",
