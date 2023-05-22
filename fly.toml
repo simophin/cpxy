@@ -1,30 +1,36 @@
-# fly.toml file generated for cpxy-server on 2022-12-28T16:08:23+13:00
+# fly.toml app configuration file generated for cpxy-server on 2023-05-22T15:32:13+10:00
+#
+# See https://fly.io/docs/reference/configuration/ for information about how to use this file.
+#
 
 app = "cpxy-server"
+primary_region = "hkg"
 kill_signal = "SIGINT"
-kill_timeout = 5
-
-[env]
-  RUST_LOG = "info"
+kill_timeout = "5s"
 
 [experimental]
   cmd = ["server", "--tcpman-port=80"]
 
+[build]
+  image = "ghcr.io/simophin/cpxy:master"
+
+[env]
+  RUST_LOG = "info"
+
 [[services]]
-  internal_port = 80
   protocol = "tcp"
-  script_checks = []
-  [[services.ports]]
-    force_https = false
-    handlers = ["http"]
-    port = 80
+  internal_port = 80
 
   [[services.ports]]
-    handlers = ["tls", "http"]
+    port = 80
+    handlers = ["http"]
+
+  [[services.ports]]
     port = 443
+    handlers = ["tls", "http"]
 
   [[services.tcp_checks]]
-    grace_period = "1s"
     interval = "15s"
-    restart_limit = 0
     timeout = "2s"
+    grace_period = "1s"
+    restart_limit = 0
