@@ -112,15 +112,13 @@ jobs:
       - buildLinuxApps
       - test
     if: github.event_name == 'push'
-    env:
-      IMAGE_REPO: ghcr.io/simophin/cpxy
     steps:
       - uses: actions/checkout@v3
       - name: Docker meta
         id: meta
         uses: docker/metadata-action@v4
         with:
-          images: ${{ env.IMAGE_REPO }}
+          images: ghcr.io/simophin/cpxy
           tags: |
             type=ref,event=branch
             type=semver,pattern={{version}}
@@ -151,7 +149,7 @@ jobs:
           push: true
       - uses: superfly/flyctl-actions/setup-flyctl@master
       - name: Deploy the docker image to fly.io
-        run: flyctl deploy --image ${{ env.IMAGE_REPO }}:${{ steps.meta.outputs.tags }} --remote-only
+        run: flyctl deploy --image ${{ steps.meta.outputs.tags }} --remote-only
         env:
           FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
 
