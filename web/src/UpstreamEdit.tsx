@@ -140,6 +140,7 @@ const TcpManConfigEdit = forwardRef(({ initial }: { initial?: TcpManConfig }, re
 
 const HttpProxyConfigEdit = forwardRef(({ initial }: { initial?: HttpProxyConfig }, ref) => {
     const address = useEditState(initial?.address ?? '', mandatory('Address', validAddress));
+    const auth = useEditState(initial?.auth_header ?? '');
     const [ssl, setSsl] = useState(initial?.ssl === true);
 
     useImperativeHandle(ref, () => ({
@@ -148,6 +149,7 @@ const HttpProxyConfigEdit = forwardRef(({ initial }: { initial?: HttpProxyConfig
                 type: 'http',
                 address: address.validate(),
                 ssl,
+                auth_header: auth.validate(),
             };
         }
     }), [address, ssl]);
@@ -160,6 +162,15 @@ const HttpProxyConfigEdit = forwardRef(({ initial }: { initial?: HttpProxyConfig
             error={!!address.error}
             helperText={address.error}
             onChange={v => address.setValue(v.currentTarget.value)}
+        />
+
+        <TextField
+            value={auth.value}
+            label='Proxy auth token (Basic xxx)'
+            margin='dense'
+            error={!!auth.error}
+            helperText={auth.error}
+            onChange={v => auth.setValue(v.currentTarget.value)}
         />
 
         <div>

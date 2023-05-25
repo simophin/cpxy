@@ -19,6 +19,7 @@ use super::{AsyncStream, Protocol, Stats, TrafficType};
 pub struct HttpProxy {
     pub address: Address<'static>,
     pub ssl: bool,
+    pub auth_header: Option<String>,
 }
 
 #[async_trait]
@@ -41,8 +42,14 @@ impl Protocol for HttpProxy {
         let upstream = connect_http_stream(self.ssl, &self.address, upstream).await?;
 
         let mut upstream = AsyncStreamCounter::new(upstream, stats.rx.clone(), stats.tx.clone());
+
+        let mut request = HttpRequestBuilder::new("CONNECT", dst)?;
+        if let Some(auth_header) = &self.auth_header {
+            request.put_header_text("Proxy-Authorization", auth_header)?;
+        }
+
         upstream
-            .write_all(&HttpRequestBuilder::new("CONNECT", dst)?.finalise())
+            .write_all(&request.finalise())
             .await
             .context("Writing CONNECT request")?;
 

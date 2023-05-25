@@ -111,7 +111,7 @@ export default function UpstreamList({ showSettings, onSettingsClosed }: { showS
                     case 'udpman': title = 'udpman://' + value.protocol.addr; break;
                     case 'firetcp': title = 'firetcp://' + value.protocol.address; break;
                     case 'socks5': title = 'socks5h://' + value.protocol.address; break;
-                    case 'http': title = 'http://' + value.protocol.address; break;
+                    case 'http': title = (value.protocol.ssl ? 'https://' : 'http://') + value.protocol.address; break;
                     case 'direct': title = 'Direct'; break;
                 }
                 let groups = value.groups?.sort()?.join(', ');

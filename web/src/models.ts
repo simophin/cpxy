@@ -27,6 +27,7 @@ export interface HttpProxyConfig {
     type: "http";
     address: string;
     ssl: boolean;
+    auth_header?: string;
 }
 
 export interface FireTcpConfig {
