@@ -101,6 +101,7 @@ mod tests {
             let protocol = HttpProxy {
                 address: url.address.clone().into_owned(),
                 ssl: url.is_https,
+                auth_header: None,
             };
 
             test_protocol_http(&protocol).await;

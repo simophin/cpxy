@@ -1,6 +1,6 @@
 use std::net::SocketAddr;
 
-use smol::net::{TcpStream, TcpListener};
+use smol::net::{TcpListener, TcpStream};
 
 use crate::socks5::Address;
 
@@ -26,15 +26,26 @@ impl TcpStreamExt for TcpStream {
 
     #[cfg(target_os = "linux")]
     fn get_original_dst(&self) -> Option<SocketAddr> {
-        use std::{net::SocketAddrV4, os::unix::prelude::AsRawFd};
+        use nix::sys::socket::{getsockopt, sockopt::Ip6tOriginalDst, sockopt::OriginalDst};
+        use std::{net::SocketAddrV4, net::SocketAddrV6, os::unix::prelude::AsRawFd};
 
-        use nix::sys::socket::{getsockopt, sockopt::OriginalDst};
-        let addr = getsockopt(self.as_raw_fd(), OriginalDst).ok()?;
+        let addr = if self.is_v4() {
+            let addr = getsockopt(self.as_raw_fd(), OriginalDst).ok()?;
 
-        let addr = SocketAddr::V4(SocketAddrV4::new(
-            u32::from_be(addr.sin_addr.s_addr).into(),
-            u16::from_be(addr.sin_port),
-        ));
+            SocketAddr::V4(SocketAddrV4::new(
+                u32::from_be(addr.sin_addr.s_addr).into(),
+                u16::from_be(addr.sin_port),
+            ))
+        } else {
+            let addr = getsockopt(self.as_raw_fd(), Ip6tOriginalDst).ok()?;
+
+            SocketAddr::V6(SocketAddrV6::new(
+                u128::from_be_bytes(addr.sin6_addr.s6_addr).into(),
+                u16::from_be(addr.sin6_port),
+                0,
+                0,
+            ))
+        };
 
         match self.local_addr() {
             Ok(a) if a == addr => None,
