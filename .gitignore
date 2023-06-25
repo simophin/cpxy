@@ -3,3 +3,4 @@ android/app/src/main/jniLibs
 #/app/src/geoip/*.dat
 #/app/src/abp/*.dat
 .idea
+/.devit-state

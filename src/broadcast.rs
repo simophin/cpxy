@@ -35,7 +35,9 @@ impl<T: Clone> Stream for Receiver<T> {
     }
 }
 
-pub fn bounded<T: Clone>(init: Option<T>, cap: usize) -> (async_broadcast::Sender<T>, Receiver<T>) {
+pub use async_broadcast::Sender;
+
+pub fn bounded<T: Clone>(init: Option<T>, cap: usize) -> (Sender<T>, Receiver<T>) {
     let (mut tx, rx) = async_broadcast::broadcast::<T>(cap);
     tx.set_overflow(true);
     (tx, Receiver { init, rx })

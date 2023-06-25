@@ -1,6 +1,7 @@
 mod broadcast;
 mod buf;
 mod client;
+pub mod controller_config;
 mod counter;
 mod dns;
 mod fetch;
