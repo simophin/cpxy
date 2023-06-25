@@ -2,10 +2,10 @@ use crate::protocol::direct::Direct;
 use crate::protocol::tcpman::dgram::{create_udp_sink, create_udp_stream};
 use crate::protocol::Protocol;
 use anyhow::Context;
-use async_net::TcpListener;
 use bytes::Bytes;
 use futures::{AsyncRead, AsyncReadExt, AsyncWrite, StreamExt};
-use smol::spawn;
+use tokio::net::TcpListener;
+use tokio::spawn;
 
 use super::{super::cipher, super::proto};
 use crate::utils::{copy_duplex, race};

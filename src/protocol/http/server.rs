@@ -9,9 +9,9 @@ use crate::{
     utils::copy_duplex,
 };
 use anyhow::Context;
-use async_net::TcpListener;
 use futures::AsyncWriteExt;
-use smol::spawn;
+use tokio::net::TcpListener;
+use tokio::spawn;
 
 pub async fn serve(
     stream: TcpListener,

@@ -2,14 +2,15 @@ use std::collections::BTreeMap;
 use std::sync::Arc;
 
 use anyhow::Context;
-use async_net::TcpListener;
 use chacha20::ChaCha20;
 use cipher::KeyIvInit;
 use futures::io::copy;
 use futures::{AsyncRead, AsyncReadExt, AsyncWrite};
 use parking_lot::Mutex;
-use smol::{spawn, Task};
 use std::net::SocketAddr;
+use tokio::net::TcpListener;
+use tokio::spawn;
+use tokio::task::JoinHandle;
 
 use crate::io::connect_tcp;
 use crate::utils::{race, read_bincode_lengthed_async};
@@ -19,7 +20,7 @@ use super::proto::{CipherOption, Request, INITIAL_CIPHER_LEN};
 use super::pw::PasswordedKey;
 
 pub async fn run_server(listener: TcpListener, password: PasswordedKey) -> anyhow::Result<()> {
-    let clients: Arc<Mutex<BTreeMap<SocketAddr, Task<()>>>> = Default::default();
+    let clients: Arc<Mutex<BTreeMap<SocketAddr, JoinHandle<()>>>> = Default::default();
     let password = Arc::new(password);
     loop {
         let (client, addr) = listener.accept().await?;

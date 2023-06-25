@@ -9,7 +9,6 @@ use std::{
 };
 
 use anyhow::Context;
-use async_io::Async;
 use bytes::Bytes;
 use futures::{ready, Sink, SinkExt, Stream, StreamExt};
 use nix::sys::socket::{
@@ -21,7 +20,7 @@ use libc::{
     c_int, c_void, size_t, sockaddr_in, sockaddr_in6, socklen_t, ssize_t, AF_INET, AF_INET6,
     IPV6_RECVORIGDSTADDR, IP_RECVORIGDSTADDR, SOL_IP, SOL_IPV6,
 };
-use smol::net::UdpSocket;
+use tokio::net::UdpSocket;
 
 use crate::{
     io::UdpSocketExt,

@@ -4,13 +4,11 @@ use anyhow::Context;
 use bytes::Bytes;
 use futures::{future::ready, select, FutureExt, Sink, SinkExt, Stream, StreamExt};
 use parking_lot::Mutex;
-use smol::{channel::Receiver, spawn, Task};
-use smol_timeout::TimeoutExt;
+use tokio::spawn;
+use tokio::sync::mpsc::Receiver;
+use tokio::task::JoinHandle;
 
-use crate::{
-    dns::DnsCache,
-    io::{get_one_off_udp_query_timeout, Timer},
-};
+use crate::{dns::DnsCache, io::get_one_off_udp_query_timeout};
 
 use super::utils::bind_transparent_udp_for_sending;
 
@@ -66,11 +64,7 @@ pub async fn serve_udp_on_dgram(
 
         spawn(
             rx.filter_map(move |data| {
-                ready(
-                    last_upstream_addr
-                        .lock()
-                        .map(|addr| anyhow::Result::Ok((data, addr))),
-                )
+                ready(last_upstream_addr.lock().map(|addr| Ok((data, addr))))
             })
             .inspect(move |_| timer.reset())
             .forward(upstream_sink),
@@ -78,7 +72,7 @@ pub async fn serve_udp_on_dgram(
     };
 
     // UPSTREAM -> SRC
-    let download_task: Task<anyhow::Result<()>> = {
+    let download_task: JoinHandle<anyhow::Result<()>> = {
         let timer = timer.clone();
         spawn(async move {
             let mut sockets = HashMap::<SocketAddr, _>::new();

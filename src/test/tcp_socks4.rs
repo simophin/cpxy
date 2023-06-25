@@ -1,11 +1,9 @@
 use std::net::{IpAddr, Ipv4Addr};
 
-use async_net::TcpStream;
 use bytes::Buf;
-use smol_timeout::TimeoutExt;
+use tokio::net::TcpStream;
 
 use super::*;
-use smol::block_on;
 
 async fn send_socks4_request(
     socks: &mut (impl AsyncRead + AsyncWrite + Unpin + Send + Sync),
@@ -51,32 +49,30 @@ async fn send_socks4_request(
     Ok(Address::IP(SocketAddr::new(IpAddr::V4(ip), port)))
 }
 
-#[test]
-fn test_socks4_tcp_proxy() {
-    block_on(async move {
-        let (_server, server_addr) = run_test_server().await;
-        let (_client, client_addr) = run_test_client(server_addr).await;
-        let (_echo_server, echo_server_addr) = echo_tcp_server().await;
+#[tokio::test]
+async fn test_socks4_tcp_proxy() {
+    let (_server, server_addr) = run_test_server().await;
+    let (_client, client_addr) = run_test_client(server_addr).await;
+    let (_echo_server, echo_server_addr) = echo_tcp_server().await;
 
-        let mut socks4_client = TcpStream::connect(client_addr).await.unwrap();
+    let mut socks4_client = TcpStream::connect(client_addr).await.unwrap();
 
-        send_socks4_request(&mut socks4_client, &Address::IP(echo_server_addr))
+    send_socks4_request(&mut socks4_client, &Address::IP(echo_server_addr))
+        .timeout(TIMEOUT)
+        .await
+        .unwrap()
+        .unwrap();
+
+    let msg = b"hello, world";
+    socks4_client.write_all(msg).await.unwrap();
+
+    assert_eq!(
+        read_exact(&mut socks4_client, msg.len())
             .timeout(TIMEOUT)
             .await
             .unwrap()
-            .unwrap();
-
-        let msg = b"hello, world";
-        socks4_client.write_all(msg).await.unwrap();
-
-        assert_eq!(
-            read_exact(&mut socks4_client, msg.len())
-                .timeout(TIMEOUT)
-                .await
-                .unwrap()
-                .unwrap()
-                .as_slice(),
-            msg.as_ref()
-        );
-    })
+            .unwrap()
+            .as_slice(),
+        msg.as_ref()
+    );
 }

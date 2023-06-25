@@ -1,17 +1,13 @@
 use std::sync::Arc;
 
-use crate::{
-    client::tcp::serve_tcp_tproxy_conn,
-    io::{bind_tcp, TcpStreamExt},
-    iptables as ipt,
-};
+use crate::{client::tcp::serve_tcp_tproxy_conn, io::bind_tcp, iptables as ipt};
 use anyhow::Context;
 use futures::{Stream, StreamExt};
-use smol::{
-    net::{TcpListener, TcpStream},
-    spawn, Task,
-};
+use tokio::net::{TcpListener, TcpStream};
+use tokio::spawn;
+use tokio::task::JoinHandle;
 
+use crate::io::TcpStreamExt;
 use crate::{
     buf::RWBuffer,
     config::ClientConfig,
@@ -30,7 +26,7 @@ pub async fn run_client(
         + Sync
         + Unpin,
 ) -> anyhow::Result<()> {
-    let mut current_tasks = Vec::<Task<_>>::with_capacity(2);
+    let mut current_tasks = Vec::<JoinHandle<_>>::with_capacity(2);
     loop {
         log::debug!("Listening for next config");
         let (config, stats) = match config_stream.next().await {
@@ -43,7 +39,7 @@ pub async fn run_client(
 
         log::debug!("Using configuration {config:?}");
         while let Some(task) = current_tasks.pop() {
-            task.cancel().await;
+            task.abort();
         }
         let _ = ipt::clean_up();
 
@@ -115,8 +111,7 @@ pub async fn run_proxy_with(
                 log::error!("Error serving client {addr}: {e:?}");
             }
             log::info!("Client {addr} disconnected");
-        })
-        .detach();
+        });
     }
 }
 

@@ -17,7 +17,7 @@ use chrono::{DateTime, Utc};
 use futures::AsyncWriteExt;
 use lazy_static::lazy_static;
 use rust_embed::RustEmbed;
-use smol::fs::{create_dir_all, File};
+use tokio::fs::{create_dir_all, File};
 
 fn create_engine(data: &[u8]) -> anyhow::Result<Engine> {
     let mut engine = Engine::new(true);

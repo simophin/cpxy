@@ -1,7 +1,7 @@
 use async_stream::stream;
 use bytes::Bytes;
 use futures::{channel::mpsc::channel, AsyncRead, AsyncWrite, Sink, SinkExt, Stream, StreamExt};
-use smol::spawn;
+use tokio::spawn;
 
 use super::udp_stream::{PacketReader, PacketWriter};
 use crate::socks5::Address;
@@ -49,26 +49,23 @@ pub fn create_udp_sink(
 mod tests {
     use super::*;
     use crate::test::echo_tcp_server;
-    use async_net::TcpStream;
-    use futures_util::AsyncReadExt;
+    use tokio::net::TcpStream;
 
-    #[test]
-    fn udp_sink_stream_works() {
-        smol::block_on(async move {
-            let (_task, addr) = echo_tcp_server().await;
-            let (r, w) = TcpStream::connect(addr).await.expect("To connect").split();
-            let mut stream = create_udp_stream(r, None);
-            let mut sink = create_udp_sink(w);
+    #[tokio::test]
+    async fn udp_sink_stream_works() {
+        let (_task, addr) = echo_tcp_server().await;
+        let (r, w) = TcpStream::connect(addr).await.expect("To connect").split();
+        let mut stream = create_udp_stream(r, None);
+        let mut sink = create_udp_sink(w);
 
-            let data = Bytes::from_static(b"hello, world");
-            let addr: Address = "localhost:53".parse().unwrap();
-            sink.send((data.clone(), addr.clone().into_owned()))
-                .await
-                .unwrap();
+        let data = Bytes::from_static(b"hello, world");
+        let addr: Address = "localhost:53".parse().unwrap();
+        sink.send((data.clone(), addr.clone().into_owned()))
+            .await
+            .unwrap();
 
-            let received = stream.next().await.unwrap().unwrap();
-            assert_eq!(&data, &received.0);
-            assert_eq!(&addr, &received.1);
-        });
+        let received = stream.next().await.unwrap().unwrap();
+        assert_eq!(&data, &received.0);
+        assert_eq!(&addr, &received.1);
     }
 }

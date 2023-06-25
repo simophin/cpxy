@@ -139,29 +139,26 @@ impl Credentials {
 
 #[cfg(test)]
 mod tests {
-    use smol::spawn;
-
     use super::*;
     use crate::{protocol::test::*, test::create_tcp_server};
+    use tokio::spawn;
 
-    #[test]
-    fn tcpman_works() {
+    #[tokio::test]
+    async fn tcpman_works() {
         std::env::set_var("RUST_LOG", "debug");
         let _ = env_logger::try_init();
-        smol::block_on(async move {
-            let (server, addr) = create_tcp_server().await;
-            let _task = spawn(super::server::run_server(server));
+        let (server, addr) = create_tcp_server().await;
+        let _task = spawn(super::server::run_server(server));
 
-            let p = TcpMan {
-                address: addr.into(),
-                ssl: false,
-                allows_udp: true,
-                credentials: None,
-            };
+        let p = TcpMan {
+            address: addr.into(),
+            ssl: false,
+            allows_udp: true,
+            credentials: None,
+        };
 
-            test_protocol_http(&p).await;
-            test_protocol_tcp(&p).await;
-            test_protocol_udp(&p).await;
-        });
+        test_protocol_http(&p).await;
+        test_protocol_tcp(&p).await;
+        test_protocol_udp(&p).await;
     }
 }

@@ -1,16 +1,13 @@
 use super::ConfigProvider;
-use crate::{
-    broadcast::{bounded, Receiver, Sender},
-    config::ClientConfig,
-};
+use crate::config::ClientConfig;
 use anyhow::Context;
 use async_trait::async_trait;
-use futures_util::AsyncReadExt;
 use std::{
     fs::File,
     io::BufReader,
     path::{Path, PathBuf},
 };
+use tokio::sync::watch;
 
 pub struct Settings {
     pub path: PathBuf,
@@ -18,7 +15,7 @@ pub struct Settings {
 
 pub struct FileConfigProvider {
     path: PathBuf,
-    sender: Sender<ClientConfig>,
+    sender: watch::Sender<ClientConfig>,
 }
 
 async fn read_config(path: impl AsRef<Path>) -> anyhow::Result<ClientConfig> {
@@ -37,9 +34,11 @@ async fn read_config(path: impl AsRef<Path>) -> anyhow::Result<ClientConfig> {
 impl ConfigProvider for FileConfigProvider {
     type Settings = Settings;
 
-    async fn new(Settings { path }: Settings) -> anyhow::Result<(Self, Receiver<ClientConfig>)> {
+    async fn new(
+        Settings { path }: Settings,
+    ) -> anyhow::Result<(Self, watch::Receiver<ClientConfig>)> {
         let config = read_config(&path).await?;
-        let (sender, receiver) = bounded(Some(config), 1);
+        let (sender, receiver) = watch::channel(config);
         Ok((Self { path, sender }, receiver))
     }
 

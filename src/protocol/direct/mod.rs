@@ -86,13 +86,12 @@ impl Protocol for Direct {
 mod tests {
     use super::super::test;
     use super::*;
-    use smol::block_on;
 
-    #[test]
-    fn test_direct_works() {
+    #[tokio::test]
+    async fn test_direct_works() {
         let direct = Direct {};
-        block_on(test::test_protocol_tcp(&direct));
-        block_on(test::test_protocol_udp(&direct));
-        block_on(test::test_protocol_http(&direct));
+        test::test_protocol_tcp(&direct).await;
+        test::test_protocol_udp(&direct).await;
+        test::test_protocol_http(&direct).await;
     }
 }

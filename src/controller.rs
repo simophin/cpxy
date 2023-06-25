@@ -1,5 +1,4 @@
 use crate::abp::{adblock_list_engine, gfw_list_engine};
-use crate::broadcast::bounded;
 use crate::buf::RWBuffer;
 use crate::client::{run_client, ClientStatistics};
 use crate::config::{ClientConfig, UpstreamConfig};
@@ -7,16 +6,16 @@ use crate::http::{parse_request, write_http_response};
 use crate::http_path::HttpPath;
 use crate::socks5::Address;
 use anyhow::{anyhow, Context};
-use async_broadcast::Sender;
-use async_net::TcpListener;
 use chrono::{DateTime, Utc};
 use futures::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
 use rust_embed::RustEmbed;
 use serde::{Deserialize, Serialize};
-use smol::fs::File;
-use smol::spawn;
 use std::path::PathBuf;
 use std::sync::Arc;
+use tokio::fs::File;
+use tokio::net::TcpListener;
+use tokio::spawn;
+use tokio::sync::watch;
 
 #[derive(RustEmbed)]
 #[folder = "web/build"]
@@ -59,7 +58,7 @@ struct RuleResult {
 
 struct Controller {
     current: (Arc<ClientConfig>, Arc<ClientStatistics>),
-    broadcaster: Sender<(Arc<ClientConfig>, Arc<ClientStatistics>)>,
+    broadcaster: watch::Sender<(Arc<ClientConfig>, Arc<ClientStatistics>)>,
     config_file: PathBuf,
 }
 
@@ -299,7 +298,7 @@ pub async fn run_controller(
     };
 
     let stats = Arc::new(ClientStatistics::new(&config));
-    let (broadcaster, rx) = bounded(Some((config.clone(), stats.clone())), 1);
+    let (broadcaster, rx) = watch::channel((config.clone(), stats.clone()));
 
     let mut controller = Controller {
         current: (config, stats),

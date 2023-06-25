@@ -133,69 +133,67 @@ mod test {
     };
     use futures::{io::copy, AsyncReadExt, AsyncWriteExt};
     use rand::RngCore;
-    use smol::spawn;
+    use tokio::spawn;
 
-    #[test]
-    fn test_cipher_server() {
-        smol::block_on(async move {
-            let (http_server, url) = create_http_server().await;
-            let server_task = spawn(async move {
-                loop {
-                    let (stream, _) = http_server.accept().await.unwrap();
-                    let (initial_data, hs) = accept_client(stream).await.unwrap();
-                    let (r, mut w) = hs.respond_success().await.unwrap().split();
-                    w.write_all(&initial_data.unwrap_or_default())
-                        .await
-                        .unwrap();
-                    copy(r, &mut w).await.unwrap();
-                }
-            });
-
-            let data = b"hello, world";
-            let url = HttpUrl::try_from(url.as_str()).unwrap();
-            let stream = connect_http_stream(
-                url.is_https,
-                &url.address,
-                connect_tcp(&url.address).await.unwrap(),
-            )
-            .await
-            .unwrap();
-
-            let mut client = connect(
-                &url,
-                stream,
-                EncryptionStrategy::FirstN(5.try_into().unwrap()),
-                EncryptionStrategy::Always,
-                Option::<&str>::None,
-                data.to_vec(),
-            )
-            .await
-            .expect("To connect to server");
-
-            let mut buf = Vec::new();
-
-            buf.resize(data.len(), 0);
-            client
-                .read_exact(buf.as_mut_slice())
-                .await
-                .expect("To read server response");
-            assert_eq!(buf, data);
-
-            let mut data = vec![0u8; 65536];
-            rand::thread_rng().fill_bytes(data.as_mut_slice());
-            client
-                .write_all(data.as_slice())
-                .await
-                .expect("To write to server");
-            buf.resize(data.len(), 0);
-            client
-                .read_exact(buf.as_mut_slice())
-                .await
-                .expect("To read second server response");
-            assert_eq!(buf, data);
-
-            drop(client);
-            let _ = server_task.cancel();
+    #[tokio::test]
+    async fn test_cipher_server() {
+        let (http_server, url) = create_http_server().await;
+        let server_task = spawn(async move {
+            loop {
+                let (stream, _) = http_server.accept().await.unwrap();
+                let (initial_data, hs) = accept_client(stream).await.unwrap();
+                let (r, mut w) = hs.respond_success().await.unwrap().split();
+                w.write_all(&initial_data.unwrap_or_default())
+                    .await
+                    .unwrap();
+                copy(r, &mut w).await.unwrap();
+            }
         });
+
+        let data = b"hello, world";
+        let url = HttpUrl::try_from(url.as_str()).unwrap();
+        let stream = connect_http_stream(
+            url.is_https,
+            &url.address,
+            connect_tcp(&url.address).await.unwrap(),
+        )
+        .await
+        .unwrap();
+
+        let mut client = connect(
+            &url,
+            stream,
+            EncryptionStrategy::FirstN(5.try_into().unwrap()),
+            EncryptionStrategy::Always,
+            Option::<&str>::None,
+            data.to_vec(),
+        )
+        .await
+        .expect("To connect to server");
+
+        let mut buf = Vec::new();
+
+        buf.resize(data.len(), 0);
+        client
+            .read_exact(buf.as_mut_slice())
+            .await
+            .expect("To read server response");
+        assert_eq!(buf, data);
+
+        let mut data = vec![0u8; 65536];
+        rand::thread_rng().fill_bytes(data.as_mut_slice());
+        client
+            .write_all(data.as_slice())
+            .await
+            .expect("To write to server");
+        buf.resize(data.len(), 0);
+        client
+            .read_exact(buf.as_mut_slice())
+            .await
+            .expect("To read second server response");
+        assert_eq!(buf, data);
+
+        drop(client);
+        let _ = server_task.cancel();
     }
 }

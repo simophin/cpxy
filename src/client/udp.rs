@@ -9,13 +9,12 @@ use anyhow::{anyhow, Context};
 use futures::{
     select, AsyncRead, AsyncReadExt, AsyncWrite, FutureExt, SinkExt, StreamExt, TryStreamExt,
 };
-use smol_timeout::TimeoutExt;
+use tokio::spawn;
 
 use crate::{
     config::ClientConfig, handshake::Handshaker, socks5::new_udp_relay,
     socks5::UdpRepr as Socks5UdpRepr,
 };
-use smol::spawn;
 
 use super::ClientStatistics;
 

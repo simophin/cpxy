@@ -1,5 +1,4 @@
 use anyhow::{bail, Context};
-use async_net::resolve;
 use byteorder::{BigEndian, WriteBytesExt};
 use serde::{Deserialize, Serialize};
 use smallvec::{smallvec, SmallVec};
@@ -11,6 +10,7 @@ use std::str::FromStr;
 
 use bytes::Buf;
 use futures::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
+use tokio::net::lookup_host;
 
 use crate::parse::ParseError;
 
@@ -113,7 +113,9 @@ impl<'a> Address<'a> {
     pub async fn resolve(&self) -> std::io::Result<impl Iterator<Item = SocketAddr>> {
         match self {
             Address::IP(addr) => Ok(vec![*addr].into_iter()),
-            Address::Name { host, port } => Ok(resolve((host.as_ref(), *port)).await?.into_iter()),
+            Address::Name { host, port } => {
+                Ok(lookup_host((host.as_ref(), *port)).await?.into_iter())
+            }
         }
     }
 
@@ -332,7 +334,7 @@ impl std::fmt::Debug for Address<'_> {
 #[cfg(test)]
 mod test {
     use super::*;
-    use smol::block_on;
+    use futures::executor::block_on;
 
     #[test]
     fn test_encoding() {

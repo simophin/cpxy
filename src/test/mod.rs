@@ -11,11 +11,12 @@ use crate::{
     protocol::tcpman::{server::run_server, TcpMan},
 };
 use anyhow::bail;
-use async_net::{TcpListener, UdpSocket};
 use futures::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
 use futures_util::join;
 use maplit::hashmap;
-use smol::{spawn, Task};
+use tokio::net::{TcpListener, UdpSocket};
+use tokio::spawn;
+use tokio::task::JoinHandle;
 
 mod http;
 mod tcp_socks4;
@@ -87,7 +88,7 @@ pub async fn create_udp_socket() -> (UdpSocket, SocketAddr) {
     (socket, addr)
 }
 
-pub async fn echo_tcp_server() -> (Task<()>, SocketAddr) {
+pub async fn echo_tcp_server() -> (JoinHandle<()>, SocketAddr) {
     let socket = bind_tcp(&Default::default()).await.unwrap();
     let mut addr = socket.local_addr().unwrap();
     set_ip_local(&mut addr);
@@ -111,7 +112,7 @@ pub async fn echo_tcp_server() -> (Task<()>, SocketAddr) {
     )
 }
 
-pub async fn echo_udp_server() -> (Task<()>, SocketAddr) {
+pub async fn echo_udp_server() -> (JoinHandle<()>, SocketAddr) {
     let socket = bind_udp(true).await.unwrap();
     let mut addr = socket.local_addr().unwrap();
     addr.set_ip(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)));
@@ -127,7 +128,7 @@ pub async fn echo_udp_server() -> (Task<()>, SocketAddr) {
     )
 }
 
-pub async fn run_test_client(upstream_address: SocketAddr) -> (Task<()>, SocketAddr) {
+pub async fn run_test_client(upstream_address: SocketAddr) -> (JoinHandle<()>, SocketAddr) {
     let listener = bind_tcp(&Default::default()).await.unwrap();
     let mut addr = listener.local_addr().unwrap();
     set_ip_local(&mut addr);
@@ -167,7 +168,7 @@ pub async fn run_test_client(upstream_address: SocketAddr) -> (Task<()>, SocketA
     )
 }
 
-pub async fn run_test_server() -> (Task<()>, SocketAddr) {
+pub async fn run_test_server() -> (JoinHandle<()>, SocketAddr) {
     let listener = bind_tcp(&Default::default()).await.unwrap();
     let mut addr = listener.local_addr().unwrap();
     set_ip_local(&mut addr);

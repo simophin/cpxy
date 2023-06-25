@@ -5,12 +5,12 @@ use std::{
 };
 
 use anyhow::Context;
-use async_io::Timer;
 use dns_parser::{Packet, QueryClass, RData};
 use lazy_static::lazy_static;
 use parking_lot::RwLock;
-use smol::spawn;
 use std::net::IpAddr;
+use tokio::spawn;
+use tokio::time::sleep;
 
 #[derive(Debug)]
 struct Entry {
@@ -33,7 +33,7 @@ impl DnsCache {
         let r = Arc::downgrade(&s);
         spawn(async move {
             loop {
-                Timer::after(Duration::from_secs(60)).await;
+                sleep(Duration::from_secs(60)).await;
                 if let Some(c) = r.upgrade() {
                     c.clean_up();
                 } else {

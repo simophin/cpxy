@@ -1,6 +1,5 @@
 use std::net::SocketAddr;
-
-use smol::net::{TcpListener, TcpStream};
+use tokio::net::{TcpListener, TcpStream};
 
 use crate::socks5::Address;
 

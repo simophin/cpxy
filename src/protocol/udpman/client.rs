@@ -11,11 +11,11 @@ use futures::channel::mpsc::channel;
 use futures::{StreamExt, TryStreamExt};
 use futures_util::SinkExt;
 use serde::{Deserialize, Serialize};
-use smol::{spawn, Task};
-use smol_timeout::TimeoutExt;
 use std::future::ready;
 use std::net::SocketAddr;
 use std::time::Duration;
+use tokio::spawn;
+use tokio::task::JoinHandle;
 use uuid::Uuid;
 
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
@@ -47,7 +47,7 @@ impl Protocol for UdpMan {
         // Send connect message
         let uuid = Uuid::new_v4();
         let initial_dst = dst.resolve_first().await?;
-        let connect_msg = proto::Message::Connect {
+        let connect_msg = Message::Connect {
             uuid: uuid.as_ref().into(),
             initial_data: initial_data.into(),
             dst: initial_dst,
@@ -133,7 +133,7 @@ impl Protocol for UdpMan {
                 return;
             }
 
-            let upload_task: Task<anyhow::Result<()>> = spawn(async move {
+            let upload_task: JoinHandle<anyhow::Result<()>> = spawn(async move {
                 while let Some((data, _)) = outgoing_rx.next().await {
                     let _ = msg_sink
                         .send(Message::Data {
@@ -146,7 +146,7 @@ impl Protocol for UdpMan {
                 }
                 Ok(())
             });
-            let download_task: Task<anyhow::Result<()>> = spawn(async move {
+            let download_task: JoinHandle<anyhow::Result<()>> = spawn(async move {
                 while let Some(d) = msg_stream.next().await {
                     match d? {
                         Message::Data { addr, payload, .. } => {
@@ -181,21 +181,18 @@ impl Protocol for UdpMan {
 mod tests {
     use super::*;
     use crate::{protocol::test::test_protocol_udp, test::create_udp_socket};
-    use smol::{block_on, spawn};
 
-    #[test]
-    fn udpman_works() {
+    #[tokio::test]
+    async fn udpman_works() {
         // std::env::set_var("RUST_LOG", "debug");
         let _ = env_logger::try_init();
-        block_on(async move {
-            let (server_socket, server_addr) = create_udp_socket().await;
-            let _task = spawn(super::super::server::serve_socket(server_socket));
+        let (server_socket, server_addr) = create_udp_socket().await;
+        let _task = spawn(super::super::server::serve_socket(server_socket));
 
-            let protocol = UdpMan {
-                addr: server_addr.into(),
-            };
+        let protocol = UdpMan {
+            addr: server_addr.into(),
+        };
 
-            test_protocol_udp(&protocol).await;
-        });
+        test_protocol_udp(&protocol).await;
     }
 }

@@ -183,26 +183,23 @@ impl VecExt for Vec<u8> {
 #[cfg(test)]
 mod test {
     use super::*;
-    use smol::block_on;
 
-    #[test]
-    fn test_lengthed_encoding() {
-        block_on(async move {
-            let data = "hello, world";
-            let mut buf = Vec::<u8>::new();
-            write_bincode_lengthed(&mut buf, &data).unwrap();
+    #[tokio::test]
+    async fn test_lengthed_encoding() {
+        let data = "hello, world";
+        let mut buf = Vec::<u8>::new();
+        write_bincode_lengthed(&mut buf, &data).unwrap();
 
-            let expected: String = read_bincode_lengthed_async(&mut buf.as_slice())
-                .await
-                .unwrap();
-            assert_eq!(expected, data);
+        let expected: String = read_bincode_lengthed_async(&mut buf.as_slice())
+            .await
+            .unwrap();
+        assert_eq!(expected, data);
 
-            buf.clear();
-            write_bincode_lengthed_async(&mut buf, &data).await.unwrap();
-            let expected: String = read_bincode_lengthed_async(&mut buf.as_slice())
-                .await
-                .unwrap();
-            assert_eq!(expected, data);
-        });
+        buf.clear();
+        write_bincode_lengthed_async(&mut buf, &data).await.unwrap();
+        let expected: String = read_bincode_lengthed_async(&mut buf.as_slice())
+            .await
+            .unwrap();
+        assert_eq!(expected, data);
     }
 }

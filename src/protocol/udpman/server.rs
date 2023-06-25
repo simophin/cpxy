@@ -12,7 +12,6 @@ use crate::{
     utils::{new_vec_for_udp, race, VecExt},
 };
 use anyhow::{bail, Context};
-use async_net::UdpSocket;
 use bytes::Bytes;
 use futures::{
     channel::mpsc::{channel, Sender},
@@ -20,8 +19,9 @@ use futures::{
 };
 use parking_lot::{Mutex, RwLock};
 use scopeguard::defer;
-use smol::{spawn, Task};
-use smol_timeout::TimeoutExt;
+use tokio::net::UdpSocket;
+use tokio::spawn;
+use tokio::task::JoinHandle;
 
 pub async fn serve_socket(socket: UdpSocket) -> anyhow::Result<()> {
     let (sink, stream) = socket.to_sink_stream().split();
@@ -63,7 +63,7 @@ pub async fn serve(
     let connections: Arc<RwLock<ConnMap>> = Default::default();
     let (sink_tx, mut sink_rx) = channel::<(Message<'static>, SocketAddr)>(20);
 
-    let task1: Task<anyhow::Result<()>> = {
+    let task1: JoinHandle<anyhow::Result<()>> = {
         let connections = connections.clone();
         spawn(async move {
             while let Some(item) = stream.next().await {
@@ -155,7 +155,7 @@ pub async fn serve(
 struct Conn {
     id: u16,
     incoming_tx: Mutex<Sender<Bytes>>,
-    _task: Task<anyhow::Result<()>>,
+    _task: JoinHandle<anyhow::Result<()>>,
 }
 
 #[derive(Default)]

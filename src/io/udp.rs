@@ -7,12 +7,11 @@ use std::sync::Arc;
 use std::task::{Context, Poll, Waker};
 use std::time::Duration;
 
-use async_io::Async;
-use async_net::UdpSocket;
 use bytes::Bytes;
 use futures::{ready, Sink, Stream, TryStreamExt};
 use futures_util::{SinkExt, StreamExt};
 use parking_lot::Mutex;
+use tokio::net::UdpSocket;
 
 use crate::socks5::Address;
 use crate::utils::{new_vec_for_udp, VecExt};
@@ -162,37 +161,33 @@ impl Sink<(Bytes, SocketAddr)> for UdpSocketSinkStream {
 
 #[cfg(test)]
 mod tests {
-    use smol_timeout::TimeoutExt;
-
     use super::*;
     use crate::test::echo_udp_server;
     use std::time::Duration;
 
-    #[test]
-    fn sink_stream_works() {
+    #[tokio::test]
+    async fn sink_stream_works() {
         // std::env::set_var("RUST_LOG", "info");
         let _ = env_logger::try_init();
-        smol::block_on(async move {
-            let (_task, echo_addr) = echo_udp_server().await;
+        let (_task, echo_addr) = echo_udp_server().await;
 
-            let (mut sink, mut stream) = bind_udp(matches!(echo_addr, SocketAddr::V4(_)))
-                .await
-                .unwrap()
-                .to_sink_stream()
-                .split();
+        let (mut sink, mut stream) = bind_udp(matches!(echo_addr, SocketAddr::V4(_)))
+            .await
+            .unwrap()
+            .to_sink_stream()
+            .split();
 
-            let data = Bytes::from_static(b"hello, world");
-            sink.send((data.clone(), echo_addr)).await.unwrap();
+        let data = Bytes::from_static(b"hello, world");
+        sink.send((data.clone(), echo_addr)).await.unwrap();
 
-            let (reply, from) = stream
-                .next()
-                .timeout(Duration::from_secs(1))
-                .await
-                .unwrap()
-                .unwrap()
-                .unwrap();
-            assert_eq!(reply, data);
-            assert_eq!(from.port(), echo_addr.port());
-        });
+        let (reply, from) = stream
+            .next()
+            .timeout(Duration::from_secs(1))
+            .await
+            .unwrap()
+            .unwrap()
+            .unwrap();
+        assert_eq!(reply, data);
+        assert_eq!(from.port(), echo_addr.port());
     }
 }

@@ -1,6 +1,5 @@
 use async_stream::stream;
 use bytes::Bytes;
-use smol_timeout::TimeoutExt;
 
 use crate::{
     buf::RWBuffer,

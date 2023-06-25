@@ -8,7 +8,47 @@
   </component>
   <component name="ChangeListManager">
     <list default="true" id="998b8231-524b-486c-9a00-9672a65c1a7c" name="Changes" comment="SNI matching">
-      <change beforePath="$PROJECT_DIR$/src/rule.rs" beforeDir="false" afterPath="$PROJECT_DIR$/src/rule.rs" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/Cargo.lock" beforeDir="false" afterPath="$PROJECT_DIR$/Cargo.lock" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/Cargo.toml" beforeDir="false" afterPath="$PROJECT_DIR$/Cargo.toml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/abp/mod.rs" beforeDir="false" afterPath="$PROJECT_DIR$/src/abp/mod.rs" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/broadcast.rs" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/client/handler.rs" beforeDir="false" afterPath="$PROJECT_DIR$/src/client/handler.rs" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/client/tcp.rs" beforeDir="false" afterPath="$PROJECT_DIR$/src/client/tcp.rs" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/client/transparent/handler.rs" beforeDir="false" afterPath="$PROJECT_DIR$/src/client/transparent/handler.rs" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/client/transparent/udp_proxy.rs" beforeDir="false" afterPath="$PROJECT_DIR$/src/client/transparent/udp_proxy.rs" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/client/transparent/utils.rs" beforeDir="false" afterPath="$PROJECT_DIR$/src/client/transparent/utils.rs" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/client/udp.rs" beforeDir="false" afterPath="$PROJECT_DIR$/src/client/udp.rs" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/controller.rs" beforeDir="false" afterPath="$PROJECT_DIR$/src/controller.rs" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/controller_config/fs.rs" beforeDir="false" afterPath="$PROJECT_DIR$/src/controller_config/fs.rs" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/controller_config/mod.rs" beforeDir="false" afterPath="$PROJECT_DIR$/src/controller_config/mod.rs" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/dns.rs" beforeDir="false" afterPath="$PROJECT_DIR$/src/dns.rs" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/io/mod.rs" beforeDir="false" afterPath="$PROJECT_DIR$/src/io/mod.rs" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/io/tcp.rs" beforeDir="false" afterPath="$PROJECT_DIR$/src/io/tcp.rs" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/io/timer.rs" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/io/udp.rs" beforeDir="false" afterPath="$PROJECT_DIR$/src/io/udp.rs" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/lib.rs" beforeDir="false" afterPath="$PROJECT_DIR$/src/lib.rs" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/protocol/direct/mod.rs" beforeDir="false" afterPath="$PROJECT_DIR$/src/protocol/direct/mod.rs" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/protocol/firetcp/cipher/test.rs" beforeDir="false" afterPath="$PROJECT_DIR$/src/protocol/firetcp/cipher/test.rs" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/protocol/firetcp/mod.rs" beforeDir="false" afterPath="$PROJECT_DIR$/src/protocol/firetcp/mod.rs" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/protocol/firetcp/server.rs" beforeDir="false" afterPath="$PROJECT_DIR$/src/protocol/firetcp/server.rs" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/protocol/http/server.rs" beforeDir="false" afterPath="$PROJECT_DIR$/src/protocol/http/server.rs" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/protocol/tcpman/cipher/server.rs" beforeDir="false" afterPath="$PROJECT_DIR$/src/protocol/tcpman/cipher/server.rs" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/protocol/tcpman/dgram.rs" beforeDir="false" afterPath="$PROJECT_DIR$/src/protocol/tcpman/dgram.rs" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/protocol/tcpman/mod.rs" beforeDir="false" afterPath="$PROJECT_DIR$/src/protocol/tcpman/mod.rs" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/protocol/tcpman/server/handler.rs" beforeDir="false" afterPath="$PROJECT_DIR$/src/protocol/tcpman/server/handler.rs" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/protocol/tcpman/udp_stream.rs" beforeDir="false" afterPath="$PROJECT_DIR$/src/protocol/tcpman/udp_stream.rs" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/protocol/test.rs" beforeDir="false" afterPath="$PROJECT_DIR$/src/protocol/test.rs" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/protocol/udpman/client.rs" beforeDir="false" afterPath="$PROJECT_DIR$/src/protocol/udpman/client.rs" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/protocol/udpman/server.rs" beforeDir="false" afterPath="$PROJECT_DIR$/src/protocol/udpman/server.rs" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/socks5/addr.rs" beforeDir="false" afterPath="$PROJECT_DIR$/src/socks5/addr.rs" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/socks5/udp_relay.rs" beforeDir="false" afterPath="$PROJECT_DIR$/src/socks5/udp_relay.rs" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/test/http.rs" beforeDir="false" afterPath="$PROJECT_DIR$/src/test/http.rs" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/test/mod.rs" beforeDir="false" afterPath="$PROJECT_DIR$/src/test/mod.rs" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/test/tcp_socks4.rs" beforeDir="false" afterPath="$PROJECT_DIR$/src/test/tcp_socks4.rs" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/test/tcp_socks5.rs" beforeDir="false" afterPath="$PROJECT_DIR$/src/test/tcp_socks5.rs" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/test/udp.rs" beforeDir="false" afterPath="$PROJECT_DIR$/src/test/udp.rs" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/utils.rs" beforeDir="false" afterPath="$PROJECT_DIR$/src/utils.rs" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -66,33 +106,37 @@
     <option name="hideEmptyMiddlePackages" value="true" />
     <option name="showLibraryContents" value="true" />
   </component>
-  <component name="PropertiesComponent">{
-  &quot;keyToString&quot;: {
-    &quot;Git.Branch.Popup.ShowAllRemotes&quot;: &quot;true&quot;,
-    &quot;RunOnceActivity.OpenProjectViewOnStart&quot;: &quot;true&quot;,
-    &quot;RunOnceActivity.ShowReadmeOnStart&quot;: &quot;true&quot;,
-    &quot;WebServerToolWindowFactoryState&quot;: &quot;false&quot;,
-    &quot;dart.analysis.tool.window.visible&quot;: &quot;false&quot;,
-    &quot;last_opened_file_path&quot;: &quot;/home/fanchao/Projects/cjk-proxy&quot;,
-    &quot;nodejs_package_manager_path&quot;: &quot;yarn&quot;,
-    &quot;org.rust.cargo.project.model.PROJECT_DISCOVERY&quot;: &quot;true&quot;,
-    &quot;settings.editor.selected.configurable&quot;: &quot;actions.on.save&quot;,
-    &quot;show.migrate.to.gradle.popup&quot;: &quot;false&quot;
+  <component name="PropertiesComponent"><![CDATA[{
+  "keyToString": {
+    "Git.Branch.Popup.ShowAllRemotes": "true",
+    "RunOnceActivity.OpenProjectViewOnStart": "true",
+    "RunOnceActivity.ShowReadmeOnStart": "true",
+    "WebServerToolWindowFactoryState": "false",
+    "dart.analysis.tool.window.visible": "false",
+    "git-widget-placeholder": "master",
+    "last_opened_file_path": "/home/fanchao/Projects/cpxy",
+    "nodejs_package_manager_path": "yarn",
+    "org.rust.cargo.project.model.PROJECT_DISCOVERY": "true",
+    "settings.editor.selected.configurable": "actions.on.save",
+    "show.migrate.to.gradle.popup": "false"
   }
-}</component>
+}]]></component>
   <component name="RecentsManager">
     <key name="MoveFile.RECENT_KEYS">
       <recent name="$PROJECT_DIR$/src/socks5" />
     </key>
   </component>
-  <component name="RunManager" selected="Cargo.Test sni::tests::extract_tls_sni_works">
+  <component name="RsExternalLinterProjectSettings">
+    <option name="runOnTheFly" value="true" />
+  </component>
+  <component name="RunManager" selected="Cargo.Test">
     <configuration name="Test protocol::tcpman::dgram::tests::udp_sink_stream_works" type="CargoCommandRunConfiguration" factoryName="Cargo Command" temporary="true">
       <option name="command" value="test --package cpxy --lib protocol::tcpman::dgram::tests::udp_sink_stream_works -- --exact" />
       <option name="workingDirectory" value="file://$PROJECT_DIR$" />
+      <option name="emulateTerminal" value="false" />
       <option name="channel" value="DEFAULT" />
       <option name="requiredFeatures" value="true" />
       <option name="allFeatures" value="false" />
-      <option name="emulateTerminal" value="false" />
       <option name="withSudo" value="false" />
       <option name="buildTarget" value="REMOTE" />
       <option name="backtrace" value="SHORT" />
@@ -106,10 +150,10 @@
     <configuration name="Test protocol::tcpman::tests::tcpman_works" type="CargoCommandRunConfiguration" factoryName="Cargo Command" temporary="true">
       <option name="command" value="test --package cpxy --lib protocol::tcpman::tests::tcpman_works -- --exact" />
       <option name="workingDirectory" value="file://$PROJECT_DIR$" />
+      <option name="emulateTerminal" value="false" />
       <option name="channel" value="DEFAULT" />
       <option name="requiredFeatures" value="true" />
       <option name="allFeatures" value="false" />
-      <option name="emulateTerminal" value="false" />
       <option name="withSudo" value="false" />
       <option name="buildTarget" value="REMOTE" />
       <option name="backtrace" value="SHORT" />
@@ -123,10 +167,10 @@
     <configuration name="Test rule::tests" type="CargoCommandRunConfiguration" factoryName="Cargo Command" temporary="true">
       <option name="command" value="test --package cpxy --lib rule::tests" />
       <option name="workingDirectory" value="file://$PROJECT_DIR$" />
+      <option name="emulateTerminal" value="false" />
       <option name="channel" value="DEFAULT" />
       <option name="requiredFeatures" value="true" />
       <option name="allFeatures" value="false" />
-      <option name="emulateTerminal" value="false" />
       <option name="withSudo" value="false" />
       <option name="buildTarget" value="REMOTE" />
       <option name="backtrace" value="SHORT" />
@@ -140,10 +184,10 @@
     <configuration name="Test sni::tests" type="CargoCommandRunConfiguration" factoryName="Cargo Command" temporary="true">
       <option name="command" value="test --package cpxy --lib sni::tests" />
       <option name="workingDirectory" value="file://$PROJECT_DIR$" />
+      <option name="emulateTerminal" value="false" />
       <option name="channel" value="DEFAULT" />
       <option name="requiredFeatures" value="true" />
       <option name="allFeatures" value="false" />
-      <option name="emulateTerminal" value="false" />
       <option name="withSudo" value="false" />
       <option name="buildTarget" value="REMOTE" />
       <option name="backtrace" value="SHORT" />
@@ -157,10 +201,10 @@
     <configuration name="Test sni::tests::extract_tls_sni_works" type="CargoCommandRunConfiguration" factoryName="Cargo Command" temporary="true">
       <option name="command" value="test --package cpxy --lib sni::tests::extract_tls_sni_works -- --exact" />
       <option name="workingDirectory" value="file://$PROJECT_DIR$" />
+      <option name="emulateTerminal" value="false" />
       <option name="channel" value="DEFAULT" />
       <option name="requiredFeatures" value="true" />
       <option name="allFeatures" value="false" />
-      <option name="emulateTerminal" value="false" />
       <option name="withSudo" value="false" />
       <option name="buildTarget" value="REMOTE" />
       <option name="backtrace" value="SHORT" />
@@ -174,10 +218,10 @@
     <configuration name="Test" type="CargoCommandRunConfiguration" factoryName="Cargo Command" nameIsGenerated="true">
       <option name="command" value="test" />
       <option name="workingDirectory" value="file://$PROJECT_DIR$" />
+      <option name="emulateTerminal" value="false" />
       <option name="channel" value="DEFAULT" />
       <option name="requiredFeatures" value="true" />
       <option name="allFeatures" value="false" />
-      <option name="emulateTerminal" value="false" />
       <option name="withSudo" value="false" />
       <option name="buildTarget" value="REMOTE" />
       <option name="backtrace" value="SHORT" />
@@ -207,9 +251,7 @@
     </recent_temporary>
   </component>
   <component name="RustProjectSettings">
-    <option name="runExternalLinterOnTheFly" value="true" />
     <option name="toolchainHomeDirectory" value="$USER_HOME$/.cargo/bin" />
-    <option name="version" value="2" />
   </component>
   <component name="RustfmtProjectSettings">
     <option name="runRustfmtOnSave" value="true" />

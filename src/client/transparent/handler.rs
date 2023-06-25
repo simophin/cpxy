@@ -9,17 +9,18 @@ use anyhow::{anyhow, Context};
 use bytes::Bytes;
 use futures::{future::ready, SinkExt, StreamExt};
 use futures_util::{select, FutureExt};
-use smol::{
-    channel::{bounded, Sender, TrySendError},
-    spawn, Task,
-};
+use tokio::spawn;
+use tokio::sync::mpsc;
+use tokio::sync::mpsc::error::TrySendError;
+use tokio::sync::mpsc::Sender;
+use tokio::task::JoinHandle;
 
 use super::super::ClientStatistics;
 use super::utils::bind_transparent_udp_for_receiving;
 
 struct UdpSession {
     tx: Sender<Bytes>,
-    _task: Task<anyhow::Result<()>>,
+    _task: JoinHandle<anyhow::Result<()>>,
 }
 
 #[derive(PartialEq, Eq, Hash, Debug)]
@@ -32,12 +33,12 @@ pub async fn serve_udp_transparent_proxy(
     addr: SocketAddr,
     config: Arc<ClientConfig>,
     stats: Arc<ClientStatistics>,
-) -> anyhow::Result<Task<anyhow::Result<()>>> {
+) -> anyhow::Result<JoinHandle<anyhow::Result<()>>> {
     let mut socket = bind_transparent_udp_for_receiving(addr).context("Binding UDP socket")?;
     log::info!("Started UDP transparent proxy at {addr}");
     Ok(spawn(async move {
         let mut sessions: HashMap<UdpSessionKey, UdpSession> = Default::default();
-        let (cleanup_tx, mut cleanup_rx) = bounded::<UdpSessionKey>(2);
+        let (cleanup_tx, mut cleanup_rx) = mpsc::channel::<UdpSessionKey>(2);
 
         loop {
             let (buf, src, dst) = select! {
@@ -98,7 +99,7 @@ impl UdpSession {
         clean_up: Sender<UdpSessionKey>,
         initial_data: Bytes,
     ) -> Self {
-        let (tx, rx) = bounded(10);
+        let (tx, rx) = mpsc::channel(10);
         let dst_addr: Address = dst.into();
         let _task = spawn(async move {
             let mut upstreams = config.find_best_upstream(
