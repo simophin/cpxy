@@ -7,9 +7,8 @@ use std::fmt::Display;
 
 use anyhow::Context;
 use async_trait::async_trait;
-use futures::{AsyncRead, AsyncWrite};
 use serde::{Deserialize, Serialize};
-use tokio_util::compat::TokioAsyncReadCompatExt;
+use tokio::io::{AsyncRead, AsyncWrite};
 
 use crate::fetch::connect_http_stream;
 use crate::io::{connect_tcp_marked, AsyncStreamCounter};
@@ -43,8 +42,7 @@ impl TcpMan {
     ) -> anyhow::Result<impl AsyncRead + AsyncWrite + Unpin + Send + Sync> {
         let stream = connect_tcp_marked(&self.address, fwmark)
             .await
-            .context("Connect to TCPMan server")?
-            .compat();
+            .context("Connect to TCPMan server")?;
 
         let stream = connect_http_stream(self.ssl, &self.address, stream)
             .await

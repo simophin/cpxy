@@ -2,9 +2,8 @@ use anyhow::Context;
 use async_trait::async_trait;
 use chacha20::ChaCha20;
 use cipher::KeyIvInit;
-use futures::{AsyncReadExt, AsyncWriteExt};
 use serde::{Deserialize, Serialize};
-use tokio_util::compat::TokioAsyncReadCompatExt;
+use tokio::io::{split, AsyncWriteExt};
 
 use super::{
     super::{AsyncStream, Protocol, Stats},
@@ -57,15 +56,13 @@ impl Protocol for FireTcp {
         stats: &Stats,
         fwmark: Option<u32>,
     ) -> anyhow::Result<Box<dyn AsyncStream>> {
-        let (r, w) = AsyncStreamCounter::new(
+        let (r, w) = split(AsyncStreamCounter::new(
             connect_tcp_marked(&self.address, fwmark)
                 .await
-                .context("Connecting to firetcp server")?
-                .compat(),
+                .context("Connecting to firetcp server")?,
             stats.rx.clone(),
             stats.tx.clone(),
-        )
-        .split();
+        ));
 
         let mut w = super::cipher::CipherWrite::<_, _, ChaCha20>::new(
             w,

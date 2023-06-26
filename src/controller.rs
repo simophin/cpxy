@@ -9,15 +9,14 @@ use crate::socks5::Address;
 use anyhow::anyhow;
 use async_shutdown::Shutdown;
 use chrono::{DateTime, Utc};
-use futures::{AsyncRead, AsyncReadExt, AsyncWrite};
 use rust_embed::RustEmbed;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
+use tokio::io::{split, AsyncRead, AsyncWrite};
 use tokio::net::TcpListener;
 use tokio::spawn;
 use tokio::sync::watch;
 use tokio_stream::wrappers::WatchStream;
-use tokio_util::compat::TokioAsyncReadCompatExt;
 
 #[derive(RustEmbed)]
 #[folder = "web/build"]
@@ -218,7 +217,7 @@ impl Controller {
         &mut self,
         sock: impl AsyncRead + AsyncWrite + Unpin + Send + Sync,
     ) -> anyhow::Result<()> {
-        let (r, mut w) = sock.split();
+        let (r, mut w) = split(sock);
         let result = self.dispatch(r).await;
 
         match result {
@@ -281,7 +280,7 @@ pub async fn run_controller(
     loop {
         let (socket, addr) = listener.accept().await?;
         log::debug!("Serving controller client: {addr}");
-        match controller.handle_client(socket.compat()).await {
+        match controller.handle_client(socket).await {
             Ok(_) => {}
             Err(e) => {
                 log::error!("Error serving client {addr}: {e:?}");

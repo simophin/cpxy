@@ -1,13 +1,13 @@
 use anyhow::{anyhow, Context};
 use bytes::{Buf, BufMut};
-use futures::io::copy;
-use futures::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt, Future, FutureExt};
 use pin_project_lite::pin_project;
 use serde::{de::DeserializeOwned, Serialize};
+use std::future::Future;
 use std::marker::PhantomData;
 use std::pin::Pin;
 use std::sync::Arc;
 use std::task::Poll;
+use tokio::io::{copy, split, AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
 
 use crate::counter::Counter;
 
@@ -36,14 +36,14 @@ pub async fn copy_duplex(
     d1d2_count: Option<Arc<Counter>>,
     d2d1_count: Option<Arc<Counter>>,
 ) -> anyhow::Result<()> {
-    let (d1r, mut d1w) = d1.split();
-    let (d2r, mut d2w) = d2.split();
+    let (mut d1r, mut d1w) = split(d1);
+    let (mut d2r, mut d2w) = split(d2);
 
     let task1 = async move {
         if let Some(count) = d1d2_count {
             let _ = copy_with_stats(d1r, d2w, count.as_ref()).await?;
         } else {
-            let _ = copy(d1r, &mut d2w).await?;
+            let _ = copy(&mut d1r, &mut d2w).await?;
         }
         anyhow::Result::<()>::Ok(())
     };
@@ -52,12 +52,12 @@ pub async fn copy_duplex(
         if let Some(count) = d2d1_count {
             let _ = copy_with_stats(d2r, d1w, count.as_ref()).await?;
         } else {
-            let _ = copy(d2r, &mut d1w).await?;
+            let _ = copy(&mut d2r, &mut d1w).await?;
         }
         anyhow::Result::<()>::Ok(())
     };
 
-    race(task1.fuse(), task2.fuse()).await
+    race(task1, task2).await
 }
 
 pub fn write_bincode_lengthed(mut buf: &mut Vec<u8>, o: &impl Serialize) -> anyhow::Result<()> {
@@ -154,7 +154,6 @@ pub fn race<T>(
         f2,
         _t: Default::default(),
     }
-    .fuse()
 }
 
 pub trait VecExt {

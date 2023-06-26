@@ -1,6 +1,6 @@
 use std::{sync::Arc, task::Poll};
 
-use futures::{AsyncRead, AsyncWrite};
+use tokio::io::{AsyncRead, AsyncWrite, ReadBuf};
 
 use crate::counter::Counter;
 use pin_project_lite::pin_project;
@@ -27,23 +27,10 @@ impl<S: AsyncRead> AsyncRead for AsyncStreamCounter<S> {
     fn poll_read(
         self: std::pin::Pin<&mut Self>,
         cx: &mut std::task::Context<'_>,
-        buf: &mut [u8],
-    ) -> Poll<std::io::Result<usize>> {
+        buf: &mut ReadBuf<'_>,
+    ) -> Poll<std::io::Result<()>> {
         let this = self.project();
         let rc = this.stream.poll_read(cx, buf);
-        if let Poll::Ready(Ok(len)) = &rc {
-            this.rx.inc(*len);
-        }
-        rc
-    }
-
-    fn poll_read_vectored(
-        self: std::pin::Pin<&mut Self>,
-        cx: &mut std::task::Context<'_>,
-        bufs: &mut [std::io::IoSliceMut<'_>],
-    ) -> Poll<std::io::Result<usize>> {
-        let this = self.project();
-        let rc = this.stream.poll_read_vectored(cx, bufs);
         if let Poll::Ready(Ok(len)) = &rc {
             this.rx.inc(*len);
         }
@@ -72,11 +59,11 @@ impl<S: AsyncWrite> AsyncWrite for AsyncStreamCounter<S> {
         self.project().stream.poll_flush(cx)
     }
 
-    fn poll_close(
+    fn poll_shutdown(
         self: std::pin::Pin<&mut Self>,
         cx: &mut std::task::Context<'_>,
     ) -> Poll<std::io::Result<()>> {
-        self.project().stream.poll_close(cx)
+        self.project().stream.poll_shutdown(cx)
     }
 
     fn poll_write_vectored(

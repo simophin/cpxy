@@ -1,6 +1,5 @@
 mod common;
 mod handler;
-mod http;
 mod stats;
 mod tcp;
 mod utils;

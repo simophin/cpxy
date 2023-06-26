@@ -4,9 +4,8 @@ use crate::protocol::AsyncStream;
 use crate::socks5::Address;
 use anyhow::Context;
 use async_trait::async_trait;
-use futures_util::AsyncWriteExt;
 use serde::{Deserialize, Serialize};
-use tokio_util::compat::TokioAsyncReadCompatExt;
+use tokio::io::AsyncWriteExt;
 
 #[derive(Clone, Debug, Serialize, Deserialize, Eq, PartialEq)]
 pub struct Direct;
@@ -25,7 +24,7 @@ impl Protocol for Direct {
             stream.set_sock_mark(fwmark)?;
         }
 
-        let mut stream = stream.compat();
+        let mut stream = stream;
 
         match initial_data {
             Some(b) if b.len() > 0 => {

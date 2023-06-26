@@ -1,8 +1,7 @@
 use anyhow::{bail, Context};
 use async_trait::async_trait;
-use futures::{AsyncRead, AsyncWrite, AsyncWriteExt};
 use serde::{Deserialize, Serialize};
-use tokio_util::compat::TokioAsyncReadCompatExt;
+use tokio::io::{AsyncRead, AsyncWrite, AsyncWriteExt};
 
 use crate::{
     io::{connect_tcp_marked, AsyncStreamCounter},
@@ -67,8 +66,7 @@ impl Protocol for Socks5 {
     ) -> anyhow::Result<Box<dyn AsyncStream>> {
         let mut upstream = connect_tcp_marked(&self.address, fwmark)
             .await
-            .context("Connecting to SOCKS sever")?
-            .compat();
+            .context("Connecting to SOCKS sever")?;
 
         let _ = request_socks5(
             &mut upstream,

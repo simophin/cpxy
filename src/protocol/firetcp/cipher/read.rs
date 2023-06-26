@@ -1,10 +1,10 @@
-use std::task::Poll;
+use std::task::{ready, Poll};
 
 use cipher::StreamCipher;
-use futures::{ready, AsyncRead};
 use pin_project_lite::pin_project;
 
 use anyhow::bail;
+use tokio::io::{AsyncRead, ReadBuf};
 
 use super::cipher_error_to_std;
 
@@ -54,8 +54,8 @@ impl<R: AsyncRead, IC: StreamCipher, EC: StreamCipher> AsyncRead for CipherRead<
     fn poll_read(
         self: std::pin::Pin<&mut Self>,
         cx: &mut std::task::Context<'_>,
-        buf: &mut [u8],
-    ) -> Poll<std::io::Result<usize>> {
+        buf: &mut ReadBuf<'_>,
+    ) -> Poll<std::io::Result<()>> {
         if buf.len() == 0 {
             return Poll::Ready(Ok(0));
         }

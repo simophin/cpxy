@@ -1,9 +1,9 @@
-use futures::{AsyncRead, AsyncWrite};
 use pin_project_lite::pin_project;
 use std::cmp::{max, min};
 use std::io::Error;
 use std::pin::Pin;
 use std::task::{Context, Poll};
+use tokio::io::{AsyncRead, AsyncWrite, ReadBuf};
 
 use super::suite::StreamCipherExt;
 
@@ -41,8 +41,8 @@ impl<T: AsyncRead, W, RC: StreamCipherExt + Send + Sync, WC> AsyncRead
     fn poll_read(
         self: Pin<&mut Self>,
         cx: &mut Context<'_>,
-        buf: &mut [u8],
-    ) -> Poll<std::io::Result<usize>> {
+        buf: &mut ReadBuf<'_>,
+    ) -> Poll<std::io::Result<()>> {
         let p = self.project();
         let result = p.r.poll_read(cx, buf);
         // log::debug!(
@@ -175,8 +175,8 @@ impl<R, T: AsyncWrite, RC, WC: StreamCipherExt + Send + Sync> AsyncWrite
         self.project().w.as_mut().poll_flush(cx)
     }
 
-    fn poll_close(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<std::io::Result<()>> {
-        self.project().w.as_mut().poll_close(cx)
+    fn poll_shutdown(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<std::io::Result<()>> {
+        self.project().w.as_mut().poll_shutdown(cx)
     }
 }
 

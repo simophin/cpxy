@@ -6,7 +6,6 @@ use async_shutdown::Shutdown;
 use tokio::net::{TcpListener, TcpStream};
 use tokio::spawn;
 use tokio_stream::{Stream, StreamExt};
-use tokio_util::compat::TokioAsyncReadCompatExt;
 
 use crate::io::TcpStreamExt;
 use crate::{
@@ -113,10 +112,10 @@ async fn serve_proxy_conn(
 ) -> anyhow::Result<()> {
     if let Some(orig_dst) = socks.get_original_dst() {
         log::info!("Requesting to proxy to {orig_dst} transparently");
-        return serve_tcp_tproxy_conn(orig_dst.into(), &config, &stats, socks.compat()).await;
+        return serve_tcp_tproxy_conn(orig_dst.into(), &config, &stats, socks).await;
     }
 
-    let mut socks = socks.compat();
+    let mut socks = socks;
     let mut buf = RWBuffer::new_vec_uninitialised(512);
     let (hs, req) = Handshaker::start(&mut socks, &mut buf)
         .await

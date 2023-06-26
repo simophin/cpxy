@@ -2,9 +2,8 @@ pub mod server;
 
 use anyhow::{bail, Context};
 use async_trait::async_trait;
-use futures::AsyncWriteExt;
 use serde::{Deserialize, Serialize};
-use tokio_util::compat::TokioAsyncReadCompatExt;
+use tokio::io::AsyncWriteExt;
 
 use crate::{
     buf::RWBuffer,
@@ -36,7 +35,7 @@ impl Protocol for HttpProxy {
             .await
             .context("Connecting to HTTP Proxy")?;
 
-        let upstream = connect_http_stream(self.ssl, &self.address, upstream.compat()).await?;
+        let upstream = connect_http_stream(self.ssl, &self.address, upstream).await?;
 
         let mut upstream = AsyncStreamCounter::new(upstream, stats.rx.clone(), stats.tx.clone());
 

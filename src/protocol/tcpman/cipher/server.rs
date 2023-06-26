@@ -4,7 +4,7 @@ use super::client::{CipherParams, BASE64_ENGINE};
 use anyhow::{bail, Context};
 use base64::decode_engine;
 use cipher::StreamCipher;
-use futures::{AsyncRead, AsyncReadExt, AsyncWrite};
+use tokio::io::{split, AsyncRead, AsyncWrite};
 
 use crate::http::WithHeaders;
 use crate::ws::{serve_websocket, WebSocketServeResult};
@@ -80,11 +80,11 @@ where
     ) -> anyhow::Result<impl AsyncRead + AsyncWrite + Unpin + Send + Sync> {
         let Handshaker { r, rc, wc } = self;
 
-        let (r, w) = r
-            .respond_success()
-            .await
-            .context("Responding success to cipher client")?
-            .split();
+        let (r, w) = split(
+            r.respond_success()
+                .await
+                .context("Responding success to cipher client")?,
+        );
         Ok(CipherStream::new("server".to_string(), r, w, rc, wc))
     }
 }
@@ -131,10 +131,9 @@ mod test {
     use crate::{
         fetch::connect_http_stream, io::connect_tcp, test::create_http_server, url::HttpUrl,
     };
-    use futures::{io::copy, AsyncReadExt, AsyncWriteExt};
     use rand::RngCore;
+    use tokio::io::{copy, split, AsyncWriteExt};
     use tokio::spawn;
-    use tokio_util::compat::TokioAsyncReadCompatExt;
 
     #[tokio::test]
     async fn test_cipher_server() {
@@ -142,12 +141,12 @@ mod test {
         let server_task = spawn(async move {
             loop {
                 let (stream, _) = http_server.accept().await.unwrap();
-                let (initial_data, hs) = accept_client(stream.compat()).await.unwrap();
-                let (r, mut w) = hs.respond_success().await.unwrap().split();
+                let (initial_data, hs) = accept_client(stream).await.unwrap();
+                let (mut r, mut w) = split(hs.respond_success().await.unwrap());
                 w.write_all(&initial_data.unwrap_or_default())
                     .await
                     .unwrap();
-                copy(r, &mut w).await.unwrap();
+                copy(&mut r, &mut w).await.unwrap();
             }
         });
 
@@ -156,7 +155,7 @@ mod test {
         let stream = connect_http_stream(
             url.is_https,
             &url.address,
-            connect_tcp(&url.address).await.unwrap().compat(),
+            connect_tcp(&url.address).await.unwrap(),
         )
         .await
         .unwrap();

@@ -9,7 +9,7 @@ async fn test_tcp_socks5_proxy() {
     let (_client, client_addr) = run_test_client(server_addr).await;
     let (_echo_server, echo_server_addr) = echo_tcp_server().await;
 
-    let mut socks5_client = TcpStream::connect(client_addr).await.unwrap().compat();
+    let mut socks5_client = TcpStream::connect(client_addr).await.unwrap();
 
     timeout(
         TIMEOUT,

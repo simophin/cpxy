@@ -9,7 +9,7 @@ use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr, SocketAddrV4, SocketAddrV
 use std::str::FromStr;
 
 use bytes::Buf;
-use futures::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
+use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
 use tokio::net::lookup_host;
 
 use crate::parse::ParseError;
@@ -335,7 +335,7 @@ impl std::fmt::Debug for Address<'_> {
 #[cfg(test)]
 mod test {
     use super::*;
-    use futures::executor::block_on;
+    use tokio::task::block_in_place;
 
     #[test]
     fn test_encoding() {
@@ -414,7 +414,7 @@ mod test {
                     assert_eq!(b"hello, world", &buf[offset..]);
 
                     let mut buf = buf.as_slice();
-                    let parsed = block_on(Address::parse_async(&mut buf)).unwrap();
+                    let parsed = block_in_place(Address::parse_async(&mut buf)).unwrap();
                     assert_eq!(addr, parsed);
                 }
                 Err(e) => {

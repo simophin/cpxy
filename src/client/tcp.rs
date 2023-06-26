@@ -1,7 +1,7 @@
 use std::time::Duration;
 
 use anyhow::Context;
-use futures::{AsyncRead, AsyncReadExt, AsyncWrite};
+use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite};
 
 use crate::{
     config::ClientConfig,

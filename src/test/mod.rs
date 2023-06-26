@@ -12,13 +12,11 @@ use crate::{
 };
 use anyhow::bail;
 use async_shutdown::Shutdown;
-use futures::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
-use futures_util::join;
 use maplit::hashmap;
+use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
 use tokio::net::TcpListener;
-use tokio::spawn;
 use tokio::task::JoinHandle;
-use tokio_util::compat::TokioAsyncReadCompatExt;
+use tokio::{join, spawn};
 
 mod http;
 mod tcp_socks4;
@@ -46,10 +44,10 @@ pub async fn duplex(
     let addr = Address::IP(listener.local_addr().expect("To have local addr"));
 
     let (client, server) = join!(connect_tcp(&addr), listener.accept());
-    let client = client.expect("To connect").compat();
+    let client = client.expect("To connect");
     let (server, _) = server.expect("To accept");
 
-    (client, server.compat())
+    (client, server)
 }
 
 pub fn set_ip_local(addr: &mut SocketAddr) {
@@ -90,7 +88,7 @@ pub async fn echo_tcp_server() -> (JoinHandle<()>, SocketAddr) {
         spawn(async move {
             loop {
                 let (socket, _) = socket.accept().await.unwrap();
-                let mut socket = socket.compat();
+                let mut socket = socket;
                 spawn(async move {
                     let mut buf = vec![0; 4096];
                     loop {

@@ -11,9 +11,9 @@ use crate::socks5::{
 };
 use crate::url::HttpUrl;
 use anyhow::{anyhow, bail, Context};
-use futures::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
 use std::borrow::Cow;
 use std::net::{Ipv4Addr, SocketAddr, SocketAddrV4};
+use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
 
 struct SocksState {
     auths: Vec<u8>,

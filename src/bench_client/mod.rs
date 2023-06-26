@@ -4,7 +4,7 @@ use std::{
 };
 
 use anyhow::Context;
-use futures::{AsyncReadExt, AsyncWriteExt};
+use tokio::io::{AsyncReadExt, AsyncWriteExt};
 
 use crate::{
     config::{ClientConfig, UpstreamConfig},

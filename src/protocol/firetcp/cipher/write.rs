@@ -1,10 +1,10 @@
-use std::task::Poll;
+use std::task::{ready, Poll};
 
 use cipher::{StreamCipher, StreamCipherSeek};
-use futures::{ready, AsyncWrite};
 use pin_project_lite::pin_project;
 
 use anyhow::bail;
+use tokio::io::AsyncWrite;
 
 use crate::utils::new_vec_uninitialised;
 
@@ -114,11 +114,11 @@ impl<W: AsyncWrite, IC: StreamCipher + StreamCipherSeek, EC: StreamCipher + Stre
         self.project().w.poll_flush(cx)
     }
 
-    fn poll_close(
+    fn poll_shutdown(
         self: std::pin::Pin<&mut Self>,
         cx: &mut std::task::Context<'_>,
     ) -> Poll<std::io::Result<()>> {
-        self.project().w.poll_close(cx)
+        self.project().w.poll_shutdown(cx)
     }
 }
 

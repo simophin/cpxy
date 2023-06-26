@@ -10,7 +10,7 @@ use base64::{
     engine::fast_portable::{self, FastPortable},
 };
 use cipher::StreamCipher;
-use futures::{AsyncRead, AsyncReadExt, AsyncWrite};
+use tokio::io::{split, AsyncRead, AsyncWrite};
 
 pub const BASE64_ENGINE: &FastPortable =
     &FastPortable::from(&alphabet::URL_SAFE, fast_portable::NO_PAD);
@@ -92,7 +92,7 @@ pub async fn connect(
         builder.put_header_text("Authorization", auth)?;
     }
 
-    let (r, w) = negotiate_websocket(builder, stream).await?.split();
+    let (r, w) = split(negotiate_websocket(builder, stream).await)?;
 
     let rd_cipher = recv_strategy.wrap_cipher(
         super::suite::create_cipher(cipher_type, key.as_slice(), iv.as_slice())

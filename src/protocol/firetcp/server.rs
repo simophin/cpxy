@@ -4,11 +4,9 @@ use anyhow::Context;
 use async_shutdown::Shutdown;
 use chacha20::ChaCha20;
 use cipher::KeyIvInit;
-use futures::io::copy;
-use futures::{AsyncRead, AsyncReadExt, AsyncWrite};
+use tokio::io::{copy, split, AsyncRead, AsyncWrite};
 use tokio::net::TcpListener;
 use tokio::spawn;
-use tokio_util::compat::TokioAsyncReadCompatExt;
 
 use crate::io::connect_tcp;
 use crate::utils::{race, read_bincode_lengthed_async};
@@ -30,7 +28,7 @@ pub async fn run_server(
 
         let shutdown = shutdown.clone();
         spawn(async move {
-            if let Err(e) = serve(shutdown, client.compat(), &password).await {
+            if let Err(e) = serve(shutdown, client, &password).await {
                 log::error!("Error serving {addr}: {e:?}");
             }
         });
@@ -42,7 +40,7 @@ pub async fn serve(
     stream: impl AsyncRead + AsyncWrite + Unpin + Send + Sync + 'static,
     password: &PasswordedKey,
 ) -> anyhow::Result<()> {
-    let (r, mut w) = stream.split();
+    let (r, mut w) = split(stream);
 
     let mut r = CipherRead::<_, _, ChaCha20>::new(
         r,
@@ -61,18 +59,19 @@ pub async fn serve(
     )
     .context("Unable to change est cipher")?;
 
-    let (upstream_r, mut upstream_w) = connect_tcp(&addr)
-        .await
-        .with_context(|| format!("Connecting to upstream {addr}"))?
-        .compat()
-        .split();
+    let (mut upstream_r, mut upstream_w) = split(
+        connect_tcp(&addr)
+            .await
+            .with_context(|| format!("Connecting to upstream {addr}"))?,
+    );
 
     let upload_task = {
         let shutdown = shutdown.clone();
-        spawn(async move { shutdown.wrap_cancel(copy(r, &mut upstream_w)).await })
+        spawn(async move { shutdown.wrap_cancel(copy(&mut r, &mut upstream_w)).await })
     };
 
-    let download_task = spawn(async move { shutdown.wrap_cancel(copy(upstream_r, &mut w)).await });
+    let download_task =
+        spawn(async move { shutdown.wrap_cancel(copy(&mut upstream_r, &mut w)).await });
 
     race(upload_task, download_task).await?;
     Ok(())

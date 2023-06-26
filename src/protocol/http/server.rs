@@ -11,10 +11,9 @@ use crate::{
 };
 use anyhow::Context;
 use async_shutdown::Shutdown;
-use futures::AsyncWriteExt;
+use tokio::io::AsyncWriteExt;
 use tokio::net::{TcpListener, TcpStream};
 use tokio::spawn;
-use tokio_util::compat::TokioAsyncReadCompatExt;
 
 pub async fn serve(
     shutdown: Shutdown,
@@ -43,13 +42,12 @@ async fn serve_conn(
     from: SocketAddr,
     upstream: Arc<impl Protocol + Send + Sync + 'static>,
 ) -> anyhow::Result<()> {
-    let mut stream =
-        match parse_request(stream.compat(), RWBuffer::new_vec_uninitialised(4096)).await {
-            Ok(v) => v,
-            Err((e, _)) => {
-                return Err(e).with_context(|| format!("Error parsing request for {from}"));
-            }
-        };
+    let mut stream = match parse_request(stream, RWBuffer::new_vec_uninitialised(4096)).await {
+        Ok(v) => v,
+        Err((e, _)) => {
+            return Err(e).with_context(|| format!("Error parsing request for {from}"));
+        }
+    };
 
     let (reply_http_response, dst, initial_data) = match stream.method.as_ref() {
         "CONNECT" => (true, Address::try_from(stream.path.as_ref())?, None),

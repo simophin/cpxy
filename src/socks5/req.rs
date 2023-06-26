@@ -1,7 +1,7 @@
 use crate::parse::ParseError;
 use anyhow::bail;
 use bytes::Buf;
-use futures::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
+use tokio::io::{AsyncBufRead, AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
 
 use super::Address;
 
@@ -34,6 +34,26 @@ impl Command {
 pub struct ClientConnRequest<'a> {
     pub cmd: Command,
     pub address: Address<'a>,
+}
+
+impl ClientConnRequest<'static> {
+    pub async fn parse_async(r: &mut (impl AsyncBufRead + Unpin)) -> anyhow::Result<Self> {
+        let mut buf = [0u8; 3];
+        r.read_exact(&mut buf).await?;
+        if buf[0] != 0x5 {
+            bail!("Unknown protocol version: {}", buf[0]);
+        }
+        let cmd = buf[1];
+        if buf[2] != 0 {
+            bail!("Invalid reserved byte: {}", buf[2]);
+        }
+
+        let address = Address::parse_async(r).await?;
+        Ok(Self {
+            cmd: Command(cmd),
+            address,
+        })
+    }
 }
 
 impl<'a> ClientConnRequest<'a> {

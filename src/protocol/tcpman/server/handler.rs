@@ -2,10 +2,9 @@ use crate::protocol::direct::Direct;
 use crate::protocol::Protocol;
 use anyhow::Context;
 use async_shutdown::Shutdown;
-use futures::{AsyncRead, AsyncWrite};
+use tokio::io::{AsyncRead, AsyncWrite};
 use tokio::net::TcpListener;
 use tokio::spawn;
-use tokio_util::compat::TokioAsyncReadCompatExt;
 
 use super::{super::cipher, super::proto};
 use crate::utils::copy_duplex;
@@ -61,7 +60,7 @@ pub async fn run_server(shutdown: Shutdown, listener: TcpListener) -> anyhow::Re
         let shutdown = shutdown.clone();
         spawn(async move {
             if let Some(Err(e)) = shutdown
-                .wrap_cancel(serve_client(stream.compat(), |_| Ok(Direct {})))
+                .wrap_cancel(serve_client(stream, |_| Ok(Direct {})))
                 .await
             {
                 log::error!("Error serving client {addr}: {e:?}");

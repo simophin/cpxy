@@ -1,5 +1,3 @@
-use async_stream::stream;
-
 use crate::{
     buf::RWBuffer,
     http::{parse_response, HttpRequestBuilder},
@@ -7,8 +5,8 @@ use crate::{
 };
 
 use super::Protocol;
-use futures::{AsyncReadExt, AsyncWriteExt, StreamExt};
-use std::{io::Write, time::Duration};
+use std::time::Duration;
+use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::time::timeout;
 
 const TIMEOUT: Duration = Duration::from_secs(1);
@@ -24,16 +22,10 @@ pub async fn test_protocol_tcp(p: &(impl Protocol + Send + Sync)) {
     .expect("No timeout")
     .expect("To create new stream connection");
 
-    let mut test_data = Box::pin(stream! {
-        for i in 0..1000 {
-            let mut buf = vec![0u8; 0];
-            write!(&mut buf, "Test data {i}").unwrap();
-            yield buf;
-        }
-    });
+    let test_data = (0..1000).map(|i| format!("Test data {}", i).into_bytes());
 
     let mut recv_buf = vec![];
-    while let Some(data) = test_data.next().await {
+    for data in test_data {
         stream.write_all(&data).await.expect("To write test data");
 
         recv_buf.resize(data.len(), 0);

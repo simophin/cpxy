@@ -1,8 +1,7 @@
 use std::sync::Arc;
 
-use anyhow::bail;
 use async_trait::async_trait;
-use futures::{AsyncRead, AsyncWrite};
+use tokio::io::{AsyncRead, AsyncWrite};
 
 use crate::counter::Counter;
 use crate::socks5::Address;
@@ -11,7 +10,7 @@ pub mod direct;
 pub mod firetcp;
 pub mod http;
 pub mod socks5;
-pub mod tcpman;
+// pub mod tcpman;
 
 #[cfg(test)]
 mod test;
@@ -30,11 +29,9 @@ pub struct Stats {
 pub trait Protocol {
     async fn new_stream(
         &self,
-        _dst: &Address<'_>,
-        _initial_data: Option<&[u8]>,
-        _stats: &Stats,
-        _fwmark: Option<u32>,
-    ) -> anyhow::Result<Box<dyn AsyncStream>> {
-        bail!("Stream unsupported")
-    }
+        dst: &Address<'_>,
+        initial_data: Option<&[u8]>,
+        stats: &Stats,
+        fwmark: Option<u32>,
+    ) -> anyhow::Result<Box<dyn AsyncStream>>;
 }
