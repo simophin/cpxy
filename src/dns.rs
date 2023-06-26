@@ -40,8 +40,7 @@ impl DnsCache {
                     break;
                 }
             }
-        })
-        .detach();
+        });
 
         s
     }

@@ -2,20 +2,22 @@ use crate::abp::{adblock_list_engine, gfw_list_engine};
 use crate::buf::RWBuffer;
 use crate::client::{run_client, ClientStatistics};
 use crate::config::{ClientConfig, UpstreamConfig};
+use crate::controller_config::ConfigProvider;
 use crate::http::{parse_request, write_http_response};
 use crate::http_path::HttpPath;
 use crate::socks5::Address;
-use anyhow::{anyhow, Context};
+use anyhow::anyhow;
+use async_shutdown::Shutdown;
 use chrono::{DateTime, Utc};
-use futures::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
+use futures::{AsyncRead, AsyncReadExt, AsyncWrite};
 use rust_embed::RustEmbed;
 use serde::{Deserialize, Serialize};
-use std::path::PathBuf;
 use std::sync::Arc;
-use tokio::fs::File;
 use tokio::net::TcpListener;
 use tokio::spawn;
 use tokio::sync::watch;
+use tokio_stream::wrappers::WatchStream;
+use tokio_util::compat::TokioAsyncReadCompatExt;
 
 #[derive(RustEmbed)]
 #[folder = "web/build"]
@@ -57,9 +59,9 @@ struct RuleResult {
 }
 
 struct Controller {
-    current: (Arc<ClientConfig>, Arc<ClientStatistics>),
-    broadcaster: watch::Sender<(Arc<ClientConfig>, Arc<ClientStatistics>)>,
-    config_file: PathBuf,
+    stats: Arc<ClientStatistics>,
+    config_receiver: watch::Receiver<Arc<ClientConfig>>,
+    config_provider: Box<dyn ConfigProvider>,
 }
 
 #[derive(Deserialize)]
@@ -71,55 +73,28 @@ struct UpstreamUpdate {
 
 impl Controller {
     fn get_stats(&self) -> HttpResult<Arc<ClientStatistics>> {
-        Ok(self.current.1.clone())
+        Ok(self.stats.clone())
     }
 
     fn get_config(&self) -> HttpResult<Arc<ClientConfig>> {
-        Ok(self.current.0.clone())
+        Ok(self.config_receiver.borrow().clone())
     }
 
-    async fn set_current_config(&mut self, c: ClientConfig, s: ClientStatistics) -> HttpResult<()> {
-        let stats = Arc::new(s);
-        let config = Arc::new(c);
-
-        let config_text = serde_yaml::to_string(config.as_ref())
-            .with_context(|| format!("Writing YAML file: {:?}", self.config_file))?;
-
-        let mut file = File::create(&self.config_file)
-            .await
-            .with_context(|| format!("Creating configuration file: {:?}", self.config_file))?;
-
-        let _ = file
-            .write_all(config_text.as_bytes())
-            .await
-            .with_context(|| format!("Writing configuration file: {:?}", self.config_file))?;
-
-        file.flush()
-            .await
-            .with_context(|| format!("Flushing file: {:?}", self.config_file))?;
-
-        log::info!("Config written successfully to {:?}", self.config_file);
-        self.current = (config.clone(), stats.clone());
-        let _ = self.broadcaster.broadcast((config.clone(), stats)).await;
+    async fn set_current_config(&mut self, c: ClientConfig) -> HttpResult<()> {
+        self.config_provider.update_config(&c).await?;
         Ok(())
     }
 
-    async fn set_basic_config(&mut self, mut c: ClientConfig) -> HttpResult<()> {
-        let (ClientConfig { upstreams, .. }, new_stats) = (
-            self.current.0.as_ref().clone(),
-            self.current.1.as_ref().clone(),
-        );
-
-        c.upstreams = upstreams;
-
-        self.set_current_config(c, new_stats).await
+    async fn set_basic_config(&mut self, mut config: ClientConfig) -> HttpResult<()> {
+        config.upstreams = self.config_receiver.borrow().upstreams.clone();
+        self.config_provider.update_config(&config).await?;
+        Ok(())
     }
 
     async fn update_upstreams(&mut self, updates: Vec<UpstreamUpdate>) -> HttpResult<()> {
-        let (mut new_config, mut new_stats) = (
-            self.current.0.as_ref().clone(),
-            self.current.1.as_ref().clone(),
-        );
+        let mut new_config = self.config_receiver.borrow().as_ref().clone();
+        let new_stats = self.stats.clone();
+
         for UpstreamUpdate {
             old_name,
             name,
@@ -130,10 +105,10 @@ impl Controller {
                 match new_config.upstreams.remove(&old_name) {
                     Some(upstream) if upstream.protocol == config.protocol => {
                         // Reuse the stats
-                        new_stats.upstreams.remove(&old_name)
+                        new_stats.upstreams.write().remove(&old_name)
                     }
                     Some(_) => {
-                        new_stats.upstreams.remove(&old_name);
+                        new_stats.upstreams.write().remove(&old_name);
                         None
                     }
                     _ => None,
@@ -143,22 +118,23 @@ impl Controller {
             };
 
             new_config.upstreams.insert(name.clone(), config);
-            new_stats.upstreams.insert(name, stats.unwrap_or_default());
+            new_stats
+                .upstreams
+                .write()
+                .insert(name, stats.unwrap_or_default());
         }
 
-        self.set_current_config(new_config, new_stats).await
+        self.set_current_config(new_config).await
     }
 
     async fn delete_upstreams(&mut self, names: Vec<String>) -> HttpResult<()> {
-        let (mut new_config, mut new_stats) = (
-            self.current.0.as_ref().clone(),
-            self.current.1.as_ref().clone(),
-        );
+        let mut new_config = self.config_receiver.borrow().as_ref().clone();
+        let new_stats = self.stats.as_ref().clone();
         for n in names {
             let _ = new_config.upstreams.remove(&n);
-            let _ = new_stats.upstreams.remove(&n);
+            let _ = new_stats.upstreams.write().remove(&n);
         }
-        self.set_current_config(new_config, new_stats).await
+        self.set_current_config(new_config).await
     }
 
     async fn dispatch(&mut self, r: impl AsyncRead + Unpin + Send + Sync) -> HttpResult<Response> {
@@ -191,7 +167,7 @@ impl Controller {
                                 .map_err(|e| ErrorResponse::Generic(e))
                                 .and_then(json_response),
                             "POST" => engine
-                                .update(&Address::IP(self.current.0.socks5_address))
+                                .update(&Address::IP(self.config_receiver.borrow().socks5_address))
                                 .await
                                 .and_then(|num_rules| {
                                     Ok(RuleResult {
@@ -283,35 +259,29 @@ impl Controller {
 
 pub async fn run_controller(
     listener: TcpListener,
-    config_file: &std::path::Path,
+    config_receiver: watch::Receiver<Arc<ClientConfig>>,
+    config_provider: Box<dyn ConfigProvider>,
 ) -> anyhow::Result<()> {
-    let config = if config_file.exists() {
-        Arc::new(
-            serde_yaml::from_reader(
-                std::fs::File::open(config_file)
-                    .with_context(|| format!("Opening config file {config_file:?}"))?,
-            )
-            .with_context(|| format!("Parsing config file {config_file:?}"))?,
-        )
-    } else {
-        Default::default()
-    };
-
-    let stats = Arc::new(ClientStatistics::new(&config));
-    let (broadcaster, rx) = watch::channel((config.clone(), stats.clone()));
+    let stats = Arc::new(ClientStatistics::default());
 
     let mut controller = Controller {
-        current: (config, stats),
-        broadcaster,
-        config_file: config_file.to_path_buf(),
+        stats: stats.clone(),
+        config_receiver: config_receiver.clone(),
+        config_provider,
     };
 
-    let _client_task = spawn(run_client(rx));
+    let shutdown = Shutdown::new();
+
+    let _client_task = spawn(run_client(
+        shutdown.clone(),
+        WatchStream::new(config_receiver),
+        stats,
+    ));
 
     loop {
         let (socket, addr) = listener.accept().await?;
         log::debug!("Serving controller client: {addr}");
-        match controller.handle_client(socket).await {
+        match controller.handle_client(socket.compat()).await {
             Ok(_) => {}
             Err(e) => {
                 log::error!("Error serving client {addr}: {e:?}");

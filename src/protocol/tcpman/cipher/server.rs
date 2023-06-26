@@ -134,6 +134,7 @@ mod test {
     use futures::{io::copy, AsyncReadExt, AsyncWriteExt};
     use rand::RngCore;
     use tokio::spawn;
+    use tokio_util::compat::TokioAsyncReadCompatExt;
 
     #[tokio::test]
     async fn test_cipher_server() {
@@ -141,7 +142,7 @@ mod test {
         let server_task = spawn(async move {
             loop {
                 let (stream, _) = http_server.accept().await.unwrap();
-                let (initial_data, hs) = accept_client(stream).await.unwrap();
+                let (initial_data, hs) = accept_client(stream.compat()).await.unwrap();
                 let (r, mut w) = hs.respond_success().await.unwrap().split();
                 w.write_all(&initial_data.unwrap_or_default())
                     .await
@@ -155,7 +156,7 @@ mod test {
         let stream = connect_http_stream(
             url.is_https,
             &url.address,
-            connect_tcp(&url.address).await.unwrap(),
+            connect_tcp(&url.address).await.unwrap().compat(),
         )
         .await
         .unwrap();
@@ -194,6 +195,6 @@ mod test {
         assert_eq!(buf, data);
 
         drop(client);
-        let _ = server_task.cancel();
+        server_task.abort();
     }
 }

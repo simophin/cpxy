@@ -4,6 +4,7 @@ use anyhow::{bail, Context};
 use async_trait::async_trait;
 use futures::AsyncWriteExt;
 use serde::{Deserialize, Serialize};
+use tokio_util::compat::TokioAsyncReadCompatExt;
 
 use crate::{
     buf::RWBuffer,
@@ -13,7 +14,7 @@ use crate::{
     socks5::Address,
 };
 
-use super::{AsyncStream, Protocol, Stats, TrafficType};
+use super::{AsyncStream, Protocol, Stats};
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct HttpProxy {
@@ -24,10 +25,6 @@ pub struct HttpProxy {
 
 #[async_trait]
 impl Protocol for HttpProxy {
-    fn supports(&self, t: TrafficType) -> bool {
-        t == TrafficType::Stream
-    }
-
     async fn new_stream(
         &self,
         dst: &Address<'_>,
@@ -39,7 +36,7 @@ impl Protocol for HttpProxy {
             .await
             .context("Connecting to HTTP Proxy")?;
 
-        let upstream = connect_http_stream(self.ssl, &self.address, upstream).await?;
+        let upstream = connect_http_stream(self.ssl, &self.address, upstream.compat()).await?;
 
         let mut upstream = AsyncStreamCounter::new(upstream, stats.rx.clone(), stats.tx.clone());
 
@@ -78,7 +75,8 @@ impl Protocol for HttpProxy {
 
 #[cfg(test)]
 mod tests {
-    use smol::spawn;
+    use async_shutdown::Shutdown;
+    use tokio::spawn;
 
     use super::*;
     use crate::{
@@ -90,22 +88,20 @@ mod tests {
         url::HttpUrl,
     };
 
-    #[test]
-    fn http_proxy_works() {
+    #[tokio::test]
+    async fn http_proxy_works() {
         let _ = env_logger::try_init();
-        smol::block_on(async move {
-            let (server, server_url) = create_http_server().await;
-            let url: HttpUrl = server_url.as_str().try_into().unwrap();
-            spawn(super::server::serve(server, Direct {})).detach();
+        let (server, server_url) = create_http_server().await;
+        let url: HttpUrl = server_url.as_str().try_into().unwrap();
+        spawn(server::serve(Shutdown::new(), server, Direct {}));
 
-            let protocol = HttpProxy {
-                address: url.address.clone().into_owned(),
-                ssl: url.is_https,
-                auth_header: None,
-            };
+        let protocol = HttpProxy {
+            address: url.address.clone().into_owned(),
+            ssl: url.is_https,
+            auth_header: None,
+        };
 
-            test_protocol_http(&protocol).await;
-            test_protocol_tcp(&protocol).await;
-        });
+        test_protocol_http(&protocol).await;
+        test_protocol_tcp(&protocol).await;
     }
 }

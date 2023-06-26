@@ -1,16 +1,14 @@
-use std::collections::BTreeMap;
 use std::sync::Arc;
 
 use anyhow::Context;
+use async_shutdown::Shutdown;
 use chacha20::ChaCha20;
 use cipher::KeyIvInit;
 use futures::io::copy;
 use futures::{AsyncRead, AsyncReadExt, AsyncWrite};
-use parking_lot::Mutex;
-use std::net::SocketAddr;
 use tokio::net::TcpListener;
 use tokio::spawn;
-use tokio::task::JoinHandle;
+use tokio_util::compat::TokioAsyncReadCompatExt;
 
 use crate::io::connect_tcp;
 use crate::utils::{race, read_bincode_lengthed_async};
@@ -19,29 +17,28 @@ use super::cipher::CipherRead;
 use super::proto::{CipherOption, Request, INITIAL_CIPHER_LEN};
 use super::pw::PasswordedKey;
 
-pub async fn run_server(listener: TcpListener, password: PasswordedKey) -> anyhow::Result<()> {
-    let clients: Arc<Mutex<BTreeMap<SocketAddr, JoinHandle<()>>>> = Default::default();
+pub async fn run_server(
+    shutdown: Shutdown,
+    listener: TcpListener,
+    password: PasswordedKey,
+) -> anyhow::Result<()> {
     let password = Arc::new(password);
     loop {
         let (client, addr) = listener.accept().await?;
         log::info!("Accepted client from {addr}");
-        let clients_ref = Arc::downgrade(&clients);
         let password = password.clone();
-        clients.lock().insert(
-            addr,
-            spawn(async move {
-                if let Err(e) = serve(client, &password).await {
-                    log::error!("Error serving {addr}: {e:?}");
-                }
-                if let Some(clients) = clients_ref.upgrade() {
-                    clients.lock().remove(&addr);
-                }
-            }),
-        );
+
+        let shutdown = shutdown.clone();
+        spawn(async move {
+            if let Err(e) = serve(shutdown, client.compat(), &password).await {
+                log::error!("Error serving {addr}: {e:?}");
+            }
+        });
     }
 }
 
 pub async fn serve(
+    shutdown: Shutdown,
     stream: impl AsyncRead + AsyncWrite + Unpin + Send + Sync + 'static,
     password: &PasswordedKey,
 ) -> anyhow::Result<()> {
@@ -67,10 +64,15 @@ pub async fn serve(
     let (upstream_r, mut upstream_w) = connect_tcp(&addr)
         .await
         .with_context(|| format!("Connecting to upstream {addr}"))?
+        .compat()
         .split();
 
-    let upload_task = spawn(async move { copy(r, &mut upstream_w).await });
-    let download_task = spawn(async move { copy(upstream_r, &mut w).await });
+    let upload_task = {
+        let shutdown = shutdown.clone();
+        spawn(async move { shutdown.wrap_cancel(copy(r, &mut upstream_w)).await })
+    };
+
+    let download_task = spawn(async move { shutdown.wrap_cancel(copy(upstream_r, &mut w)).await });
 
     race(upload_task, download_task).await?;
     Ok(())

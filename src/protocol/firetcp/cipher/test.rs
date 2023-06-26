@@ -1,6 +1,8 @@
 use chacha20::ChaCha20;
 use cipher::KeyIvInit;
 use futures::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
+use tokio::net::TcpStream;
+use tokio_util::compat::{TokioAsyncReadCompatExt, TokioAsyncWriteCompatExt};
 
 use crate::{test::echo_tcp_server, utils::new_vec_uninitialised};
 
@@ -28,7 +30,12 @@ async fn cipher_rw_without_establish_cipher_works() {
     let init_key: [u8; 32] = rand::random();
     let init_nonce: [u8; 12] = rand::random();
 
-    let (client_r, client_w) = TcpStream::connect(addr).await.expect("To connect").split();
+    let (client_r, client_w) = TcpStream::connect(addr)
+        .await
+        .expect("To connect")
+        .compat()
+        .split();
+
     let mut client_r = CipherRead::<_, _, ChaCha20>::new(
         client_r,
         128,
@@ -51,7 +58,11 @@ async fn cipher_rw_with_establish_cipher_works() {
     let init_key: [u8; 32] = rand::random();
     let init_nonce: [u8; 12] = rand::random();
 
-    let (client_r, client_w) = TcpStream::connect(addr).await.expect("To connect").split();
+    let (client_r, client_w) = TcpStream::connect(addr)
+        .await
+        .expect("To connect")
+        .compat()
+        .split();
     let mut client_r = CipherRead::<_, _, ChaCha20>::new(
         client_r,
         128,

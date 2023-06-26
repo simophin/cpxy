@@ -1,5 +1,6 @@
 use super::*;
 use tokio::net::TcpStream;
+use tokio::time::timeout;
 
 #[tokio::test]
 async fn test_tcp_socks5_proxy() {
@@ -8,20 +9,21 @@ async fn test_tcp_socks5_proxy() {
     let (_client, client_addr) = run_test_client(server_addr).await;
     let (_echo_server, echo_server_addr) = echo_tcp_server().await;
 
-    let mut socks5_client = TcpStream::connect(client_addr).await.unwrap();
+    let mut socks5_client = TcpStream::connect(client_addr).await.unwrap().compat();
 
-    send_socks5_request(&mut socks5_client, &Address::IP(echo_server_addr), false)
-        .timeout(TIMEOUT)
-        .await
-        .unwrap()
-        .unwrap();
+    timeout(
+        TIMEOUT,
+        send_socks5_request(&mut socks5_client, &Address::IP(echo_server_addr), false),
+    )
+    .await
+    .unwrap()
+    .unwrap();
 
     let msg = b"hello, world";
     socks5_client.write_all(msg).await.unwrap();
 
     assert_eq!(
-        read_exact(&mut socks5_client, msg.len())
-            .timeout(TIMEOUT)
+        timeout(TIMEOUT, read_exact(&mut socks5_client, msg.len()))
             .await
             .unwrap()
             .unwrap()

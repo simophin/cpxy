@@ -2,6 +2,8 @@ use super::ConfigProvider;
 use crate::config::ClientConfig;
 use anyhow::Context;
 use async_trait::async_trait;
+use std::io::BufWriter;
+use std::sync::Arc;
 use std::{
     fs::File,
     io::BufReader,
@@ -15,7 +17,7 @@ pub struct Settings {
 
 pub struct FileConfigProvider {
     path: PathBuf,
-    sender: watch::Sender<ClientConfig>,
+    sender: watch::Sender<Arc<ClientConfig>>,
 }
 
 async fn read_config(path: impl AsRef<Path>) -> anyhow::Result<ClientConfig> {
@@ -30,19 +32,25 @@ async fn read_config(path: impl AsRef<Path>) -> anyhow::Result<ClientConfig> {
     }
 }
 
-#[async_trait]
-impl ConfigProvider for FileConfigProvider {
-    type Settings = Settings;
-
-    async fn new(
-        Settings { path }: Settings,
-    ) -> anyhow::Result<(Self, watch::Receiver<ClientConfig>)> {
-        let config = read_config(&path).await?;
+impl FileConfigProvider {
+    pub async fn new(path: PathBuf) -> anyhow::Result<(Self, watch::Receiver<Arc<ClientConfig>>)> {
+        let config = Arc::new(read_config(&path).await?);
         let (sender, receiver) = watch::channel(config);
         Ok((Self { path, sender }, receiver))
     }
+}
 
+#[async_trait]
+impl ConfigProvider for FileConfigProvider {
     async fn update_config(&mut self, config: &ClientConfig) -> anyhow::Result<()> {
-        todo!()
+        let file = BufWriter::new(File::options().write(true).open(&self.path)?);
+        if self.path.ends_with(".json") {
+            serde_json::to_writer_pretty(file, config)?;
+        } else {
+            serde_yaml::to_writer(file, config)?;
+        }
+
+        self.sender.send(Arc::new(config.clone()))?;
+        Ok(())
     }
 }

@@ -1,3 +1,4 @@
+use std::net::SocketAddr;
 use std::sync::Arc;
 
 use crate::{
@@ -9,11 +10,14 @@ use crate::{
     utils::copy_duplex,
 };
 use anyhow::Context;
+use async_shutdown::Shutdown;
 use futures::AsyncWriteExt;
-use tokio::net::TcpListener;
+use tokio::net::{TcpListener, TcpStream};
 use tokio::spawn;
+use tokio_util::compat::TokioAsyncReadCompatExt;
 
 pub async fn serve(
+    shutdown: Shutdown,
     stream: TcpListener,
     upstream: impl Protocol + Send + Sync + 'static,
 ) -> anyhow::Result<()> {
@@ -22,56 +26,69 @@ pub async fn serve(
         let (stream, from) = stream.accept().await?;
         log::debug!("Client {from} connected");
         let upstream = upstream.clone();
+        let shutdown = shutdown.clone();
         spawn(async move {
-            let mut stream =
-                match parse_request(stream, RWBuffer::new_vec_uninitialised(4096)).await {
-                    Ok(v) => v,
-                    Err((e, _)) => {
-                        return Err(e).with_context(|| format!("Error parsing request for {from}"));
-                    }
-                };
-
-            let (reply_http_response, dst, initial_data) = match stream.method.as_ref() {
-                "CONNECT" => (true, Address::try_from(stream.path.as_ref())?, None),
-                m => {
-                    let url: HttpUrl = stream
-                        .path
-                        .as_ref()
-                        .try_into()
-                        .with_context(|| format!("Parsing {} as HTTP URL", stream.path))?;
-
-                    let mut builder = HttpRequestBuilder::new(m, url.path.as_ref())?;
-                    for (n, v) in &stream.headers {
-                        builder.put_header(n.as_ref(), v.as_ref())?;
-                    }
-                    (false, url.address, Some(builder.finalise()))
-                }
-            };
-            log::debug!("Sending HTTPPROXY://{dst} from {from} to upstream");
-
-            let upstream = match upstream
-                .new_stream(
-                    &dst,
-                    initial_data.as_ref().map(Vec::as_slice),
-                    &Default::default(),
-                    None,
-                )
+            if let Some(Err(e)) = shutdown
+                .wrap_cancel(serve_conn(stream, from, upstream))
                 .await
             {
-                Ok(stream) => stream,
-                Err(e) => {
-                    log::error!("Error requesting upstream: {e:?}");
-                    stream.write_all(b"HTTP/1.1 500 Error\r\n\r\n").await?;
-                    return Err(e);
-                }
-            };
-
-            if reply_http_response {
-                stream.write_all(b"HTTP/1.1 200 OK\r\n\r\n").await?;
+                log::error!("Error serving http: {e:?}");
             }
-
-            copy_duplex(stream, upstream, None, None).await
-        })
-        .detach();
+        });
     }
+}
+
+async fn serve_conn(
+    stream: TcpStream,
+    from: SocketAddr,
+    upstream: Arc<impl Protocol + Send + Sync + 'static>,
+) -> anyhow::Result<()> {
+    let mut stream =
+        match parse_request(stream.compat(), RWBuffer::new_vec_uninitialised(4096)).await {
+            Ok(v) => v,
+            Err((e, _)) => {
+                return Err(e).with_context(|| format!("Error parsing request for {from}"));
+            }
+        };
+
+    let (reply_http_response, dst, initial_data) = match stream.method.as_ref() {
+        "CONNECT" => (true, Address::try_from(stream.path.as_ref())?, None),
+        m => {
+            let url: HttpUrl = stream
+                .path
+                .as_ref()
+                .try_into()
+                .with_context(|| format!("Parsing {} as HTTP URL", stream.path))?;
+
+            let mut builder = HttpRequestBuilder::new(m, url.path.as_ref())?;
+            for (n, v) in &stream.headers {
+                builder.put_header(n.as_ref(), v.as_ref())?;
+            }
+            (false, url.address, Some(builder.finalise()))
+        }
+    };
+    log::debug!("Sending HTTPPROXY://{dst} from {from} to upstream");
+
+    let upstream = match upstream
+        .new_stream(
+            &dst,
+            initial_data.as_ref().map(Vec::as_slice),
+            &Default::default(),
+            None,
+        )
+        .await
+    {
+        Ok(stream) => stream,
+        Err(e) => {
+            log::error!("Error requesting upstream: {e:?}");
+            stream.write_all(b"HTTP/1.1 500 Error\r\n\r\n").await?;
+            return Err(e);
+        }
+    };
+
+    if reply_http_response {
+        stream.write_all(b"HTTP/1.1 200 OK\r\n\r\n").await?;
+    }
+
+    copy_duplex(stream, upstream, None, None).await
 }

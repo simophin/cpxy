@@ -1,28 +1,23 @@
 mod cipher;
-mod dgram;
 mod proto;
 pub mod server;
-mod udp_stream;
 
 use std::borrow::Cow;
 use std::fmt::Display;
 
 use anyhow::Context;
 use async_trait::async_trait;
-use bytes::Bytes;
-use futures::{AsyncRead, AsyncReadExt, AsyncWrite};
+use futures::{AsyncRead, AsyncWrite};
 use serde::{Deserialize, Serialize};
+use tokio_util::compat::TokioAsyncReadCompatExt;
 
 use crate::fetch::connect_http_stream;
 use crate::io::{connect_tcp_marked, AsyncStreamCounter};
 use crate::{socks5::Address, url::HttpUrl};
 
-use self::{
-    cipher::strategy::EncryptionStrategy,
-    dgram::{create_udp_sink, create_udp_stream},
-};
+use self::cipher::strategy::EncryptionStrategy;
 
-use super::{AsyncStream, BoxedSink, BoxedStream, Protocol, Stats, TrafficType};
+use super::{AsyncStream, Protocol, Stats};
 
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
 pub struct Credentials {
@@ -48,7 +43,8 @@ impl TcpMan {
     ) -> anyhow::Result<impl AsyncRead + AsyncWrite + Unpin + Send + Sync> {
         let stream = connect_tcp_marked(&self.address, fwmark)
             .await
-            .context("Connect to TCPMan server")?;
+            .context("Connect to TCPMan server")?
+            .compat();
 
         let stream = connect_http_stream(self.ssl, &self.address, stream)
             .await
@@ -74,13 +70,6 @@ impl TcpMan {
 
 #[async_trait]
 impl Protocol for TcpMan {
-    fn supports(&self, t: TrafficType) -> bool {
-        match (t, self.allows_udp) {
-            (TrafficType::Datagram, false) => false,
-            _ => true,
-        }
-    }
-
     async fn new_stream(
         &self,
         dst: &Address<'_>,
@@ -101,31 +90,6 @@ impl Protocol for TcpMan {
             .await?,
         ))
     }
-
-    async fn new_datagram(
-        &self,
-        dst: &Address<'_>,
-        initial_data: Bytes,
-        stats: &Stats,
-        fwmark: Option<u32>,
-    ) -> anyhow::Result<(BoxedSink, BoxedStream)> {
-        let (r, w) = self
-            .send_request(
-                dst,
-                proto::Request::UDP {
-                    dst: dst.clone(),
-                    initial_data: initial_data.as_ref(),
-                },
-                stats,
-                fwmark,
-            )
-            .await?
-            .split();
-        Ok((
-            Box::pin(create_udp_sink(w)),
-            Box::pin(create_udp_stream(r, None)),
-        ))
-    }
 }
 
 impl Credentials {
@@ -141,6 +105,7 @@ impl Credentials {
 mod tests {
     use super::*;
     use crate::{protocol::test::*, test::create_tcp_server};
+    use async_shutdown::Shutdown;
     use tokio::spawn;
 
     #[tokio::test]
@@ -148,7 +113,7 @@ mod tests {
         std::env::set_var("RUST_LOG", "debug");
         let _ = env_logger::try_init();
         let (server, addr) = create_tcp_server().await;
-        let _task = spawn(super::server::run_server(server));
+        let _task = spawn(server::run_server(Shutdown::new(), server));
 
         let p = TcpMan {
             address: addr.into(),
@@ -159,6 +124,5 @@ mod tests {
 
         test_protocol_http(&p).await;
         test_protocol_tcp(&p).await;
-        test_protocol_udp(&p).await;
     }
 }

@@ -33,20 +33,6 @@ impl<R: AsyncRead, W> AsyncRead for StreamUnion<R, W> {
 }
 
 impl<R, W: AsyncWrite> AsyncWrite for StreamUnion<R, W> {
-    fn poll_close(
-        self: std::pin::Pin<&mut Self>,
-        cx: &mut std::task::Context<'_>,
-    ) -> std::task::Poll<std::io::Result<()>> {
-        self.project().w.poll_close(cx)
-    }
-
-    fn poll_flush(
-        self: std::pin::Pin<&mut Self>,
-        cx: &mut std::task::Context<'_>,
-    ) -> std::task::Poll<std::io::Result<()>> {
-        self.project().w.poll_flush(cx)
-    }
-
     fn poll_write(
         self: std::pin::Pin<&mut Self>,
         cx: &mut std::task::Context<'_>,
@@ -61,5 +47,19 @@ impl<R, W: AsyncWrite> AsyncWrite for StreamUnion<R, W> {
         bufs: &[std::io::IoSlice<'_>],
     ) -> std::task::Poll<std::io::Result<usize>> {
         self.project().w.poll_write_vectored(cx, bufs)
+    }
+
+    fn poll_flush(
+        self: std::pin::Pin<&mut Self>,
+        cx: &mut std::task::Context<'_>,
+    ) -> std::task::Poll<std::io::Result<()>> {
+        self.project().w.poll_flush(cx)
+    }
+
+    fn poll_close(
+        self: std::pin::Pin<&mut Self>,
+        cx: &mut std::task::Context<'_>,
+    ) -> std::task::Poll<std::io::Result<()>> {
+        self.project().w.poll_close(cx)
     }
 }

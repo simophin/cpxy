@@ -7,48 +7,64 @@
     <cargoProject FILE="$PROJECT_DIR$/Cargo.toml" />
   </component>
   <component name="ChangeListManager">
-    <list default="true" id="998b8231-524b-486c-9a00-9672a65c1a7c" name="Changes" comment="SNI matching">
+    <list default="true" id="998b8231-524b-486c-9a00-9672a65c1a7c" name="Changes" comment="Tokio">
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/Cargo.lock" beforeDir="false" afterPath="$PROJECT_DIR$/Cargo.lock" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/Cargo.toml" beforeDir="false" afterPath="$PROJECT_DIR$/Cargo.toml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/build.rs" beforeDir="false" />
       <change beforePath="$PROJECT_DIR$/src/abp/mod.rs" beforeDir="false" afterPath="$PROJECT_DIR$/src/abp/mod.rs" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/broadcast.rs" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/bin/cpxy.rs" beforeDir="false" afterPath="$PROJECT_DIR$/src/bin/cpxy.rs" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/client/common.rs" beforeDir="false" afterPath="$PROJECT_DIR$/src/client/common.rs" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/src/client/handler.rs" beforeDir="false" afterPath="$PROJECT_DIR$/src/client/handler.rs" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/client/mod.rs" beforeDir="false" afterPath="$PROJECT_DIR$/src/client/mod.rs" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/client/stats.rs" beforeDir="false" afterPath="$PROJECT_DIR$/src/client/stats.rs" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/src/client/tcp.rs" beforeDir="false" afterPath="$PROJECT_DIR$/src/client/tcp.rs" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/client/transparent/handler.rs" beforeDir="false" afterPath="$PROJECT_DIR$/src/client/transparent/handler.rs" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/client/transparent/udp_proxy.rs" beforeDir="false" afterPath="$PROJECT_DIR$/src/client/transparent/udp_proxy.rs" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/client/transparent/utils.rs" beforeDir="false" afterPath="$PROJECT_DIR$/src/client/transparent/utils.rs" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/client/udp.rs" beforeDir="false" afterPath="$PROJECT_DIR$/src/client/udp.rs" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/client/transparent/handler.rs" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/client/transparent/mod.rs" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/client/transparent/udp_proxy.rs" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/client/transparent/utils.c" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/client/transparent/utils.rs" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/client/udp.rs" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/config.rs" beforeDir="false" afterPath="$PROJECT_DIR$/src/config.rs" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/src/controller.rs" beforeDir="false" afterPath="$PROJECT_DIR$/src/controller.rs" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/src/controller_config/fs.rs" beforeDir="false" afterPath="$PROJECT_DIR$/src/controller_config/fs.rs" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/src/controller_config/mod.rs" beforeDir="false" afterPath="$PROJECT_DIR$/src/controller_config/mod.rs" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/src/dns.rs" beforeDir="false" afterPath="$PROJECT_DIR$/src/dns.rs" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/fetch.rs" beforeDir="false" afterPath="$PROJECT_DIR$/src/fetch.rs" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/src/io/mod.rs" beforeDir="false" afterPath="$PROJECT_DIR$/src/io/mod.rs" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/io/tcp.rs" beforeDir="false" afterPath="$PROJECT_DIR$/src/io/tcp.rs" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/io/timer.rs" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/io/udp.rs" beforeDir="false" afterPath="$PROJECT_DIR$/src/io/udp.rs" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/lib.rs" beforeDir="false" afterPath="$PROJECT_DIR$/src/lib.rs" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/io/stream.rs" beforeDir="false" afterPath="$PROJECT_DIR$/src/io/stream.rs" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/io/udp.rs" beforeDir="false" />
       <change beforePath="$PROJECT_DIR$/src/protocol/direct/mod.rs" beforeDir="false" afterPath="$PROJECT_DIR$/src/protocol/direct/mod.rs" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/src/protocol/firetcp/cipher/test.rs" beforeDir="false" afterPath="$PROJECT_DIR$/src/protocol/firetcp/cipher/test.rs" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/src/protocol/firetcp/mod.rs" beforeDir="false" afterPath="$PROJECT_DIR$/src/protocol/firetcp/mod.rs" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/protocol/firetcp/proto.rs" beforeDir="false" afterPath="$PROJECT_DIR$/src/protocol/firetcp/proto.rs" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/src/protocol/firetcp/server.rs" beforeDir="false" afterPath="$PROJECT_DIR$/src/protocol/firetcp/server.rs" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/protocol/http/mod.rs" beforeDir="false" afterPath="$PROJECT_DIR$/src/protocol/http/mod.rs" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/src/protocol/http/server.rs" beforeDir="false" afterPath="$PROJECT_DIR$/src/protocol/http/server.rs" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/protocol/mod.rs" beforeDir="false" afterPath="$PROJECT_DIR$/src/protocol/mod.rs" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/protocol/socks5/mod.rs" beforeDir="false" afterPath="$PROJECT_DIR$/src/protocol/socks5/mod.rs" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/src/protocol/tcpman/cipher/server.rs" beforeDir="false" afterPath="$PROJECT_DIR$/src/protocol/tcpman/cipher/server.rs" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/protocol/tcpman/dgram.rs" beforeDir="false" afterPath="$PROJECT_DIR$/src/protocol/tcpman/dgram.rs" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/protocol/tcpman/dgram.rs" beforeDir="false" />
       <change beforePath="$PROJECT_DIR$/src/protocol/tcpman/mod.rs" beforeDir="false" afterPath="$PROJECT_DIR$/src/protocol/tcpman/mod.rs" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/protocol/tcpman/proto.rs" beforeDir="false" afterPath="$PROJECT_DIR$/src/protocol/tcpman/proto.rs" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/src/protocol/tcpman/server/handler.rs" beforeDir="false" afterPath="$PROJECT_DIR$/src/protocol/tcpman/server/handler.rs" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/protocol/tcpman/udp_stream.rs" beforeDir="false" afterPath="$PROJECT_DIR$/src/protocol/tcpman/udp_stream.rs" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/protocol/tcpman/udp_stream.rs" beforeDir="false" />
       <change beforePath="$PROJECT_DIR$/src/protocol/test.rs" beforeDir="false" afterPath="$PROJECT_DIR$/src/protocol/test.rs" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/protocol/udpman/client.rs" beforeDir="false" afterPath="$PROJECT_DIR$/src/protocol/udpman/client.rs" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/protocol/udpman/server.rs" beforeDir="false" afterPath="$PROJECT_DIR$/src/protocol/udpman/server.rs" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/protocol/udpman/client.rs" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/protocol/udpman/mod.rs" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/protocol/udpman/proto.rs" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/protocol/udpman/server.rs" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/protocol/udpman/stream.rs" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/rule.rs" beforeDir="false" afterPath="$PROJECT_DIR$/src/rule.rs" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/src/socks5/addr.rs" beforeDir="false" afterPath="$PROJECT_DIR$/src/socks5/addr.rs" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/socks5/udp_relay.rs" beforeDir="false" afterPath="$PROJECT_DIR$/src/socks5/udp_relay.rs" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/socks5/mod.rs" beforeDir="false" afterPath="$PROJECT_DIR$/src/socks5/mod.rs" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/socks5/udp.rs" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/socks5/udp_relay.rs" beforeDir="false" />
       <change beforePath="$PROJECT_DIR$/src/test/http.rs" beforeDir="false" afterPath="$PROJECT_DIR$/src/test/http.rs" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/src/test/mod.rs" beforeDir="false" afterPath="$PROJECT_DIR$/src/test/mod.rs" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/src/test/tcp_socks4.rs" beforeDir="false" afterPath="$PROJECT_DIR$/src/test/tcp_socks4.rs" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/src/test/tcp_socks5.rs" beforeDir="false" afterPath="$PROJECT_DIR$/src/test/tcp_socks5.rs" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/test/udp.rs" beforeDir="false" afterPath="$PROJECT_DIR$/src/test/udp.rs" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/utils.rs" beforeDir="false" afterPath="$PROJECT_DIR$/src/utils.rs" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/test/udp.rs" beforeDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -68,7 +84,7 @@
   <component name="Git.Settings">
     <option name="RECENT_BRANCH_BY_REPOSITORY">
       <map>
-        <entry key="$PROJECT_DIR$" value="clean-up" />
+        <entry key="$PROJECT_DIR$" value="master" />
       </map>
     </option>
     <option name="RECENT_GIT_ROOT_PATH" value="$PROJECT_DIR$" />
@@ -113,11 +129,11 @@
     "RunOnceActivity.ShowReadmeOnStart": "true",
     "WebServerToolWindowFactoryState": "false",
     "dart.analysis.tool.window.visible": "false",
-    "git-widget-placeholder": "master",
+    "git-widget-placeholder": "tokio",
     "last_opened_file_path": "/home/fanchao/Projects/cpxy",
     "nodejs_package_manager_path": "yarn",
     "org.rust.cargo.project.model.PROJECT_DISCOVERY": "true",
-    "settings.editor.selected.configurable": "actions.on.save",
+    "settings.editor.selected.configurable": "language.rust.cargo.check",
     "show.migrate.to.gradle.popup": "false"
   }
 }]]></component>
@@ -318,7 +334,15 @@
       <option name="project" value="LOCAL" />
       <updated>1669534415277</updated>
     </task>
-    <option name="localTasksCounter" value="6" />
+    <task id="LOCAL-00006" summary="Tokio">
+      <option name="closed" value="true" />
+      <created>1687702057307</created>
+      <option name="number" value="00006" />
+      <option name="presentableId" value="LOCAL-00006" />
+      <option name="project" value="LOCAL" />
+      <updated>1687702057307</updated>
+    </task>
+    <option name="localTasksCounter" value="7" />
     <servers />
   </component>
   <component name="TypeScriptGeneratedFilesManager">
@@ -336,12 +360,15 @@
     </option>
   </component>
   <component name="VcsManagerConfiguration">
+    <option name="CHECK_CODE_SMELLS_BEFORE_PROJECT_COMMIT" value="false" />
+    <option name="CHECK_NEW_TODO" value="false" />
     <MESSAGE value="Removed UDP" />
     <MESSAGE value="Removed DNS" />
     <MESSAGE value="tidy up" />
     <MESSAGE value="Change how domain matching works" />
     <MESSAGE value="SNI matching" />
-    <option name="LAST_COMMIT_MESSAGE" value="SNI matching" />
+    <MESSAGE value="Tokio" />
+    <option name="LAST_COMMIT_MESSAGE" value="Tokio" />
   </component>
   <component name="XSLT-Support.FileAssociations.UIState">
     <expand />

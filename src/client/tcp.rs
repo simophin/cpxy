@@ -44,20 +44,18 @@ pub async fn serve_tcp_tproxy_conn(
     stats: &ClientStatistics,
     mut stream: impl AsyncRead + AsyncWrite + Unpin + Send + Sync,
 ) -> anyhow::Result<()> {
+    use tokio::time::timeout;
+
     let initial_data = match dst.get_port() {
         80 | 443 => {
             let mut vec = new_vec_uninitialised(4096);
-            match stream
-                .read(&mut vec)
-                .timeout(TCP_PROXY_PRE_READ_TIMEOUT)
-                .await
-            {
-                Some(Ok(size)) => {
+            match timeout(TCP_PROXY_PRE_READ_TIMEOUT, stream.read(&mut vec)).await {
+                Ok(Ok(size)) => {
                     vec.set_len_uninit(size);
                     Some(vec)
                 }
-                Some(Err(e)) => return Err(e.into()),
-                None => None,
+                Ok(Err(e)) => return Err(e.into()),
+                Err(_) => None,
             }
         }
         _ => None,

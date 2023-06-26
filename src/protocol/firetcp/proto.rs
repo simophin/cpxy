@@ -4,9 +4,10 @@ use chacha20::ChaCha20;
 use cipher::KeyIvInit;
 use futures::{AsyncReadExt, AsyncWriteExt};
 use serde::{Deserialize, Serialize};
+use tokio_util::compat::TokioAsyncReadCompatExt;
 
 use super::{
-    super::{AsyncStream, Protocol, Stats, TrafficType},
+    super::{AsyncStream, Protocol, Stats},
     pw::PasswordedKey,
 };
 use crate::{
@@ -49,10 +50,6 @@ pub const INITIAL_CIPHER_LEN: usize = 512;
 
 #[async_trait]
 impl Protocol for FireTcp {
-    fn supports(&self, traffic_type: TrafficType) -> bool {
-        traffic_type == TrafficType::Stream
-    }
-
     async fn new_stream(
         &self,
         dst: &Address<'_>,
@@ -63,7 +60,8 @@ impl Protocol for FireTcp {
         let (r, w) = AsyncStreamCounter::new(
             connect_tcp_marked(&self.address, fwmark)
                 .await
-                .context("Connecting to firetcp server")?,
+                .context("Connecting to firetcp server")?
+                .compat(),
             stats.rx.clone(),
             stats.tx.clone(),
         )

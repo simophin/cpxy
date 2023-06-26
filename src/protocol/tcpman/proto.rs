@@ -11,17 +11,12 @@ pub enum Request<'a> {
         dst: Address<'a>,
         initial_data: &'a [u8],
     },
-    UDP {
-        dst: Address<'a>,
-        initial_data: &'a [u8],
-    },
 }
 
 #[derive(Debug, Primitive)]
 #[repr(u8)]
 enum RequestType {
     TCP = 0,
-    UDP = 1,
 }
 
 impl<'a> Request<'a> {
@@ -41,17 +36,12 @@ impl<'a> Request<'a> {
                 dst,
                 initial_data: buf,
             },
-            RequestType::UDP => Request::UDP {
-                dst,
-                initial_data: buf,
-            },
         })
     }
 
     pub fn to_vec(self) -> Vec<u8> {
         let (t, dst, initial_data) = match self {
             Request::TCP { dst, initial_data } => (RequestType::TCP, dst, initial_data),
-            Request::UDP { dst, initial_data } => (RequestType::UDP, dst, initial_data),
         };
 
         let mut buf = Vec::<u8>::with_capacity(1 + dst.write_len() + initial_data.len());
@@ -89,26 +79,6 @@ mod tests {
         });
 
         test_request(&Request::TCP {
-            dst: "google.com:50".parse().unwrap(),
-            initial_data: b"",
-        });
-
-        test_request(&Request::UDP {
-            dst: "1.2.3.4:50".parse().unwrap(),
-            initial_data: b"hello,world",
-        });
-
-        test_request(&Request::UDP {
-            dst: "google.com:50".parse().unwrap(),
-            initial_data: b"hello,world",
-        });
-
-        test_request(&Request::UDP {
-            dst: "1.2.3.4:50".parse().unwrap(),
-            initial_data: b"",
-        });
-
-        test_request(&Request::UDP {
             dst: "google.com:50".parse().unwrap(),
             initial_data: b"",
         });

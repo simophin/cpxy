@@ -11,6 +11,7 @@ mod test {
         protocol::test::{test_protocol_http, test_protocol_tcp},
         test::create_tcp_server,
     };
+    use async_shutdown::Shutdown;
     use tokio::spawn;
 
     use super::{proto::FireTcp, pw::PasswordedKey, server::run_server};
@@ -19,7 +20,7 @@ mod test {
     async fn protocol_works() {
         let (server, server_addr) = create_tcp_server().await;
         let pw = PasswordedKey::new("123456");
-        let _task = spawn(run_server(server, pw.clone()));
+        let _task = spawn(run_server(Shutdown::new(), server, pw.clone()));
 
         let protocol = FireTcp::new(server_addr.into(), pw);
 

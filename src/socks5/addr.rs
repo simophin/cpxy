@@ -113,9 +113,10 @@ impl<'a> Address<'a> {
     pub async fn resolve(&self) -> std::io::Result<impl Iterator<Item = SocketAddr>> {
         match self {
             Address::IP(addr) => Ok(vec![*addr].into_iter()),
-            Address::Name { host, port } => {
-                Ok(lookup_host((host.as_ref(), *port)).await?.into_iter())
-            }
+            Address::Name { host, port } => Ok(lookup_host((host.as_ref(), *port))
+                .await?
+                .collect::<Vec<_>>()
+                .into_iter()),
         }
     }
 

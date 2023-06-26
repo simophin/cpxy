@@ -2,11 +2,8 @@ use std::time::Instant;
 
 use anyhow::{anyhow, Context};
 
-use crate::{
-    config::ClientConfig,
-    protocol::{AsyncStream, Protocol, Stats, TrafficType},
-    socks5::Address,
-};
+use crate::protocol::Protocol;
+use crate::{config::ClientConfig, protocol::AsyncStream, socks5::Address};
 
 use super::ClientStatistics;
 
@@ -16,22 +13,13 @@ pub async fn find_and_connect_stream(
     client_config: &ClientConfig,
     stats: &ClientStatistics,
 ) -> anyhow::Result<Box<dyn AsyncStream>> {
-    let mut upstreams =
-        client_config.find_best_upstream(TrafficType::Stream, stats, dst, initial_data.clone())?;
+    let mut upstreams = client_config.find_best_upstream(stats, dst, initial_data.clone())?;
     let mut last_error = None;
 
     while let Some((name, config)) = upstreams.pop() {
         log::debug!("Trying TCP:://{dst} on {name}");
 
-        let protocol_stats = stats
-            .upstreams
-            .get(name)
-            .map(|s| Stats {
-                tx: s.tx.clone(),
-                rx: s.rx.clone(),
-            })
-            .unwrap_or_default();
-
+        let protocol_stats = stats.get_protocol_stats(name).unwrap_or_default();
         let start = Instant::now();
 
         match config

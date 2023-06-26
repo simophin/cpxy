@@ -8,7 +8,7 @@ use std::{
 };
 
 use anyhow::{bail, Context};
-use clap::{Parser, ValueEnum};
+use clap::Parser;
 use ipnetwork::IpNetwork;
 use serde::{Deserialize, Serialize};
 
@@ -36,12 +36,6 @@ pub enum RuleDestination {
     DnsHost(HostMatch),
 }
 
-#[derive(Debug, ValueEnum, Clone, Copy, PartialEq, PartialOrd, Eq, Ord)]
-pub enum RuleProtocol {
-    Tcp,
-    Udp,
-}
-
 #[derive(Debug, Clone, PartialEq, PartialOrd, Eq, Ord)]
 enum RuleAction {
     Proxy(Arc<str>),
@@ -62,8 +56,6 @@ enum TableExecuteResult<'a> {
 pub struct Rule {
     #[clap(short)]
     dest: Vec<RuleDestination>,
-    #[clap(short)]
-    proto: Option<RuleProtocol>,
     #[clap(short)]
     action: RuleAction,
 }
@@ -202,7 +194,6 @@ impl RuleString {
         level: usize,
         table_name: &str,
         target: &PacketDestination<'_>,
-        proto: RuleProtocol,
         initial_data: Option<&[u8]>,
     ) -> Option<TableExecuteResult<'a>> {
         if level > 10 {
@@ -233,11 +224,6 @@ impl RuleString {
                 continue;
             }
 
-            // Match protocol
-            if matches!(rule.proto, Some(p) if p != proto) {
-                continue;
-            }
-
             log::debug!("Matched {rule:?} in table {table_name}");
             match &rule.action {
                 RuleAction::Jump(table_name) => {
@@ -245,7 +231,6 @@ impl RuleString {
                         level + 1,
                         table_name.as_ref(),
                         target,
-                        proto,
                         initial_data.clone(),
                     ) {
                         Some(TableExecuteResult::Return) => {}
@@ -253,15 +238,15 @@ impl RuleString {
                     };
                 }
                 RuleAction::Proxy(name) => {
-                    log::debug!("Using proxy {name} for target={target:?}, proto={proto:?}");
+                    log::debug!("Using proxy {name} for target={target:?}");
                     return Some(TableExecuteResult::Proxy(name.as_ref()));
                 }
                 RuleAction::ProxyGroup(name) => {
-                    log::debug!("Using proxy group {name} for target={target:?}, proto={proto:?}");
+                    log::debug!("Using proxy group {name} for target={target:?}");
                     return Some(TableExecuteResult::ProxyGroup(name.as_ref()));
                 }
                 RuleAction::Reject => {
-                    log::debug!("Reject target={target:?}, proto={proto:?}");
+                    log::debug!("Reject target={target:?}");
                     return Some(TableExecuteResult::Reject);
                 }
                 RuleAction::Return => return Some(TableExecuteResult::Return),
@@ -273,11 +258,10 @@ impl RuleString {
     pub fn execute_rules<'a>(
         &'a self,
         target: &PacketDestination<'_>,
-        proto: RuleProtocol,
         initial_data: Option<&[u8]>,
     ) -> anyhow::Result<Option<RuleExecutionResult<'a>>> {
         // Start from main table
-        match self.execute_table(0, "main", target, proto, initial_data) {
+        match self.execute_table(0, "main", target, initial_data) {
             Some(TableExecuteResult::Proxy(name)) => Ok(Some(RuleExecutionResult::Proxy(name))),
             Some(TableExecuteResult::ProxyGroup(name)) => {
                 Ok(Some(RuleExecutionResult::ProxyGroup(name)))
@@ -363,12 +347,12 @@ impl RuleDestination {
     ) -> bool {
         // Do we have a definite domain name?
         if let PacketDestination::Domain { hostname, .. } = target {
-            if host_match.matches(*hostname) {
+            return if host_match.matches(*hostname) {
                 log::debug!("Dst domain {hostname} matches {host_match:?}");
-                return true;
+                true
             } else {
-                return false;
-            }
+                false
+            };
         }
 
         // Can we extract the real host from HTTP/HTTPs?
@@ -503,12 +487,10 @@ mod tests {
             "main".to_string() => vec![
                 Rule {
                     dest: vec![RuleDestination::Domain(HostMatch::HostList(gfw_list_engine()))],
-                    proto: Some(RuleProtocol::Tcp),
                     action: RuleAction::Proxy("proxy1".into()),
                 },
                 Rule {
                     dest: vec![RuleDestination::Domain(HostMatch::HostList(adblock_list_engine()))],
-                    proto: Some(RuleProtocol::Tcp),
                     action: RuleAction::Proxy("proxy1".into()),
                 },
                 Rule {
@@ -516,29 +498,24 @@ mod tests {
                         RuleDestination::GeoIP("CN".parse().unwrap()),
                         RuleDestination::GeoIP("us".parse().unwrap()),
                     ],
-                    proto: Some(RuleProtocol::Udp),
                     action: RuleAction::Reject,
                 },
                 Rule {
                     dest: vec![RuleDestination::GeoIP("nz".parse().unwrap())],
-                    proto: None,
                     action: RuleAction::Jump("nz".into())
                 },
                 Rule {
                     dest: vec![],
-                    proto: None,
                     action: RuleAction::Reject
                 }
             ],
             "nz".to_string() => vec![
                 Rule {
                     dest: vec![],
-                    proto: Some(RuleProtocol::Udp),
                     action: RuleAction::Return,
                 },
                 Rule {
                     dest: vec![],
-                    proto: None,
                     action: RuleAction::ProxyGroup("group".into()),
                 },
             ]
@@ -559,7 +536,6 @@ mod tests {
                     country_code: Some("nz".parse().unwrap()),
                     resolved_host: Default::default(),
                 },
-                RuleProtocol::Tcp,
                 None,
             )
             .unwrap();

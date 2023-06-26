@@ -1,5 +1,5 @@
 use std::{
-    net::{IpAddr, Ipv4Addr, SocketAddr},
+    net::{Ipv4Addr, SocketAddr},
     sync::Arc,
     time::Duration,
     vec,
@@ -7,21 +7,22 @@ use std::{
 
 use crate::{
     config::UpstreamProtocol,
-    io::{bind_tcp, bind_udp, connect_tcp},
+    io::{bind_tcp, connect_tcp},
     protocol::tcpman::{server::run_server, TcpMan},
 };
 use anyhow::bail;
+use async_shutdown::Shutdown;
 use futures::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
 use futures_util::join;
 use maplit::hashmap;
-use tokio::net::{TcpListener, UdpSocket};
+use tokio::net::TcpListener;
 use tokio::spawn;
 use tokio::task::JoinHandle;
+use tokio_util::compat::TokioAsyncReadCompatExt;
 
 mod http;
 mod tcp_socks4;
 mod tcp_socks5;
-mod udp;
 
 use crate::{
     buf::RWBuffer,
@@ -45,10 +46,10 @@ pub async fn duplex(
     let addr = Address::IP(listener.local_addr().expect("To have local addr"));
 
     let (client, server) = join!(connect_tcp(&addr), listener.accept());
-    let client = client.expect("To connect");
+    let client = client.expect("To connect").compat();
     let (server, _) = server.expect("To accept");
 
-    (client, server)
+    (client, server.compat())
 }
 
 pub fn set_ip_local(addr: &mut SocketAddr) {
@@ -81,13 +82,6 @@ pub async fn create_tcp_server() -> (TcpListener, SocketAddr) {
     (listener, addr)
 }
 
-pub async fn create_udp_socket() -> (UdpSocket, SocketAddr) {
-    let socket = bind_udp(true).await.unwrap();
-    let mut addr = socket.local_addr().unwrap();
-    set_ip_local(&mut addr);
-    (socket, addr)
-}
-
 pub async fn echo_tcp_server() -> (JoinHandle<()>, SocketAddr) {
     let socket = bind_tcp(&Default::default()).await.unwrap();
     let mut addr = socket.local_addr().unwrap();
@@ -95,7 +89,8 @@ pub async fn echo_tcp_server() -> (JoinHandle<()>, SocketAddr) {
     (
         spawn(async move {
             loop {
-                let (mut socket, _) = socket.accept().await.unwrap();
+                let (socket, _) = socket.accept().await.unwrap();
+                let mut socket = socket.compat();
                 spawn(async move {
                     let mut buf = vec![0; 4096];
                     loop {
@@ -104,24 +99,7 @@ pub async fn echo_tcp_server() -> (JoinHandle<()>, SocketAddr) {
                             v => socket.write_all(&buf[..v]).await.unwrap(),
                         }
                     }
-                })
-                .detach();
-            }
-        }),
-        addr,
-    )
-}
-
-pub async fn echo_udp_server() -> (JoinHandle<()>, SocketAddr) {
-    let socket = bind_udp(true).await.unwrap();
-    let mut addr = socket.local_addr().unwrap();
-    addr.set_ip(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)));
-    (
-        spawn(async move {
-            let mut buf = vec![0; 65536];
-            loop {
-                let (len, addr) = socket.recv_from(buf.as_mut_slice()).await.unwrap();
-                socket.send_to(&buf[..len], addr).await.unwrap();
+                });
             }
         }),
         addr,
@@ -159,7 +137,7 @@ pub async fn run_test_client(upstream_address: SocketAddr) -> (JoinHandle<()>, S
                 };
                 let stats = ClientStatistics::new(&config);
 
-                run_proxy_with(listener, Arc::new(config), Arc::new(stats))
+                run_proxy_with(Shutdown::new(), listener, Arc::new(config), Arc::new(stats))
                     .await
                     .unwrap();
             })
@@ -173,7 +151,7 @@ pub async fn run_test_server() -> (JoinHandle<()>, SocketAddr) {
     let mut addr = listener.local_addr().unwrap();
     set_ip_local(&mut addr);
     (
-        spawn(async move { run_server(listener).await.unwrap() }),
+        spawn(async move { run_server(Shutdown::new(), listener).await.unwrap() }),
         addr,
     )
 }

@@ -155,6 +155,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "async-shutdown"
+version = "0.1.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "6a0530589772e3689f22201f7afc108c252c887a40914fb89285b8f2f22923ff"
+
+[[package]]
 name = "async-stream"
 version = "0.3.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -420,6 +426,7 @@ dependencies = [
  "android_logger",
  "anyhow",
  "async-native-tls",
+ "async-shutdown",
  "async-stream",
  "async-trait",
  "atomic",
@@ -467,6 +474,7 @@ dependencies = [
  "smallvec",
  "tls-parser",
  "tokio",
+ "tokio-stream",
  "tokio-util",
  "urlencoding",
  "uuid",
@@ -2074,6 +2082,18 @@ dependencies = [
  "proc-macro2",
  "quote",
  "syn 2.0.16",
+]
+
+[[package]]
+name = "tokio-stream"
+version = "0.1.14"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "397c988d37662c7dda6d2208364a706264bf3d6138b11d436cbac0ad38832842"
+dependencies = [
+ "futures-core",
+ "pin-project-lite",
+ "tokio",
+ "tokio-util",
 ]
 
 [[package]]

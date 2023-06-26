@@ -2,6 +2,7 @@ use std::net::{IpAddr, Ipv4Addr};
 
 use bytes::Buf;
 use tokio::net::TcpStream;
+use tokio::time::timeout;
 
 use super::*;
 
@@ -55,20 +56,21 @@ async fn test_socks4_tcp_proxy() {
     let (_client, client_addr) = run_test_client(server_addr).await;
     let (_echo_server, echo_server_addr) = echo_tcp_server().await;
 
-    let mut socks4_client = TcpStream::connect(client_addr).await.unwrap();
+    let mut socks4_client = TcpStream::connect(client_addr).await.unwrap().compat();
 
-    send_socks4_request(&mut socks4_client, &Address::IP(echo_server_addr))
-        .timeout(TIMEOUT)
-        .await
-        .unwrap()
-        .unwrap();
+    timeout(
+        TIMEOUT,
+        send_socks4_request(&mut socks4_client, &Address::IP(echo_server_addr)),
+    )
+    .await
+    .unwrap()
+    .unwrap();
 
     let msg = b"hello, world";
     socks4_client.write_all(msg).await.unwrap();
 
     assert_eq!(
-        read_exact(&mut socks4_client, msg.len())
-            .timeout(TIMEOUT)
+        timeout(TIMEOUT, read_exact(&mut socks4_client, msg.len()))
             .await
             .unwrap()
             .unwrap()

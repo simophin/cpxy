@@ -1,26 +1,18 @@
-use super::{Protocol, Stats, TrafficType};
-use crate::io::{
-    bind_udp, connect_tcp, send_to_addr, AsRawFdExt, AsyncStreamCounter, UdpSocketExt,
-};
-use crate::protocol::{AsyncStream, BoxedSink, BoxedStream};
+use super::{Protocol, Stats};
+use crate::io::{connect_tcp, AsRawFdExt, AsyncStreamCounter};
+use crate::protocol::AsyncStream;
 use crate::socks5::Address;
 use anyhow::Context;
 use async_trait::async_trait;
-use bytes::Bytes;
-use futures::{AsyncWriteExt, TryStreamExt};
-use futures_util::{SinkExt, StreamExt};
+use futures_util::AsyncWriteExt;
 use serde::{Deserialize, Serialize};
-use std::net::SocketAddr;
+use tokio_util::compat::TokioAsyncReadCompatExt;
 
 #[derive(Clone, Debug, Serialize, Deserialize, Eq, PartialEq)]
 pub struct Direct;
 
 #[async_trait]
 impl Protocol for Direct {
-    fn supports(&self, _: TrafficType) -> bool {
-        true
-    }
-
     async fn new_stream(
         &self,
         dst: &Address<'_>,
@@ -28,10 +20,12 @@ impl Protocol for Direct {
         stats: &Stats,
         fwmark: Option<u32>,
     ) -> anyhow::Result<Box<dyn AsyncStream>> {
-        let mut stream = connect_tcp(dst).await?;
+        let stream = connect_tcp(dst).await?;
         if let Some(fwmark) = fwmark {
             stream.set_sock_mark(fwmark)?;
         }
+
+        let mut stream = stream.compat();
 
         match initial_data {
             Some(b) if b.len() > 0 => {
@@ -46,40 +40,6 @@ impl Protocol for Direct {
             stats.tx.clone(),
         )))
     }
-
-    async fn new_datagram(
-        &self,
-        dst: &Address<'_>,
-        initial_data: Bytes,
-        stats: &Stats,
-        fwmark: Option<u32>,
-    ) -> anyhow::Result<(BoxedSink, BoxedStream)> {
-        let socket = bind_udp(!matches!(dst, Address::IP(SocketAddr::V4(_))))
-            .await
-            .context("Binding UDP socket")?;
-
-        if let Some(m) = fwmark {
-            socket.set_sock_mark(m)?;
-        }
-
-        send_to_addr(&socket, initial_data.as_ref(), dst)
-            .await
-            .context("Sending initial data")?;
-
-        let (sink, stream) = socket.to_sink_stream().split();
-        let tx = stats.tx.clone();
-        let rx = stats.rx.clone();
-        Ok((
-            Box::pin(sink.with(move |(data, addr): (Bytes, Address<'static>)| {
-                tx.inc(data.len());
-                async move { Ok((data, addr.resolve_first().await?)) }
-            })),
-            Box::pin(stream.map_ok(move |(data, addr)| {
-                rx.inc(data.len());
-                (data, addr.into())
-            })),
-        ))
-    }
 }
 
 #[cfg(test)]
@@ -91,7 +51,6 @@ mod tests {
     async fn test_direct_works() {
         let direct = Direct {};
         test::test_protocol_tcp(&direct).await;
-        test::test_protocol_udp(&direct).await;
         test::test_protocol_http(&direct).await;
     }
 }

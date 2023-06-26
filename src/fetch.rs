@@ -3,6 +3,7 @@ use std::{borrow::Cow, pin::Pin};
 use anyhow::Context;
 use async_native_tls::{TlsConnector, TlsStream};
 use futures::{AsyncRead, AsyncWrite, AsyncWriteExt};
+use tokio_util::compat::TokioAsyncReadCompatExt;
 
 use crate::{
     buf::RWBuffer,
@@ -20,7 +21,8 @@ pub async fn send_http_with_proxy(
 ) -> anyhow::Result<impl AsyncRead + AsyncWrite + Unpin + Send + Sync + 'static> {
     let mut client = connect_tcp(http_proxy)
         .await
-        .with_context(|| format!("Connecting to proxy server: {http_proxy}"))?;
+        .with_context(|| format!("Connecting to proxy server: {http_proxy}"))?
+        .compat();
 
     let scheme = if https { "https://" } else { "http://" };
     req.path = Cow::Owned(format!("{scheme}{address}{}", req.path));
@@ -56,7 +58,7 @@ pub async fn connect_http_stream<T: AsyncRead + AsyncWrite + Unpin + Send + Sync
 
 impl<T: AsyncRead + AsyncWrite + Unpin> AsyncRead for HttpStream<T> {
     fn poll_read(
-        self: std::pin::Pin<&mut Self>,
+        self: Pin<&mut Self>,
         cx: &mut std::task::Context<'_>,
         buf: &mut [u8],
     ) -> std::task::Poll<std::io::Result<usize>> {
