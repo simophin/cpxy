@@ -6,5 +6,5 @@ pub trait StreamCipher {
 
     fn new(key: &Self::Key, iv: &Self::Iv) -> Self;
 
-    fn apply(&mut self, data: &mut [u8]);
+    fn apply_in_place(&mut self, data: &mut [u8]);
 }
