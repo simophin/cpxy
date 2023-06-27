@@ -24,21 +24,24 @@ impl<S> AsyncStreamCounter<S> {
 }
 
 impl<S: AsyncRead> AsyncRead for AsyncStreamCounter<S> {
+    #[inline]
     fn poll_read(
         self: std::pin::Pin<&mut Self>,
         cx: &mut std::task::Context<'_>,
         buf: &mut ReadBuf<'_>,
     ) -> Poll<std::io::Result<()>> {
         let this = self.project();
-        let rc = this.stream.poll_read(cx, buf);
-        if let Poll::Ready(Ok(len)) = &rc {
-            this.rx.inc(*len);
+        let old_remaining = buf.remaining();
+        let result = this.stream.poll_read(cx, buf);
+        if matches!(result, Poll::Ready(Ok(()))) {
+            this.rx.inc(buf.remaining() - old_remaining);
         }
-        rc
+        result
     }
 }
 
 impl<S: AsyncWrite> AsyncWrite for AsyncStreamCounter<S> {
+    #[inline]
     fn poll_write(
         self: std::pin::Pin<&mut Self>,
         cx: &mut std::task::Context<'_>,
@@ -52,6 +55,7 @@ impl<S: AsyncWrite> AsyncWrite for AsyncStreamCounter<S> {
         rc
     }
 
+    #[inline]
     fn poll_flush(
         self: std::pin::Pin<&mut Self>,
         cx: &mut std::task::Context<'_>,
@@ -59,6 +63,7 @@ impl<S: AsyncWrite> AsyncWrite for AsyncStreamCounter<S> {
         self.project().stream.poll_flush(cx)
     }
 
+    #[inline]
     fn poll_shutdown(
         self: std::pin::Pin<&mut Self>,
         cx: &mut std::task::Context<'_>,
@@ -66,6 +71,7 @@ impl<S: AsyncWrite> AsyncWrite for AsyncStreamCounter<S> {
         self.project().stream.poll_shutdown(cx)
     }
 
+    #[inline]
     fn poll_write_vectored(
         self: std::pin::Pin<&mut Self>,
         cx: &mut std::task::Context<'_>,

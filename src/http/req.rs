@@ -2,10 +2,10 @@ use anyhow::{bail, Context};
 use bytes::BytesMut;
 use tokio::io::{AsyncBufRead, AsyncBufReadExt};
 
-pub async fn parse_request<T>(
-    r: &mut (impl AsyncBufRead + Unpin),
-    f: impl FnOnce(&httparse::Request<'_, '_>) -> anyhow::Result<T>,
-) -> anyhow::Result<T> {
+pub async fn parse_request<T, F>(r: &mut (impl AsyncBufRead + Unpin), f: F) -> anyhow::Result<T>
+where
+    F: FnOnce(&httparse::Request<'_, '_>) -> anyhow::Result<T>,
+{
     // Try if we can parse the http header in one go:
     let buf = r.fill_buf().await.context("Reading request")?;
     if buf.len() == 0 {

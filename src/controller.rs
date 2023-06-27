@@ -137,7 +137,7 @@ impl Controller {
     }
 
     async fn dispatch(&mut self, r: impl AsyncRead + Unpin + Send + Sync) -> HttpResult<Response> {
-        match parse_request(r, RWBuffer::new_vec_uninitialised(512)).await {
+        match parse_response(r, RWBuffer::new_vec_uninitialised(512)).await {
             Ok(mut r) => {
                 let path: HttpPath = r.path.parse()?;
                 log::debug!("Dispatching {} {}", r.method, r.path);

@@ -34,7 +34,6 @@ impl ClientGreeting {
         Ok(())
     }
 
-
     pub async fn respond(
         auth: Auth,
         t: &mut (impl AsyncWrite + Unpin + ?Sized),
@@ -43,4 +42,12 @@ impl ClientGreeting {
         Ok(())
     }
 
+    pub async fn read_response(r: &mut (impl AsyncRead + Unpin)) -> anyhow::Result<Auth> {
+        let mut bufs = [0u8; 2];
+        r.read_exact(&mut bufs).await?;
+        if bufs[0] != 0x5 {
+            bail!("Unknown protocol version: {}", bufs[0]);
+        }
+        Ok(bufs[1])
+    }
 }

@@ -1,6 +1,8 @@
 use std::sync::Arc;
 
 use async_trait::async_trait;
+use bytes::Bytes;
+use serde::{Deserialize, Serialize};
 use tokio::io::{AsyncRead, AsyncWrite};
 
 use crate::counter::Counter;
@@ -25,13 +27,21 @@ pub struct Stats {
     pub rx: Arc<Counter>,
 }
 
+#[derive(Deserialize, Serialize, Debug, Clone)]
+pub struct ProxyRequest {
+    pub dst: Address<'static>,
+    pub initial_data: Option<Bytes>,
+    pub tls: bool,
+}
+
 #[async_trait]
 pub trait Protocol {
+    type Stream: AsyncRead + AsyncWrite + Send + Sync + Unpin + 'static;
+
     async fn new_stream(
         &self,
-        dst: &Address<'_>,
-        initial_data: Option<&[u8]>,
+        req: &ProxyRequest,
         stats: &Stats,
         fwmark: Option<u32>,
-    ) -> anyhow::Result<Box<dyn AsyncStream>>;
+    ) -> anyhow::Result<Self::Stream>;
 }

@@ -1,4 +1,5 @@
 use anyhow::{bail, Context};
+use axum::http::Uri;
 use byteorder::{BigEndian, WriteBytesExt};
 use serde::{Deserialize, Serialize};
 use smallvec::{smallvec, SmallVec};
@@ -92,6 +93,12 @@ impl<'a> From<(Cow<'a, str>, u16)> for Address<'a> {
         };
 
         Address::Name { host, port }
+    }
+}
+
+impl<'a> From<(&'a str, u16)> for Address<'a> {
+    fn from((host, port): (&'a str, u16)) -> Self {
+        Self::from((Cow::Borrowed(host), port))
     }
 }
 

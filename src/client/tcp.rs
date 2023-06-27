@@ -1,74 +1,39 @@
-use std::time::Duration;
-
 use anyhow::Context;
-use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite};
+use tokio::io::{copy_bidirectional, AsyncBufRead, AsyncRead, AsyncReadExt, AsyncWrite};
 
-use crate::{
-    config::ClientConfig,
-    handshake::Handshaker,
-    socks5::Address,
-    utils::{copy_duplex, new_vec_uninitialised, VecExt},
-};
+use crate::handshaker;
+use crate::{config::ClientConfig, utils::VecExt};
 
 use super::{common::find_and_connect_stream, ClientStatistics};
 
-pub async fn serve_tcp_proxy_conn(
-    dst: Address<'_>,
+pub async fn serve_tcp_proxy_conn<S>(
+    req: handshaker::Request,
+    handshaker: handshaker::Handshaker<S>,
     config: &ClientConfig,
     stats: &ClientStatistics,
-    mut stream: impl AsyncRead + AsyncWrite + Unpin + Send + Sync,
-    handshaker: Handshaker,
-) -> anyhow::Result<()> {
-    let upstream = match find_and_connect_stream(&dst, None, config, stats)
-        .await
-        .with_context(|| format!("Finding proxy for tcp://{dst}"))
-    {
-        Ok(v) => {
-            handshaker.respond_ok(&mut stream, None).await?;
-            v
-        }
-        Err(e) => {
-            handshaker.respond_err(&mut stream).await?;
-            return Err(e);
-        }
-    };
-
-    copy_duplex(stream, upstream, None, None).await
-}
-
-const TCP_PROXY_PRE_READ_TIMEOUT: Duration = Duration::from_millis(200);
-
-pub async fn serve_tcp_tproxy_conn(
-    dst: Address<'_>,
-    config: &ClientConfig,
-    stats: &ClientStatistics,
-    mut stream: impl AsyncRead + AsyncWrite + Unpin + Send + Sync,
-) -> anyhow::Result<()> {
-    use tokio::time::timeout;
-
-    let initial_data = match dst.get_port() {
-        80 | 443 => {
-            let mut vec = new_vec_uninitialised(4096);
-            match timeout(TCP_PROXY_PRE_READ_TIMEOUT, stream.read(&mut vec)).await {
-                Ok(Ok(size)) => {
-                    vec.set_len_uninit(size);
-                    Some(vec)
-                }
-                Ok(Err(e)) => return Err(e.into()),
-                Err(_) => None,
-            }
-        }
-        _ => None,
-    };
-
-    let upstream = find_and_connect_stream(
-        &dst,
-        initial_data.as_ref().map(|s| s.as_ref()),
+) -> anyhow::Result<()>
+where
+    S: AsyncBufRead + AsyncWrite + Unpin,
+{
+    let (mut stream, mut upstream) = match find_and_connect_stream(
+        &req.address,
+        req.initial_data.as_ref().map(|d| d.as_ref()),
         config,
         stats,
     )
     .await
-    .with_context(|| format!("Finding proxy for tcp://{dst}"))?;
+    .with_context(|| format!("Finding proxy for tcp://{}", req.address))
+    {
+        Ok(upstream) => (handshaker.respond_ok().await?, upstream),
+        Err(e) => {
+            handshaker.respond_err(&e).await?;
+            return Err(e);
+        }
+    };
 
-    copy_duplex(stream, upstream, None, None).await
+    copy_bidirectional(&mut stream, &mut upstream)
+        .await
+        .context("Copying data")?;
+
+    Ok(())
 }

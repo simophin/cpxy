@@ -1,21 +1,17 @@
 use std::sync::Arc;
 
-use crate::{client::tcp::serve_tcp_tproxy_conn, io::bind_tcp, iptables as ipt};
-use anyhow::{bail, Context};
+use crate::{io::bind_tcp, iptables as ipt};
+use anyhow::Context;
 use async_shutdown::Shutdown;
+use tokio::io::BufReader;
 use tokio::net::{TcpListener, TcpStream};
 use tokio::spawn;
 use tokio_stream::{Stream, StreamExt};
 
-use crate::io::TcpStreamExt;
-use crate::{
-    buf::RWBuffer,
-    config::ClientConfig,
-    handshake::{HandshakeRequest as HR, Handshaker},
-    socks5::Address,
-};
+use crate::handshaker::Handshaker;
+use crate::{config::ClientConfig, socks5::Address};
 
-use super::{http::serve_http_proxy_conn, tcp::serve_tcp_proxy_conn, ClientStatistics};
+use super::{tcp::serve_tcp_proxy_conn, ClientStatistics};
 
 pub async fn run_client(
     shutdown: Shutdown,
@@ -87,7 +83,7 @@ pub async fn run_proxy_with(
         let (sock, addr) = proxy_listener
             .accept()
             .await
-            .context("Listening for SOCKS5/SOCKS4/HTTP/TPROXY connection")?;
+            .context("Listening for SOCKS5/SOCKS4/HTTP connection")?;
 
         let config = config.clone();
         let stats = stats.clone();
@@ -110,24 +106,9 @@ async fn serve_proxy_conn(
     config: Arc<ClientConfig>,
     stats: Arc<ClientStatistics>,
 ) -> anyhow::Result<()> {
-    if let Some(orig_dst) = socks.get_original_dst() {
-        log::info!("Requesting to proxy to {orig_dst} transparently");
-        return serve_tcp_tproxy_conn(orig_dst.into(), &config, &stats, socks).await;
-    }
-
-    let mut socks = socks;
-    let mut buf = RWBuffer::new_vec_uninitialised(512);
-    let (hs, req) = Handshaker::start(&mut socks, &mut buf)
+    let (hs, req) = Handshaker::start(BufReader::new(socks))
         .await
         .context("Handshaking")?;
     log::info!("Requesting to proxy {req:?}");
-
-    match req {
-        HR::TCP { dst } => serve_tcp_proxy_conn(dst, &config, &stats, socks, hs).await,
-        HR::HTTP { dst, https, req } => {
-            serve_http_proxy_conn(dst, https, req, &config, &stats, socks, hs).await
-        }
-
-        HR::UDP { .. } => bail!("UDP is not supported"),
-    }
+    serve_tcp_proxy_conn(req, hs, &config, &stats).await
 }

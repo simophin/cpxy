@@ -1,5 +1,4 @@
 use std::{
-    borrow::Cow,
     collections::HashMap,
     fmt::Debug,
     net::{IpAddr, SocketAddr},
@@ -13,18 +12,11 @@ use ipnetwork::IpNetwork;
 use serde::{Deserialize, Serialize};
 
 use crate::sni::{extract_http_host_header, extract_ssl_sni_host};
-use crate::{
-    abp::{adblock_list_engine, gfw_list_engine, ABPEngine},
-    dns::dns_get_host_names,
-    geoip::CountryCode,
-    pattern::Pattern,
-    socks5::Address,
-};
+use crate::{dns::dns_get_host_names, geoip::CountryCode, pattern::Pattern};
 
 #[derive(Debug, PartialEq, Eq, Clone)]
 pub enum HostMatch {
     Pattern(Pattern),
-    HostList(&'static ABPEngine),
 }
 
 #[derive(Debug, PartialEq, Eq, Clone)]
@@ -407,10 +399,6 @@ impl HostMatch {
     fn matches(&self, s: &str) -> bool {
         match self {
             HostMatch::Pattern(p) => p.matches(s),
-            HostMatch::HostList(engine) => engine.matches(&Address::Name {
-                host: Cow::Borrowed(s),
-                port: 80,
-            }),
         }
     }
 }
@@ -421,8 +409,6 @@ impl FromStr for HostMatch {
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         let mut splits = s.split(':');
         Ok(match (splits.next(), splits.next()) {
-            (Some("list"), Some("gfw")) => Self::HostList(gfw_list_engine()),
-            (Some("list"), Some("adblock")) => Self::HostList(adblock_list_engine()),
             (Some("matches"), Some(p)) => Self::Pattern(p.parse()?),
             _ => bail!(
                 "Invalid host match string: {s}. Expect: list:gfw, list:adblock or matches:pattern"
@@ -485,14 +471,6 @@ mod tests {
 
         let expect = hashmap! {
             "main".to_string() => vec![
-                Rule {
-                    dest: vec![RuleDestination::Domain(HostMatch::HostList(gfw_list_engine()))],
-                    action: RuleAction::Proxy("proxy1".into()),
-                },
-                Rule {
-                    dest: vec![RuleDestination::Domain(HostMatch::HostList(adblock_list_engine()))],
-                    action: RuleAction::Proxy("proxy1".into()),
-                },
                 Rule {
                     dest: vec![
                         RuleDestination::GeoIP("CN".parse().unwrap()),

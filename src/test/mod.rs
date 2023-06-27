@@ -8,7 +8,6 @@ use std::{
 use crate::{
     config::UpstreamProtocol,
     io::{bind_tcp, connect_tcp},
-    protocol::tcpman::{server::run_server, TcpMan},
 };
 use anyhow::bail;
 use async_shutdown::Shutdown;
@@ -26,7 +25,6 @@ use crate::{
     buf::RWBuffer,
     client::{run_proxy_with, ClientStatistics},
     config::{ClientConfig, UpstreamConfig},
-    fetch::fetch_http_with_proxy,
     // server::run_server,
     socks5::Address,
 };
