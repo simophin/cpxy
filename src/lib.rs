@@ -1,6 +1,5 @@
 mod buf;
 mod client;
-pub mod controller_config;
 mod counter;
 mod dns;
 mod iptables;
@@ -20,6 +19,7 @@ pub mod io;
 #[cfg(test)]
 mod test;
 
+mod cipher;
 pub mod config;
 pub mod controller;
 mod geoip;

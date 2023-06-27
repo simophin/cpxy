@@ -9,6 +9,7 @@ use super::{
     super::{AsyncStream, Protocol, Stats},
     pw::PasswordedKey,
 };
+use crate::io::StreamUnion;
 use crate::{
     io::{connect_tcp_marked, union, AsyncStreamCounter},
     socks5::Address,

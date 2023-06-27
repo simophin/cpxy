@@ -7,27 +7,22 @@
     <cargoProject FILE="$PROJECT_DIR$/Cargo.toml" />
   </component>
   <component name="ChangeListManager">
-    <list default="true" id="998b8231-524b-486c-9a00-9672a65c1a7c" name="Changes" comment="New handshaker">
-      <change afterPath="$PROJECT_DIR$/src/http/mod.rs" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/src/http/res.rs" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/src/tls.rs" afterDir="false" />
+    <list default="true" id="998b8231-524b-486c-9a00-9672a65c1a7c" name="Changes" comment="Http parsing">
+      <change afterPath="$PROJECT_DIR$/src/cipher/mod.rs" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/src/cipher/stream.rs" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/src/controller/api/get_stats.rs" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/src/controller/api/mod.rs" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/src/controller/fs_provider.rs" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/src/controller/mod.rs" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/.envrc" beforeDir="false" />
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/client/handler.rs" beforeDir="false" afterPath="$PROJECT_DIR$/src/client/handler.rs" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/client/tcp.rs" beforeDir="false" afterPath="$PROJECT_DIR$/src/client/tcp.rs" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/controller.rs" beforeDir="false" afterPath="$PROJECT_DIR$/src/controller.rs" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/handshake.rs" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/handshaker.rs" beforeDir="false" afterPath="$PROJECT_DIR$/src/handshaker.rs" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/http.rs" beforeDir="false" afterPath="$PROJECT_DIR$/src/http/req.rs" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/io/utils.rs" beforeDir="false" afterPath="$PROJECT_DIR$/src/io/utils.rs" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/Cargo.lock" beforeDir="false" afterPath="$PROJECT_DIR$/Cargo.lock" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/Cargo.toml" beforeDir="false" afterPath="$PROJECT_DIR$/Cargo.toml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/controller.rs" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/controller_config/fs.rs" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/controller_config/mod.rs" beforeDir="false" />
       <change beforePath="$PROJECT_DIR$/src/lib.rs" beforeDir="false" afterPath="$PROJECT_DIR$/src/lib.rs" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/protocol/http/mod.rs" beforeDir="false" afterPath="$PROJECT_DIR$/src/protocol/http/mod.rs" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/protocol/http/server.rs" beforeDir="false" afterPath="$PROJECT_DIR$/src/protocol/http/server.rs" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/protocol/mod.rs" beforeDir="false" afterPath="$PROJECT_DIR$/src/protocol/mod.rs" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/protocol/socks5/mod.rs" beforeDir="false" afterPath="$PROJECT_DIR$/src/protocol/socks5/mod.rs" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/rule.rs" beforeDir="false" afterPath="$PROJECT_DIR$/src/rule.rs" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/socks5/addr.rs" beforeDir="false" afterPath="$PROJECT_DIR$/src/socks5/addr.rs" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/socks5/greeting.rs" beforeDir="false" afterPath="$PROJECT_DIR$/src/socks5/greeting.rs" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/test/mod.rs" beforeDir="false" afterPath="$PROJECT_DIR$/src/test/mod.rs" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/protocol/firetcp/proto.rs" beforeDir="false" afterPath="$PROJECT_DIR$/src/protocol/firetcp/proto.rs" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -323,7 +318,15 @@
       <option name="project" value="LOCAL" />
       <updated>1687790295805</updated>
     </task>
-    <option name="localTasksCounter" value="9" />
+    <task id="LOCAL-00009" summary="Http parsing">
+      <option name="closed" value="true" />
+      <created>1687844520624</created>
+      <option name="number" value="00009" />
+      <option name="presentableId" value="LOCAL-00009" />
+      <option name="project" value="LOCAL" />
+      <updated>1687844520624</updated>
+    </task>
+    <option name="localTasksCounter" value="10" />
     <servers />
   </component>
   <component name="TypeScriptGeneratedFilesManager">
@@ -350,7 +353,8 @@
     <MESSAGE value="SNI matching" />
     <MESSAGE value="Tokio" />
     <MESSAGE value="New handshaker" />
-    <option name="LAST_COMMIT_MESSAGE" value="New handshaker" />
+    <MESSAGE value="Http parsing" />
+    <option name="LAST_COMMIT_MESSAGE" value="Http parsing" />
   </component>
   <component name="XSLT-Support.FileAssociations.UIState">
     <expand />
