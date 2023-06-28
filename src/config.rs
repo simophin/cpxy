@@ -1,4 +1,3 @@
-use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};
 use std::fmt::Debug;
@@ -8,28 +7,9 @@ use std::time::UNIX_EPOCH;
 use crate::client::ClientStatistics;
 use crate::dns::DnsCache;
 use crate::geoip::find_geoip;
-use crate::protocol::{direct, firetcp, http, socks5, tcpman, AsyncStream, Protocol, Stats};
+use crate::protocol::{DynamicProtocol, ProxyRequest, Stats};
 use crate::rule::{PacketDestination, RuleExecutionResult, RuleString};
 use crate::socks5::Address;
-
-#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
-#[serde(tag = "type")]
-pub enum UpstreamProtocol {
-    #[serde(rename = "tcpman")]
-    TcpMan(tcpman::TcpMan),
-
-    #[serde(rename = "socks5")]
-    Socks5(socks5::Socks5),
-
-    #[serde(rename = "direct")]
-    Direct(direct::Direct),
-
-    #[serde(rename = "firetcp")]
-    FireTcp(firetcp::FireTcp),
-
-    #[serde(rename = "http")]
-    Http(http::HttpProxy),
-}
 
 pub const fn default_upstream_enabled() -> bool {
     true
@@ -37,7 +17,7 @@ pub const fn default_upstream_enabled() -> bool {
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct UpstreamConfig {
-    pub protocol: UpstreamProtocol,
+    pub protocol: DynamicProtocol,
     pub groups: Option<HashSet<String>>,
     #[serde(default = "default_upstream_enabled")]
     pub enabled: bool,
@@ -66,13 +46,7 @@ pub struct ClientConfig {
     pub fwmark: Option<u32>,
 
     #[serde(default)]
-    pub udp_tproxy_address: Option<SocketAddr>,
-
-    #[serde(default)]
     pub traffic_rules: RuleString,
-
-    #[serde(default)]
-    pub set_router_rules: bool,
 }
 
 impl Default for ClientConfig {
@@ -82,9 +56,7 @@ impl Default for ClientConfig {
             socks5_udp_host: default_socks5_udp_host(),
             upstreams: Default::default(),
             fwmark: None,
-            udp_tproxy_address: None,
             traffic_rules: Default::default(),
-            set_router_rules: false,
         }
     }
 }
@@ -107,15 +79,15 @@ impl ClientConfig {
     pub fn find_best_upstream(
         &self,
         stats: &ClientStatistics,
-        target: &Address,
-        initial_data: Option<&[u8]>,
-    ) -> anyhow::Result<Vec<(&str, &UpstreamConfig)>> {
-        let pkt_dst = match target {
+        req: &ProxyRequest,
+    ) -> anyhow::Result<Vec<(&str, &DynamicProtocol)>> {
+        let pkt_dst = match &req.dst {
             Address::IP(addr) => PacketDestination::IP {
                 addr: addr.clone(),
                 country_code: find_geoip(&addr.ip()),
                 resolved_host: DnsCache::global().get(&addr.ip()).into_iter().collect(),
             },
+
             Address::Name { host, port } => PacketDestination::Domain {
                 hostname: host.as_ref(),
                 port: *port,
@@ -123,7 +95,9 @@ impl ClientConfig {
             },
         };
 
-        let action = self.traffic_rules.execute_rules(&pkt_dst, initial_data)?;
+        let action = self
+            .traffic_rules
+            .execute_rules(&pkt_dst, req.initial_data.as_ref().map(|b| b.as_ref()))?;
 
         let mut upstreams: Vec<(&str, &UpstreamConfig, usize)> = match action {
             None => self
@@ -168,24 +142,5 @@ impl ClientConfig {
         upstreams.sort_by_key(|(_, _, score)| *score);
         let result = upstreams.into_iter().map(|(n, c, _)| (n, c)).collect();
         Ok(result)
-    }
-}
-
-#[async_trait]
-impl Protocol for UpstreamProtocol {
-    async fn new_stream(
-        &self,
-        dst: &Address<'_>,
-        initial_data: Option<&[u8]>,
-        stats: &Stats,
-        fwmark: Option<u32>,
-    ) -> anyhow::Result<Box<dyn AsyncStream>> {
-        match self {
-            UpstreamProtocol::TcpMan(p) => p.new_stream(dst, initial_data, stats, fwmark).await,
-            UpstreamProtocol::Direct(p) => p.new_stream(dst, initial_data, stats, fwmark).await,
-            UpstreamProtocol::Socks5(p) => p.new_stream(dst, initial_data, stats, fwmark).await,
-            UpstreamProtocol::FireTcp(p) => p.new_stream(dst, initial_data, stats, fwmark).await,
-            UpstreamProtocol::Http(p) => p.new_stream(dst, initial_data, stats, fwmark).await,
-        }
     }
 }

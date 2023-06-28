@@ -84,15 +84,8 @@ impl Protocol for HttpProxy {
 
 #[cfg(test)]
 mod tests {
-    use async_shutdown::Shutdown;
-    use tokio::spawn;
-
-    use super::*;
     use crate::{
-        protocol::{
-            direct::Direct,
-            test::{test_protocol_http, test_protocol_tcp},
-        },
+        protocol::test::{test_protocol_http, test_protocol_tcp},
         test::create_http_server,
     };
 

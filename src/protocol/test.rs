@@ -1,12 +1,11 @@
-use crate::{
-    buf::RWBuffer,
-    http::{parse_response, HttpRequestBuilder},
-    test::echo_tcp_server,
-};
+use crate::{buf::RWBuffer, http::parse_response, test::echo_tcp_server};
 
 use super::Protocol;
+use crate::protocol::ProxyRequest;
+use anyhow::Context;
+use bytes::Bytes;
 use std::time::Duration;
-use tokio::io::{AsyncReadExt, AsyncWriteExt};
+use tokio::io::{AsyncReadExt, AsyncWriteExt, BufReader};
 use tokio::time::timeout;
 
 const TIMEOUT: Duration = Duration::from_secs(1);
@@ -16,7 +15,11 @@ pub async fn test_protocol_tcp(p: &(impl Protocol + Send + Sync)) {
 
     let mut stream = timeout(
         TIMEOUT,
-        p.new_stream(&echo_addr.into(), None, &Default::default(), None),
+        p.new_stream(
+            &ProxyRequest::plain_tcp(echo_addr.into()),
+            &Default::default(),
+            None,
+        ),
     )
     .await
     .expect("No timeout")
@@ -39,15 +42,16 @@ pub async fn test_protocol_tcp(p: &(impl Protocol + Send + Sync)) {
 }
 
 pub async fn test_protocol_http(p: &(impl Protocol + Send + Sync)) {
-    let mut b = HttpRequestBuilder::new("GET", "/").unwrap();
-    b.put_header_text("Host", "www.google.com").unwrap();
-    let initial_data = b.finalise();
+    let initial_data = Bytes::from_static(b"GET / HTTP/1.1\r\nHost: www.google.com\r\n\r\n");
 
     let stream = timeout(
         TIMEOUT,
         p.new_stream(
-            &"www.google.com:80".parse().unwrap(),
-            Some(&initial_data),
+            &ProxyRequest {
+                dst: "www.google.com:80".parse().unwrap(),
+                initial_data: Some(initial_data),
+                tls: false,
+            },
             &Default::default(),
             None,
         ),
@@ -56,9 +60,11 @@ pub async fn test_protocol_http(p: &(impl Protocol + Send + Sync)) {
     .expect("No timeout")
     .expect("To create new stream");
 
-    let http_stream = parse_response(stream, RWBuffer::new_vec_uninitialised(4096))
-        .await
-        .expect("To parse response");
+    let mut stream = BufReader::new(stream);
 
-    assert_eq!(http_stream.status_code, 200);
+    let status_code = parse_response(&mut stream, |res| res.code.context("status code"))
+        .await
+        .expect("to parse response");
+
+    assert_eq!(status_code, 200);
 }

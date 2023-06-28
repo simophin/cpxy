@@ -9,17 +9,15 @@ use crate::counter::Counter;
 use crate::socks5::Address;
 
 pub mod direct;
-pub mod firetcp;
+// pub mod firetcp;
 pub mod http;
 pub mod socks5;
 // pub mod tcpman;
 
+mod dynamic;
+mod stream;
 #[cfg(test)]
 mod test;
-
-pub trait AsyncStream: AsyncRead + AsyncWrite + Unpin + Send + Sync {}
-
-impl<T: AsyncRead + AsyncWrite + Unpin + Send + Sync> AsyncStream for T {}
 
 #[derive(Default)]
 pub struct Stats {
@@ -34,6 +32,16 @@ pub struct ProxyRequest {
     pub tls: bool,
 }
 
+impl ProxyRequest {
+    pub fn plain_tcp(dst: Address<'static>) -> Self {
+        Self {
+            dst,
+            initial_data: None,
+            tls: false,
+        }
+    }
+}
+
 #[async_trait]
 pub trait Protocol {
     type Stream: AsyncRead + AsyncWrite + Send + Sync + Unpin + 'static;
@@ -45,3 +53,6 @@ pub trait Protocol {
         fwmark: Option<u32>,
     ) -> anyhow::Result<Self::Stream>;
 }
+
+pub use dynamic::*;
+pub use stream::*;

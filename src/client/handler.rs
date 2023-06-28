@@ -46,18 +46,6 @@ pub async fn run_client(
             }
         };
 
-        if config.set_router_rules {
-            if let Err(e) = ipt::add_rules(
-                config.socks5_address.port(),
-                config.udp_tproxy_address.map(|v| v.port()),
-            ) {
-                log::error!("Error setting router rules: {e:?}");
-                let _ = ipt::clean_up();
-            } else {
-                log::info!("Successfully set router rules");
-            }
-        }
-
         let shutdown = Shutdown::new();
 
         spawn(shutdown.wrap_cancel(run_proxy_with(

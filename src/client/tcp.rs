@@ -1,13 +1,14 @@
 use anyhow::Context;
-use tokio::io::{copy_bidirectional, AsyncBufRead, AsyncRead, AsyncReadExt, AsyncWrite};
+use tokio::io::{copy_bidirectional, AsyncBufRead, AsyncReadExt, AsyncWrite};
 
+use crate::config::ClientConfig;
 use crate::handshaker;
-use crate::{config::ClientConfig, utils::VecExt};
+use crate::protocol::ProxyRequest;
 
 use super::{common::find_and_connect_stream, ClientStatistics};
 
 pub async fn serve_tcp_proxy_conn<S>(
-    req: handshaker::Request,
+    req: ProxyRequest,
     handshaker: handshaker::Handshaker<S>,
     config: &ClientConfig,
     stats: &ClientStatistics,
@@ -15,14 +16,9 @@ pub async fn serve_tcp_proxy_conn<S>(
 where
     S: AsyncBufRead + AsyncWrite + Unpin,
 {
-    let (mut stream, mut upstream) = match find_and_connect_stream(
-        &req.address,
-        req.initial_data.as_ref().map(|d| d.as_ref()),
-        config,
-        stats,
-    )
-    .await
-    .with_context(|| format!("Finding proxy for tcp://{}", req.address))
+    let (mut stream, mut upstream) = match find_and_connect_stream(&req, config, stats)
+        .await
+        .with_context(|| format!("Finding proxy for tcp://{}", req.dst))
     {
         Ok(upstream) => (handshaker.respond_ok().await?, upstream),
         Err(e) => {

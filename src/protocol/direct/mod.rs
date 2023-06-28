@@ -1,43 +1,48 @@
-use super::{Protocol, Stats};
-use crate::io::{connect_tcp, AsRawFdExt, AsyncStreamCounter};
-use crate::protocol::AsyncStream;
-use crate::socks5::Address;
 use anyhow::Context;
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 use tokio::io::AsyncWriteExt;
+use tokio::net::TcpStream;
+
+use crate::io::{connect_tcp, AsRawFdExt, AsyncStreamCounter};
+use crate::protocol::ProxyRequest;
+use crate::tls::TlsStream;
+
+use super::{Protocol, Stats};
 
 #[derive(Clone, Debug, Serialize, Deserialize, Eq, PartialEq)]
 pub struct Direct;
 
 #[async_trait]
 impl Protocol for Direct {
+    type Stream = TlsStream<AsyncStreamCounter<TcpStream>>;
+
     async fn new_stream(
         &self,
-        dst: &Address<'_>,
-        initial_data: Option<&[u8]>,
+        req: &ProxyRequest,
         stats: &Stats,
         fwmark: Option<u32>,
-    ) -> anyhow::Result<Box<dyn AsyncStream>> {
-        let stream = connect_tcp(dst).await?;
+    ) -> anyhow::Result<Self::Stream> {
+        let stream = connect_tcp(&req.dst).await?;
         if let Some(fwmark) = fwmark {
             stream.set_sock_mark(fwmark)?;
         }
 
-        let mut stream = stream;
+        let stream = AsyncStreamCounter::new(stream, stats.rx.clone(), stats.tx.clone());
+        let mut stream = if req.tls {
+            TlsStream::connect_tls(req.dst.get_host().as_ref(), stream).await?
+        } else {
+            TlsStream::connect_plain(stream).await?
+        };
 
-        match initial_data {
+        match &req.initial_data {
             Some(b) if b.len() > 0 => {
                 stream.write_all(b).await.context("Writing initial data")?;
             }
             _ => {}
         };
 
-        Ok(Box::new(AsyncStreamCounter::new(
-            stream,
-            stats.rx.clone(),
-            stats.tx.clone(),
-        )))
+        Ok(stream)
     }
 }
 

@@ -15,6 +15,7 @@ use crate::{
     socks5::Address,
     utils::write_bincode_lengthed_async,
 };
+use crate::protocol::ProxyRequest;
 
 #[derive(Debug, Deserialize, Serialize, PartialEq, Eq, Clone)]
 pub struct FireTcp {
@@ -50,13 +51,14 @@ pub const INITIAL_CIPHER_LEN: usize = 512;
 
 #[async_trait]
 impl Protocol for FireTcp {
+    type Stream = ();
+
     async fn new_stream(
         &self,
-        dst: &Address<'_>,
-        initial_data: Option<&[u8]>,
+        req: &ProxyRequest,
         stats: &Stats,
         fwmark: Option<u32>,
-    ) -> anyhow::Result<Box<dyn AsyncStream>> {
+    ) -> anyhow::Result<Self::Stream> {
         let (r, w) = split(AsyncStreamCounter::new(
             connect_tcp_marked(&self.address, fwmark)
                 .await

@@ -5,10 +5,7 @@ use std::{
     vec,
 };
 
-use crate::{
-    config::UpstreamProtocol,
-    io::{bind_tcp, connect_tcp},
-};
+use crate::io::{bind_tcp, connect_tcp};
 use anyhow::bail;
 use async_shutdown::Shutdown;
 use maplit::hashmap;
