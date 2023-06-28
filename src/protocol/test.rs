@@ -1,4 +1,4 @@
-use crate::{buf::RWBuffer, http::parse_response, test::echo_tcp_server};
+use crate::{http::parse_response, test::echo_tcp_server};
 
 use super::Protocol;
 use crate::protocol::ProxyRequest;

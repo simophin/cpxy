@@ -1,126 +1,100 @@
-mod cipher;
-mod proto;
-pub mod server;
+mod crypto;
+mod params;
 
-use std::borrow::Cow;
-use std::fmt::Display;
-
+use crate::cipher::chacha20::ChaCha20;
+use crate::cipher::stream::{CipherConfig, CipherStream};
+use crate::io::{connect_tcp_marked, CounterStream};
+use crate::protocol::tcpman::params::ConnectionParameters;
+use crate::protocol::{ProxyRequest, Stats};
+use crate::socks5::Address;
+use crate::tls::TlsStream;
 use anyhow::Context;
 use async_trait::async_trait;
+use bytes::BytesMut;
+use once_cell::sync::OnceCell;
+use orion::{aead, pwhash};
 use serde::{Deserialize, Serialize};
-use tokio::io::{AsyncRead, AsyncWrite};
+use tokio::io::BufReader;
+use tokio::net::TcpStream;
 
-use crate::fetch::connect_http_stream;
-use crate::io::{connect_tcp_marked, AsyncStreamCounter};
-use crate::{socks5::Address, url::HttpUrl};
-
-use self::cipher::strategy::EncryptionStrategy;
-
-use super::{AsyncStream, Protocol, Stats};
-
-#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
-pub struct Credentials {
-    username: String,
-    password: String,
-}
-
-#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
-pub struct TcpMan {
+#[derive(Debug, Serialize, Deserialize, Eq, PartialEq)]
+pub struct Tcpman {
     pub address: Address<'static>,
-    pub ssl: bool,
-    pub allows_udp: bool,
-    pub credentials: Option<Credentials>,
+    pub tls: bool,
+    pub password: String,
+
+    #[serde(skip)]
+    key: OnceCell<aead::SecretKey>,
 }
 
-impl TcpMan {
-    async fn send_request<'a>(
-        &self,
-        dst: &Address<'_>,
-        req: proto::Request<'a>,
-        stats: &Stats,
-        fwmark: Option<u32>,
-    ) -> anyhow::Result<impl AsyncRead + AsyncWrite + Unpin + Send + Sync> {
-        let stream = connect_tcp_marked(&self.address, fwmark)
-            .await
-            .context("Connect to TCPMan server")?;
-
-        let stream = connect_http_stream(self.ssl, &self.address, stream)
-            .await
-            .context("Connect to TLS stream")?;
-
-        let initial_data = req.to_vec();
-
-        cipher::client::connect(
-            &HttpUrl {
-                is_https: self.ssl,
-                address: self.address.clone(),
-                path: Cow::Borrowed("/"),
-            },
-            AsyncStreamCounter::new(stream, stats.rx.clone(), stats.tx.clone()),
-            EncryptionStrategy::new_send(true, dst.get_port(), self.ssl),
-            EncryptionStrategy::new_receive(true, dst.get_port()),
-            self.credentials.as_ref().map(|c| c.to_header_value()),
-            initial_data,
-        )
-        .await
-    }
-}
+type TcpmanStream =
+    TlsStream<CipherStream<BufReader<CounterStream<TcpStream>>, ChaCha20, ChaCha20>>;
 
 #[async_trait]
-impl Protocol for TcpMan {
+impl super::Protocol for Tcpman {
+    type Stream = TcpmanStream;
+
     async fn new_stream(
         &self,
-        dst: &Address<'_>,
-        initial_data: Option<&[u8]>,
+        req: &ProxyRequest,
         stats: &Stats,
         fwmark: Option<u32>,
-    ) -> anyhow::Result<Box<dyn AsyncStream>> {
-        Ok(Box::new(
-            self.send_request(
-                dst,
-                proto::Request::TCP {
-                    dst: dst.clone(),
-                    initial_data: initial_data.unwrap_or_default(),
-                },
-                stats,
-                fwmark,
-            )
-            .await?,
-        ))
-    }
-}
+    ) -> anyhow::Result<Self::Stream> {
+        let upstream = CounterStream::new(
+            connect_tcp_marked(&self.address, fwmark)
+                .await
+                .context("connecting to upstream")?,
+            stats.rx.clone(),
+            stats.tx.clone(),
+        );
 
-impl Credentials {
-    pub fn to_header_value(&self) -> impl Display {
-        format!(
-            "Basic {}",
-            base64::encode(format!("{}:{}", self.username, self.password))
-        )
-    }
-}
+        // Connect to TLS
+        let stream = if self.tls {
+            TlsStream::connect_tls(self.address.get_host().as_ref(), upstream).await
+        } else {
+            TlsStream::connect_plain(upstream).await
+        }
+        .context("connecting to TLS")?;
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::{protocol::test::*, test::create_tcp_server};
-    use async_shutdown::Shutdown;
-    use tokio::spawn;
-
-    #[tokio::test]
-    async fn tcpman_works() {
-        std::env::set_var("RUST_LOG", "debug");
-        let _ = env_logger::try_init();
-        let (server, addr) = create_tcp_server().await;
-        let _task = spawn(server::run_server(Shutdown::new(), server));
-
-        let p = TcpMan {
-            address: addr.into(),
-            ssl: false,
-            allows_udp: true,
-            credentials: None,
+        // Determine connection parameters
+        let params = ConnectionParameters {
+            upload_cipher: CipherConfig::None,
+            download_cipher: CipherConfig::None,
         };
 
-        test_protocol_http(&p).await;
-        test_protocol_tcp(&p).await;
+        // Construct a Websocket request
+        let mut req = BytesMut::new();
+        // write!(req, "GET {} HTTP/1.1\r\n", ).unwrap();
+
+        todo!()
+    }
+}
+
+impl Tcpman {
+    fn key(&self) -> &aead::SecretKey {
+        use orion::pwhash;
+        self.key
+            .get_or_try_init(|| {
+                let hashed = pwhash::hash_password(
+                    &pwhash::Password::from_slice(self.password.as_bytes())
+                        .context("invalid password")?,
+                    10,
+                    2,
+                )
+                .context("hashing password")?;
+                aead::SecretKey::from_slice(hashed.unprotected_as_bytes()).context("invalid key")
+            })
+            .expect("failed to derive key")
+    }
+}
+
+impl Clone for Tcpman {
+    fn clone(&self) -> Self {
+        Self {
+            address: self.address.clone(),
+            tls: self.tls,
+            password: self.password.clone(),
+            key: Default::default(),
+        }
     }
 }

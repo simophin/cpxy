@@ -4,7 +4,7 @@ use serde::{Deserialize, Serialize};
 use tokio::io::AsyncWriteExt;
 use tokio::net::TcpStream;
 
-use crate::io::{connect_tcp, AsRawFdExt, AsyncStreamCounter};
+use crate::io::{connect_tcp, AsRawFdExt, CounterStream};
 use crate::protocol::ProxyRequest;
 use crate::tls::TlsStream;
 
@@ -15,7 +15,7 @@ pub struct Direct;
 
 #[async_trait]
 impl Protocol for Direct {
-    type Stream = TlsStream<AsyncStreamCounter<TcpStream>>;
+    type Stream = TlsStream<CounterStream<TcpStream>>;
 
     async fn new_stream(
         &self,
@@ -28,7 +28,7 @@ impl Protocol for Direct {
             stream.set_sock_mark(fwmark)?;
         }
 
-        let stream = AsyncStreamCounter::new(stream, stats.rx.clone(), stats.tx.clone());
+        let stream = CounterStream::new(stream, stats.rx.clone(), stats.tx.clone());
         let mut stream = if req.tls {
             TlsStream::connect_tls(req.dst.get_host().as_ref(), stream).await?
         } else {

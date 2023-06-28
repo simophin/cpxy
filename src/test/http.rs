@@ -1,4 +1,6 @@
 use crate::http::parse_response;
+use anyhow::Context;
+use tokio::io::BufReader;
 use tokio::net::TcpStream;
 use tokio::time::timeout;
 
@@ -58,15 +60,18 @@ async fn test_http_tunnel() {
         .write_all(format!("CONNECT {echo_server_addr} HTTP/1.1\r\n\r\n").as_bytes())
         .await
         .unwrap();
-    let mut http_stream = timeout(
+
+    let mut proxy_client = BufReader::new(proxy_client);
+
+    let status_code = timeout(
         TIMEOUT,
-        parse_response(proxy_client, RWBuffer::new_vec_uninitialised(4096)),
+        parse_response(&mut proxy_client, |res| res.code.context("status code")),
     )
     .await
     .unwrap()
     .unwrap();
 
-    assert_eq!(http_stream.status_code, 200);
+    assert_eq!(status_code, 200);
 
     let msg = b"hello, world, http tunnel";
     http_stream.write_all(msg).await.unwrap();

@@ -8,7 +8,7 @@ use tokio::net::TcpStream;
 use crate::protocol::ProxyRequest;
 use crate::tls::TlsStream;
 use crate::{
-    io::{connect_tcp_marked, AsyncStreamCounter},
+    io::{connect_tcp_marked, CounterStream},
     socks5::{
         Address, ClientConnRequest, ClientGreeting, Command, ConnStatusCode, AUTH_NO_PASSWORD,
     },
@@ -62,7 +62,7 @@ async fn request_socks5(
 
 #[async_trait]
 impl Protocol for Socks5 {
-    type Stream = AsyncStreamCounter<TlsStream<TcpStream>>;
+    type Stream = CounterStream<TlsStream<TcpStream>>;
 
     async fn new_stream(
         &self,
@@ -91,7 +91,7 @@ impl Protocol for Socks5 {
         }
         .context("Connecting to upstream")?;
 
-        let mut upstream = AsyncStreamCounter::new(upstream, stats.rx.clone(), stats.tx.clone());
+        let mut upstream = CounterStream::new(upstream, stats.rx.clone(), stats.tx.clone());
         match &req.initial_data {
             Some(b) if b.len() > 0 => upstream
                 .write_all(b)

@@ -7,22 +7,39 @@
     <cargoProject FILE="$PROJECT_DIR$/Cargo.toml" />
   </component>
   <component name="ChangeListManager">
-    <list default="true" id="998b8231-524b-486c-9a00-9672a65c1a7c" name="Changes" comment="Stream">
-      <change afterPath="$PROJECT_DIR$/src/cipher/chacha20.rs" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/src/protocol/dynamic.rs" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/src/protocol/stream.rs" afterDir="false" />
+    <list default="true" id="998b8231-524b-486c-9a00-9672a65c1a7c" name="Changes" comment="Tidy up">
+      <change afterPath="$PROJECT_DIR$/src/protocol/tcpman/crypto.rs" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/src/protocol/tcpman/params.rs" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/src/protocol/tcpman_old/mod.rs" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/Cargo.lock" beforeDir="false" afterPath="$PROJECT_DIR$/Cargo.lock" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/Cargo.toml" beforeDir="false" afterPath="$PROJECT_DIR$/Cargo.toml" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/src/cipher/mod.rs" beforeDir="false" afterPath="$PROJECT_DIR$/src/cipher/mod.rs" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/cipher/stream.rs" beforeDir="false" afterPath="$PROJECT_DIR$/src/cipher/stream.rs" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/src/client/common.rs" beforeDir="false" afterPath="$PROJECT_DIR$/src/client/common.rs" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/client/handler.rs" beforeDir="false" afterPath="$PROJECT_DIR$/src/client/handler.rs" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/src/client/tcp.rs" beforeDir="false" afterPath="$PROJECT_DIR$/src/client/tcp.rs" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/src/config.rs" beforeDir="false" afterPath="$PROJECT_DIR$/src/config.rs" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/src/counter.rs" beforeDir="false" afterPath="$PROJECT_DIR$/src/counter.rs" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/io/utils.rs" beforeDir="false" afterPath="$PROJECT_DIR$/src/io/utils.rs" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/src/protocol/direct/mod.rs" beforeDir="false" afterPath="$PROJECT_DIR$/src/protocol/direct/mod.rs" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/protocol/firetcp/proto.rs" beforeDir="false" afterPath="$PROJECT_DIR$/src/protocol/firetcp/proto.rs" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/src/protocol/http/mod.rs" beforeDir="false" afterPath="$PROJECT_DIR$/src/protocol/http/mod.rs" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/src/protocol/mod.rs" beforeDir="false" afterPath="$PROJECT_DIR$/src/protocol/mod.rs" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/protocol/socks5/mod.rs" beforeDir="false" afterPath="$PROJECT_DIR$/src/protocol/socks5/mod.rs" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/protocol/tcpman/cipher/client.rs" beforeDir="false" afterPath="$PROJECT_DIR$/src/protocol/tcpman_old/cipher/client.rs" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/protocol/tcpman/cipher/mod.rs" beforeDir="false" afterPath="$PROJECT_DIR$/src/protocol/tcpman_old/cipher/mod.rs" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/protocol/tcpman/cipher/partial.rs" beforeDir="false" afterPath="$PROJECT_DIR$/src/protocol/tcpman_old/cipher/partial.rs" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/protocol/tcpman/cipher/server.rs" beforeDir="false" afterPath="$PROJECT_DIR$/src/protocol/tcpman_old/cipher/server.rs" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/protocol/tcpman/cipher/strategy.rs" beforeDir="false" afterPath="$PROJECT_DIR$/src/protocol/tcpman_old/cipher/strategy.rs" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/protocol/tcpman/cipher/stream.rs" beforeDir="false" afterPath="$PROJECT_DIR$/src/protocol/tcpman_old/cipher/stream.rs" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/protocol/tcpman/cipher/suite.rs" beforeDir="false" afterPath="$PROJECT_DIR$/src/protocol/tcpman_old/cipher/suite.rs" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/protocol/tcpman/mod.rs" beforeDir="false" afterPath="$PROJECT_DIR$/src/protocol/tcpman/mod.rs" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/protocol/tcpman/proto.rs" beforeDir="false" afterPath="$PROJECT_DIR$/src/protocol/tcpman_old/proto.rs" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/protocol/tcpman/server/handler.rs" beforeDir="false" afterPath="$PROJECT_DIR$/src/protocol/tcpman_old/server/handler.rs" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/protocol/tcpman/server/mod.rs" beforeDir="false" afterPath="$PROJECT_DIR$/src/protocol/tcpman_old/server/mod.rs" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/src/protocol/test.rs" beforeDir="false" afterPath="$PROJECT_DIR$/src/protocol/test.rs" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/socks5/addr.rs" beforeDir="false" afterPath="$PROJECT_DIR$/src/socks5/addr.rs" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/socks5/greeting.rs" beforeDir="false" afterPath="$PROJECT_DIR$/src/socks5/greeting.rs" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/test/http.rs" beforeDir="false" afterPath="$PROJECT_DIR$/src/test/http.rs" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/src/test/mod.rs" beforeDir="false" afterPath="$PROJECT_DIR$/src/test/mod.rs" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
@@ -343,7 +360,15 @@
       <option name="project" value="LOCAL" />
       <updated>1687877490333</updated>
     </task>
-    <option name="localTasksCounter" value="12" />
+    <task id="LOCAL-00012" summary="Tidy up">
+      <option name="closed" value="true" />
+      <created>1687952737989</created>
+      <option name="number" value="00012" />
+      <option name="presentableId" value="LOCAL-00012" />
+      <option name="project" value="LOCAL" />
+      <updated>1687952737989</updated>
+    </task>
+    <option name="localTasksCounter" value="13" />
     <servers />
   </component>
   <component name="TypeScriptGeneratedFilesManager">
@@ -373,7 +398,8 @@
     <MESSAGE value="Http parsing" />
     <MESSAGE value="cipher" />
     <MESSAGE value="Stream" />
-    <option name="LAST_COMMIT_MESSAGE" value="Stream" />
+    <MESSAGE value="Tidy up" />
+    <option name="LAST_COMMIT_MESSAGE" value="Tidy up" />
   </component>
   <component name="XSLT-Support.FileAssociations.UIState">
     <expand />

@@ -1,6 +1,4 @@
-use crate::parse::ParseError;
 use anyhow::bail;
-use bytes::Buf;
 use smallvec::SmallVec;
 use tokio::io::{AsyncBufRead, AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
 

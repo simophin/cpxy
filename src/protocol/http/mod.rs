@@ -10,7 +10,7 @@ use crate::http::parse_response;
 use crate::protocol::ProxyRequest;
 use crate::tls::TlsStream;
 use crate::{
-    io::{connect_tcp_marked, AsyncStreamCounter},
+    io::{connect_tcp_marked, CounterStream},
     socks5::Address,
 };
 
@@ -26,7 +26,7 @@ pub struct HttpProxy {
 
 #[async_trait]
 impl Protocol for HttpProxy {
-    type Stream = TlsStream<BufReader<AsyncStreamCounter<TcpStream>>>;
+    type Stream = TlsStream<BufReader<CounterStream<TcpStream>>>;
 
     async fn new_stream(
         &self,
@@ -34,7 +34,7 @@ impl Protocol for HttpProxy {
         stats: &Stats,
         fwmark: Option<u32>,
     ) -> anyhow::Result<Self::Stream> {
-        let mut upstream = AsyncStreamCounter::new(
+        let mut upstream = CounterStream::new(
             connect_tcp_marked(&self.address, fwmark)
                 .await
                 .context("Connecting to HTTP Proxy")?,
@@ -84,10 +84,10 @@ impl Protocol for HttpProxy {
 
 #[cfg(test)]
 mod tests {
-    use crate::{
-        protocol::test::{test_protocol_http, test_protocol_tcp},
-        test::create_http_server,
-    };
+    // use crate::{
+    //     protocol::test::{test_protocol_http, test_protocol_tcp},
+    //     test::create_http_server,
+    // };
 
     #[tokio::test]
     async fn http_proxy_works() {

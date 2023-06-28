@@ -1,5 +1,5 @@
 use anyhow::Context;
-use tokio::io::{copy_bidirectional, AsyncBufRead, AsyncReadExt, AsyncWrite};
+use tokio::io::{copy_bidirectional, AsyncBufRead, AsyncWrite};
 
 use crate::config::ClientConfig;
 use crate::handshaker;

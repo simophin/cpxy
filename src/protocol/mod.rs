@@ -16,6 +16,7 @@ pub mod socks5;
 
 mod dynamic;
 mod stream;
+mod tcpman;
 #[cfg(test)]
 mod test;
 

@@ -1,16 +1,16 @@
 use super::StreamCipher;
-use crate::buf::RWBuffer;
 use bytes::{Bytes, BytesMut};
 use pin_project_lite::pin_project;
-use serde::{Serialize, Serializer};
+use serde::{Deserialize, Serialize};
 use std::cmp::min;
+use std::fmt::{Debug, Display, Formatter};
 use std::io::Error;
 use std::num::NonZeroUsize;
 use std::pin::Pin;
 use std::task::{ready, Context, Poll};
 use tokio::io::{AsyncRead, AsyncWrite, ReadBuf};
 
-#[derive(Clone)]
+#[derive(Clone, Serialize, Deserialize)]
 pub enum CipherConfig<C: StreamCipher> {
     Full {
         key: C::Key,
@@ -22,6 +22,25 @@ pub enum CipherConfig<C: StreamCipher> {
         iv: C::Iv,
     },
     None,
+}
+
+impl<C: StreamCipher> Debug for CipherConfig<C> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        match self {
+            CipherConfig::Full { key, iv } => f
+                .debug_struct("CipherConfig::Full")
+                .field("key", &"******")
+                .field("iv", &"******")
+                .finish(),
+            CipherConfig::FirstNBytes { n, key, iv } => f
+                .debug_struct("CipherConfig::FirstNBytes")
+                .field("n", n)
+                .field("key", &"******")
+                .field("iv", &"******")
+                .finish(),
+            CipherConfig::None => f.debug_struct("CipherConfig::None").finish(),
+        }
+    }
 }
 
 enum CipherState<C> {

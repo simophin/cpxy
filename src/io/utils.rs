@@ -9,7 +9,7 @@ use pin_project_lite::pin_project;
 use std::os::unix::prelude::AsRawFd;
 
 pin_project! {
-    pub struct AsyncStreamCounter<S> {
+    pub struct CounterStream<S> {
         #[pin]
         stream: S,
         rx: Arc<Counter>,
@@ -17,13 +17,13 @@ pin_project! {
     }
 }
 
-impl<S> AsyncStreamCounter<S> {
+impl<S> CounterStream<S> {
     pub fn new(stream: S, rx: Arc<Counter>, tx: Arc<Counter>) -> Self {
         Self { stream, rx, tx }
     }
 }
 
-impl<S: AsyncRead> AsyncRead for AsyncStreamCounter<S> {
+impl<S: AsyncRead> AsyncRead for CounterStream<S> {
     #[inline]
     fn poll_read(
         self: std::pin::Pin<&mut Self>,
@@ -40,7 +40,7 @@ impl<S: AsyncRead> AsyncRead for AsyncStreamCounter<S> {
     }
 }
 
-impl<S: AsyncWrite> AsyncWrite for AsyncStreamCounter<S> {
+impl<S: AsyncWrite> AsyncWrite for CounterStream<S> {
     #[inline]
     fn poll_write(
         self: std::pin::Pin<&mut Self>,

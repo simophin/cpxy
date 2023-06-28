@@ -122,11 +122,8 @@ pub async fn run_test_client(upstream_address: SocketAddr) -> (JoinHandle<()>, S
                             groups: Default::default(),
                         }
                     },
-                    socks5_udp_host: "0.0.0.0".parse().unwrap(),
                     fwmark: None,
-                    udp_tproxy_address: None,
                     traffic_rules: Default::default(),
-                    set_router_rules: false,
                 };
                 let stats = ClientStatistics::new(&config);
 

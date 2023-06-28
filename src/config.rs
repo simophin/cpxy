@@ -1,13 +1,13 @@
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};
 use std::fmt::Debug;
-use std::net::{IpAddr, Ipv4Addr, SocketAddr};
+use std::net::SocketAddr;
 use std::time::UNIX_EPOCH;
 
 use crate::client::ClientStatistics;
 use crate::dns::DnsCache;
 use crate::geoip::find_geoip;
-use crate::protocol::{DynamicProtocol, ProxyRequest, Stats};
+use crate::protocol::{DynamicProtocol, ProxyRequest};
 use crate::rule::{PacketDestination, RuleExecutionResult, RuleString};
 use crate::socks5::Address;
 
@@ -23,10 +23,6 @@ pub struct UpstreamConfig {
     pub enabled: bool,
 }
 
-const fn default_socks5_udp_host() -> IpAddr {
-    IpAddr::V4(Ipv4Addr::UNSPECIFIED)
-}
-
 fn default_socks5_address() -> SocketAddr {
     "127.0.0.1:5000".parse().unwrap()
 }
@@ -39,9 +35,6 @@ pub struct ClientConfig {
     #[serde(default = "default_socks5_address")]
     pub socks5_address: SocketAddr,
 
-    #[serde(default = "default_socks5_udp_host")]
-    pub socks5_udp_host: IpAddr,
-
     #[serde(default)]
     pub fwmark: Option<u32>,
 
@@ -53,7 +46,6 @@ impl Default for ClientConfig {
     fn default() -> Self {
         Self {
             socks5_address: default_socks5_address(),
-            socks5_udp_host: default_socks5_udp_host(),
             upstreams: Default::default(),
             fwmark: None,
             traffic_rules: Default::default(),
@@ -80,7 +72,7 @@ impl ClientConfig {
         &self,
         stats: &ClientStatistics,
         req: &ProxyRequest,
-    ) -> anyhow::Result<Vec<(&str, &DynamicProtocol)>> {
+    ) -> anyhow::Result<Vec<(&str, &UpstreamConfig)>> {
         let pkt_dst = match &req.dst {
             Address::IP(addr) => PacketDestination::IP {
                 addr: addr.clone(),

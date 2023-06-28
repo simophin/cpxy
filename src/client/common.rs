@@ -22,6 +22,7 @@ pub async fn find_and_connect_stream(
         let start = Instant::now();
 
         match config
+            .protocol
             .new_stream(req, &protocol_stats, client_config.fwmark)
             .await
             .with_context(|| format!("Requesting new streaming connection from {name}"))

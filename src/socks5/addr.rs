@@ -1,5 +1,4 @@
 use anyhow::{bail, Context};
-use axum::http::Uri;
 use byteorder::{BigEndian, WriteBytesExt};
 use serde::{Deserialize, Serialize};
 use smallvec::{smallvec, SmallVec};
@@ -421,7 +420,7 @@ mod test {
                     assert_eq!(b"hello, world", &buf[offset..]);
 
                     let mut buf = buf.as_slice();
-                    let parsed = block_in_place(Address::parse_async(&mut buf)).unwrap();
+                    let parsed = block_in_place(move || Address::parse_async(&mut buf)).unwrap();
                     assert_eq!(addr, parsed);
                 }
                 Err(e) => {
