@@ -3,14 +3,14 @@ use bytes::{Bytes, BytesMut};
 use pin_project_lite::pin_project;
 use serde::{Deserialize, Serialize};
 use std::cmp::min;
-use std::fmt::{Debug, Display, Formatter};
+use std::fmt::{Debug, Formatter};
 use std::io::Error;
 use std::num::NonZeroUsize;
 use std::pin::Pin;
 use std::task::{ready, Context, Poll};
 use tokio::io::{AsyncRead, AsyncWrite, ReadBuf};
 
-#[derive(Clone, Serialize, Deserialize)]
+#[derive(Serialize, Deserialize)]
 pub enum CipherConfig<C: StreamCipher> {
     Full {
         key: C::Key,
@@ -22,6 +22,23 @@ pub enum CipherConfig<C: StreamCipher> {
         iv: C::Iv,
     },
     None,
+}
+
+impl<C: StreamCipher> Clone for CipherConfig<C> {
+    fn clone(&self) -> Self {
+        match self {
+            Self::Full { key, iv } => Self::Full {
+                key: key.clone(),
+                iv: iv.clone(),
+            },
+            Self::FirstNBytes { n, key, iv } => Self::FirstNBytes {
+                n: n.clone(),
+                key: key.clone(),
+                iv: iv.clone(),
+            },
+            Self::None => Self::None,
+        }
+    }
 }
 
 impl<C: StreamCipher> Debug for CipherConfig<C> {
@@ -43,7 +60,7 @@ impl<C: StreamCipher> Debug for CipherConfig<C> {
     }
 }
 
-enum CipherState<C> {
+pub enum CipherState<C> {
     Full(C),
     FirstNBytes(C, NonZeroUsize),
     None,
@@ -59,12 +76,38 @@ impl<C: StreamCipher> From<CipherConfig<C>> for CipherState<C> {
     }
 }
 
+impl<C: StreamCipher> CipherState<C> {
+    pub fn apply(&mut self, data: &mut [u8]) {
+        match self {
+            Self::Full(cipher) => cipher.apply_in_place(data),
+            Self::FirstNBytes(cipher, n) => {
+                let applied = min(n.get(), data.len());
+                cipher.apply_in_place(&mut data[..applied]);
+                if let Some(new_n) = NonZeroUsize::new(n.get() - applied) {
+                    *n = new_n
+                } else {
+                    *self = Self::None;
+                }
+            }
+            Self::None => {}
+        }
+    }
+
+    fn will_apply(&self) -> bool {
+        match self {
+            Self::None => false,
+            _ => true,
+        }
+    }
+}
+
 pin_project! {
     pub struct CipherStream<S, SC, RC> {
         #[pin]
         stream: S,
+        pending_plaintext_recv: Option<Bytes>,
         send_cipher_state: CipherState<SC>,
-        pending_send: Option<Bytes>,
+        pending_send: BytesMut,
         recv_cipher_state: CipherState<RC>,
     }
 }
@@ -74,12 +117,18 @@ where
     SC: StreamCipher,
     RC: StreamCipher,
 {
-    pub fn new(stream: S, send_config: CipherConfig<SC>, receive_config: CipherConfig<RC>) -> Self {
+    pub fn new(
+        stream: S,
+        mut send_cipher_state: CipherState<SC>,
+        recv_cipher_state: CipherState<RC>,
+        pending_plaintext_recv: Option<Bytes>,
+    ) -> Self {
         Self {
             stream,
-            send_cipher_state: send_config.into(),
-            recv_cipher_state: receive_config.into(),
-            pending_send: None,
+            pending_plaintext_recv,
+            send_cipher_state,
+            recv_cipher_state,
+            pending_send: Default::default(),
         }
     }
 }
@@ -96,24 +145,24 @@ where
         buf: &mut ReadBuf<'_>,
     ) -> Poll<std::io::Result<()>> {
         let this = self.project();
+
+        if let Some(pending) = this.pending_plaintext_recv {
+            let len = min(buf.remaining(), pending.len());
+            buf.put_slice(&pending[..len]);
+            if len < pending.len() {
+                *this.pending_plaintext_recv = Some(pending.slice(len..));
+            } else {
+                *this.pending_plaintext_recv = None;
+            }
+            return Poll::Ready(Ok(()));
+        }
+
         let old_len = buf.filled().len();
         ready!(this.stream.poll_read(cx, buf))?;
         let new_len = buf.filled().len();
 
-        match &mut self.recv_cipher_state {
-            CipherState::Full(c) => {
-                c.apply_in_place(&mut buf.filled_mut()[old_len..new_len]);
-            }
-            CipherState::FirstNBytes(c, n) => {
-                let apply_len = min(new_len - old_len, n.get());
-                c.apply_in_place(&mut buf.filled_mut()[old_len..old_len + apply_len]);
-                match NonZeroUsize::new(n.get() - apply_len) {
-                    Some(remaining) => *n = remaining,
-                    None => self.recv_cipher_state = CipherState::None,
-                }
-            }
-            CipherState::None => {}
-        }
+        this.recv_cipher_state
+            .apply(&mut buf.filled_mut()[old_len..new_len]);
 
         Poll::Ready(Ok(()))
     }
@@ -132,46 +181,22 @@ where
     ) -> Poll<Result<usize, Error>> {
         let mut this = self.project();
 
-        if let Some(pending) = this.pending_send {
-            let send_len = min(buf.len(), pending.len());
-            let sent = ready!(this.stream.poll_write(cx, &pending[..send_len]))?;
-            if sent == pending.len() {
-                *this.pending_send = None;
-            } else {
-                *this.pending_send = Some(pending.slice(sent..));
-                return Poll::Ready(Ok(sent));
-            }
+        if !this.pending_send.is_empty() {
+            let send_len = min(buf.len(), this.pending_send.len());
+            let sent = ready!(this.stream.poll_write(cx, &this.pending_send[..send_len]))?;
+            let _ = this.pending_send.split_to(sent);
+            return Poll::Ready(Ok(sent));
         }
 
-        return match this.send_cipher_state {
-            CipherState::Full(c) => {
-                let mut tmp_buf = BytesMut::from(buf);
-                c.apply_in_place(&mut tmp_buf);
-                let sent = ready!(this.stream.poll_write(cx, &tmp_buf))?;
-                if sent < buf.len() {
-                    *this.pending_send = Some(tmp_buf.freeze().slice(sent..));
-                }
-                Poll::Ready(Ok(sent))
-            }
-
-            CipherState::FirstNBytes(c, remaining) => {
-                let apply_len = min(buf.len(), remaining.get());
-                let mut tmp_buf = BytesMut::from(&buf[..apply_len]);
-                c.apply_in_place(&mut tmp_buf);
-                let sent = ready!(this.stream.poll_write(cx, &tmp_buf))?;
-                match NonZeroUsize::new(remaining.get() - sent) {
-                    Some(v) => *remaining = v,
-                    None => *this.send_cipher_state = CipherState::None,
-                }
-
-                if sent < buf.len() {
-                    *this.pending_send = Some(tmp_buf.freeze().slice(sent..));
-                }
-                return Poll::Ready(Ok(sent));
-            }
-
-            CipherState::None => this.stream.poll_write(cx, buf),
-        };
+        if this.send_cipher_state.will_apply() {
+            this.pending_send.clone_from_slice(buf);
+            this.send_cipher_state.apply(&mut this.pending_send);
+            let sent = ready!(this.stream.poll_write(cx, this.pending_send.as_ref()))?;
+            let _ = this.pending_send.split_to(sent);
+            Poll::Ready(Ok(sent))
+        } else {
+            this.stream.poll_write(cx, buf)
+        }
     }
 
     fn poll_flush(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Result<(), Error>> {

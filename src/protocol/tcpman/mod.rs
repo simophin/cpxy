@@ -1,20 +1,24 @@
 mod crypto;
 mod params;
+mod server;
 
 use crate::cipher::chacha20::ChaCha20;
-use crate::cipher::stream::{CipherConfig, CipherStream};
+use crate::cipher::stream::{CipherState, CipherStream};
+use crate::http::parse_response;
+use crate::http::utils::WithHeaders;
 use crate::io::{connect_tcp_marked, CounterStream};
 use crate::protocol::tcpman::params::ConnectionParameters;
 use crate::protocol::{ProxyRequest, Stats};
 use crate::socks5::Address;
 use crate::tls::TlsStream;
-use anyhow::Context;
+use anyhow::{bail, Context};
 use async_trait::async_trait;
-use bytes::BytesMut;
+use bytes::{Bytes, BytesMut};
 use once_cell::sync::OnceCell;
-use orion::{aead, pwhash};
+use orion::aead;
 use serde::{Deserialize, Serialize};
-use tokio::io::BufReader;
+use std::fmt::Write;
+use tokio::io::{AsyncWriteExt, BufReader};
 use tokio::net::TcpStream;
 
 #[derive(Debug, Serialize, Deserialize, Eq, PartialEq)]
@@ -28,7 +32,7 @@ pub struct Tcpman {
 }
 
 type TcpmanStream =
-    TlsStream<CipherStream<BufReader<CounterStream<TcpStream>>, ChaCha20, ChaCha20>>;
+    CipherStream<BufReader<TlsStream<CounterStream<TcpStream>>>, ChaCha20, ChaCha20>;
 
 #[async_trait]
 impl super::Protocol for Tcpman {
@@ -49,7 +53,7 @@ impl super::Protocol for Tcpman {
         );
 
         // Connect to TLS
-        let stream = if self.tls {
+        let mut stream = if self.tls {
             TlsStream::connect_tls(self.address.get_host().as_ref(), upstream).await
         } else {
             TlsStream::connect_plain(upstream).await
@@ -57,16 +61,59 @@ impl super::Protocol for Tcpman {
         .context("connecting to TLS")?;
 
         // Determine connection parameters
-        let params = ConnectionParameters {
-            upload_cipher: CipherConfig::None,
-            download_cipher: CipherConfig::None,
-        };
+        let params = ConnectionParameters::create_for_request(req);
+
+        let mut send_cipher_state: CipherState<_> = params.upload_cipher.clone().into();
+        let mut recv_cipher_state: CipherState<_> = params.download_cipher.clone().into();
+
+        // Encrypt initial data
+        let encrypted_initial_data = req
+            .initial_data
+            .as_ref()
+            .map(|input| crypto::encrypt_initial_data(&mut send_cipher_state, input));
+
+        let path = params
+            .encrypt_to_path(self.key())
+            .context("encrypting connection params")?;
 
         // Construct a Websocket request
         let mut req = BytesMut::new();
-        // write!(req, "GET {} HTTP/1.1\r\n", ).unwrap();
+        write!(req, "GET {path} HTTP/1.1\r\n")?;
+        write!(req, "Host: {}\r\n", self.address.get_host())?;
+        write!(req, "Connection: Upgrade\r\n")?;
+        write!(req, "Upgrade: websocket\r\n")?;
+        if let Some(data) = encrypted_initial_data {
+            write!(req, "If-None-Match: {data}\r\n")?;
+        }
+        write!(req, "\r\n")?;
 
-        todo!()
+        stream.write_all(&req).await.context("Writing request")?;
+
+        let mut stream = BufReader::new(stream);
+
+        // Wait for protocol switch
+        let plaintext_initial_reply = parse_response(&mut stream, |res| {
+            if res.code != Some(101) {
+                bail!("Expecting protocol switch status but got: {:?}", res.code);
+            }
+
+            if let Some(data) = res.get_header("ETag") {
+                Ok(Some(Bytes::from(
+                    crypto::decrypt_initial_data(&mut recv_cipher_state, &data.value)
+                        .context("decrypting initial data")?,
+                )))
+            } else {
+                Ok(None)
+            }
+        })
+        .await?;
+
+        Ok(CipherStream::new(
+            stream,
+            send_cipher_state,
+            recv_cipher_state,
+            plaintext_initial_reply,
+        ))
     }
 }
 

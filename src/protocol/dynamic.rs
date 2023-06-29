@@ -4,6 +4,7 @@ use super::socks5;
 use super::stream::ProtocolStream;
 use crate::protocol::{Protocol, ProxyRequest, Stats};
 use async_trait::async_trait;
+use hyper::Uri;
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Serialize, Deserialize, Clone, Eq, PartialEq)]
