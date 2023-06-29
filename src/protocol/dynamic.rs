@@ -2,9 +2,8 @@ use super::direct;
 use super::http;
 use super::socks5;
 use super::stream::ProtocolStream;
-use crate::protocol::{Protocol, ProxyRequest, Stats};
+use crate::protocol::{tcpman, Protocol, ProxyRequest, Stats};
 use async_trait::async_trait;
-use hyper::Uri;
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Serialize, Deserialize, Clone, Eq, PartialEq)]
@@ -18,6 +17,9 @@ pub enum DynamicProtocol {
 
     #[serde(rename = "socks5")]
     Socks5(socks5::Socks5),
+
+    #[serde(rename = "tcpman")]
+    Tcpman(tcpman::Tcpman),
 }
 
 #[async_trait]
@@ -35,6 +37,7 @@ impl Protocol for DynamicProtocol {
                 .new_stream(req, stats, fwmark)
                 .await
                 .map(ProtocolStream::Direct),
+
             DynamicProtocol::Http(s) => s
                 .new_stream(req, stats, fwmark)
                 .await
@@ -44,6 +47,11 @@ impl Protocol for DynamicProtocol {
                 .new_stream(req, stats, fwmark)
                 .await
                 .map(ProtocolStream::Socks5),
+
+            DynamicProtocol::Tcpman(s) => s
+                .new_stream(req, stats, fwmark)
+                .await
+                .map(ProtocolStream::Tcpman),
         }
     }
 }

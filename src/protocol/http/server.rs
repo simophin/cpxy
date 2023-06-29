@@ -1,5 +1,6 @@
 use std::sync::Arc;
 
+use crate::io::read_data_with_timeout;
 use crate::protocol::{ProxyRequest, Stats};
 use crate::{http::parse_request, protocol::Protocol, socks5::Address};
 use anyhow::{bail, Context};
@@ -68,7 +69,7 @@ pub async fn extract_proxy_request<S>(stream: &mut S) -> anyhow::Result<ProxyReq
 where
     S: AsyncBufRead + Unpin,
 {
-    parse_request(stream, move |req| {
+    let mut req = parse_request(stream, move |req| {
         match req.method.context("expecting method")? {
             m if m.eq_ignore_ascii_case("CONNECT") => {
                 log::debug!("Handshaking http tunnel");
@@ -81,7 +82,11 @@ where
             }
         }
     })
-    .await
+    .await?;
+
+    let initial_data = read_data_with_timeout(stream).await?;
+    req.initial_data = initial_data;
+    Ok(req)
 }
 
 fn extract_http_tunnel_request(req: &httparse::Request<'_, '_>) -> anyhow::Result<ProxyRequest> {

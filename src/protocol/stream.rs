@@ -2,6 +2,7 @@ use super::direct;
 use super::http;
 use super::socks5;
 use super::Protocol;
+use crate::protocol::tcpman;
 use std::io::{Error, IoSlice};
 use std::pin::Pin;
 use std::task::{Context, Poll};
@@ -11,6 +12,7 @@ pub enum ProtocolStream {
     Direct(<direct::Direct as Protocol>::Stream),
     Http(<http::HttpProxy as Protocol>::Stream),
     Socks5(<socks5::Socks5 as Protocol>::Stream),
+    Tcpman(<tcpman::Tcpman as Protocol>::Stream),
 }
 
 macro_rules! delegate_stream_method {
@@ -19,6 +21,7 @@ macro_rules! delegate_stream_method {
             ProtocolStream::Direct(s) => Pin::new(s).$method($($p),*),
             ProtocolStream::Http(s) => Pin::new(s).$method($($p),*),
             ProtocolStream::Socks5(s) => Pin::new(s).$method($($p),*),
+            ProtocolStream::Tcpman(s) => Pin::new(s).$method($($p),*),
         }
     };
 }
@@ -63,6 +66,7 @@ impl AsyncWrite for ProtocolStream {
             ProtocolStream::Direct(s) => s.is_write_vectored(),
             ProtocolStream::Http(s) => s.is_write_vectored(),
             ProtocolStream::Socks5(s) => s.is_write_vectored(),
+            ProtocolStream::Tcpman(s) => s.is_write_vectored(),
         }
     }
 }

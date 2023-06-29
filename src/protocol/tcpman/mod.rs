@@ -1,6 +1,6 @@
 mod crypto;
 mod params;
-mod server;
+pub mod server;
 
 use crate::cipher::chacha20::ChaCha20;
 use crate::cipher::stream::{CipherState, CipherStream};
@@ -23,12 +23,23 @@ use tokio::net::TcpStream;
 
 #[derive(Debug, Serialize, Deserialize, Eq, PartialEq)]
 pub struct Tcpman {
-    pub address: Address<'static>,
-    pub tls: bool,
-    pub password: String,
+    address: Address<'static>,
+    tls: bool,
+    password: String,
 
     #[serde(skip)]
     key: OnceCell<aead::SecretKey>,
+}
+
+impl Tcpman {
+    pub fn new(address: Address<'static>, tls: bool, password: String) -> Self {
+        Self {
+            address,
+            tls,
+            password,
+            key: OnceCell::new(),
+        }
+    }
 }
 
 type TcpmanStream =
@@ -99,7 +110,7 @@ impl super::Protocol for Tcpman {
 
             if let Some(data) = res.get_header("ETag") {
                 Ok(Some(Bytes::from(
-                    crypto::decrypt_initial_data(&mut recv_cipher_state, &data.value)
+                    crypto::decrypt_initial_data(&mut recv_cipher_state, &data)
                         .context("decrypting initial data")?,
                 )))
             } else {
@@ -119,19 +130,21 @@ impl super::Protocol for Tcpman {
 
 impl Tcpman {
     fn key(&self) -> &aead::SecretKey {
-        use orion::pwhash;
         self.key
-            .get_or_try_init(|| {
-                let hashed = pwhash::hash_password(
-                    &pwhash::Password::from_slice(self.password.as_bytes())
-                        .context("invalid password")?,
-                    10,
-                    2,
-                )
-                .context("hashing password")?;
-                aead::SecretKey::from_slice(hashed.unprotected_as_bytes()).context("invalid key")
-            })
+            .get_or_try_init(|| Self::derive_key(&self.password))
             .expect("failed to derive key")
+    }
+
+    pub fn derive_key(password: &str) -> anyhow::Result<aead::SecretKey> {
+        use orion::pwhash;
+
+        let hashed = pwhash::hash_password(
+            &pwhash::Password::from_slice(password.as_bytes()).context("invalid password")?,
+            10,
+            2,
+        )
+        .context("hashing password")?;
+        aead::SecretKey::from_slice(hashed.unprotected_as_bytes()).context("invalid key")
     }
 }
 

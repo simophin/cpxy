@@ -10,7 +10,6 @@ use crate::tls::TlsStream;
 use anyhow::{bail, Context};
 use async_shutdown::Shutdown;
 use bytes::{Bytes, BytesMut};
-use orion::aead;
 use orion::aead::SecretKey;
 use std::fmt::Write;
 use std::sync::Arc;
@@ -21,7 +20,7 @@ use tokio::time::timeout;
 
 pub async fn run_tcpman_server(
     shutdown: Shutdown,
-    key: aead::SecretKey,
+    key: SecretKey,
     listener: TcpListener,
 ) -> anyhow::Result<()> {
     let key = Arc::new(key);
@@ -44,7 +43,7 @@ pub async fn run_tcpman_server(
     }
 }
 
-async fn handle_tcpman_connection(key: &aead::SecretKey, conn: TcpStream) -> anyhow::Result<()> {
+async fn handle_tcpman_connection(key: &SecretKey, conn: TcpStream) -> anyhow::Result<()> {
     let mut conn = BufReader::new(conn);
 
     let (recv_cipher_state, mut send_cipher_state, req) =
@@ -157,11 +156,7 @@ async fn parse_tcpman_request(
         Ok((
             recv_cipher_state,
             send_cipher_state,
-            ProxyRequest {
-                dst,
-                tls,
-                initial_data,
-            },
+            ProxyRequest { dst, initial_data },
         ))
     })
     .await

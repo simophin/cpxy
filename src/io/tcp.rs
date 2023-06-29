@@ -1,5 +1,9 @@
+use bytes::{Bytes, BytesMut};
 use std::net::SocketAddr;
+use std::time::Duration;
+use tokio::io::{AsyncRead, AsyncReadExt};
 use tokio::net::{TcpListener, TcpStream};
+use tokio::time::timeout;
 
 use crate::socks5::Address;
 
@@ -75,5 +79,19 @@ pub async fn bind_tcp(a: &Address<'_>) -> std::io::Result<TcpListener> {
     match a {
         Address::IP(addr) => Ok(TcpListener::bind(addr).await?),
         Address::Name { host, port } => Ok(TcpListener::bind((host.as_ref(), *port)).await?),
+    }
+}
+
+pub async fn read_data_with_timeout<S: AsyncRead + Unpin>(
+    stream: &mut S,
+) -> anyhow::Result<Option<Bytes>> {
+    let mut buf = BytesMut::zeroed(4096);
+    match timeout(Duration::from_millis(200), stream.read(&mut buf)).await {
+        Ok(Ok(n)) => {
+            buf.truncate(n);
+            Ok(Some(buf.freeze()))
+        }
+        Ok(Err(e)) => Err(e.into()),
+        Err(_) => Ok(None),
     }
 }

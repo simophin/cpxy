@@ -16,7 +16,7 @@ pub mod socks5;
 
 mod dynamic;
 mod stream;
-mod tcpman;
+pub mod tcpman;
 #[cfg(test)]
 mod test;
 
@@ -30,15 +30,13 @@ pub struct Stats {
 pub struct ProxyRequest {
     pub dst: Address<'static>,
     pub initial_data: Option<Bytes>,
-    pub tls: bool,
 }
 
-impl ProxyRequest {
-    pub fn plain_tcp(dst: Address<'static>) -> Self {
+impl<'a> From<Address<'a>> for ProxyRequest {
+    fn from(value: Address<'a>) -> Self {
         Self {
-            dst,
+            dst: value,
             initial_data: None,
-            tls: false,
         }
     }
 }

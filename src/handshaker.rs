@@ -1,9 +1,11 @@
+use crate::io::read_data_with_timeout;
 use crate::protocol::http::server::extract_proxy_request;
 use crate::protocol::ProxyRequest;
 use crate::socks5::{
     Address, ClientConnRequest, ClientGreeting, Command, ConnStatusCode, AUTH_NO_PASSWORD,
 };
 use anyhow::{bail, Context};
+use bytes::BytesMut;
 use tokio::io::{AsyncBufRead, AsyncBufReadExt, AsyncWrite, AsyncWriteExt};
 
 enum ConnectionType {
@@ -52,6 +54,8 @@ impl<S: AsyncBufRead + AsyncWrite + Unpin> Handshaker<S> {
             bail!("Unsupported command");
         }
 
+        let initial_data = read_data_with_timeout(&mut stream).await?;
+
         Ok((
             Self {
                 stream,
@@ -59,8 +63,7 @@ impl<S: AsyncBufRead + AsyncWrite + Unpin> Handshaker<S> {
             },
             ProxyRequest {
                 dst: req.address,
-                tls: false,
-                initial_data: None,
+                initial_data,
             },
         ))
     }

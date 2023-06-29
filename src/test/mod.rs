@@ -15,9 +15,11 @@ use tokio::task::JoinHandle;
 use tokio::{join, spawn};
 
 mod http;
-mod tcp_socks4;
 mod tcp_socks5;
 
+use crate::protocol::tcpman::server::run_tcpman_server;
+use crate::protocol::tcpman::Tcpman;
+use crate::protocol::DynamicProtocol;
 use crate::{
     buf::RWBuffer,
     client::{run_proxy_with, ClientStatistics},
@@ -99,7 +101,10 @@ pub async fn echo_tcp_server() -> (JoinHandle<()>, SocketAddr) {
     )
 }
 
-pub async fn run_test_client(upstream_address: SocketAddr) -> (JoinHandle<()>, SocketAddr) {
+pub async fn run_test_client(
+    upstream_address: SocketAddr,
+    password: String,
+) -> (JoinHandle<()>, SocketAddr) {
     let listener = bind_tcp(&Default::default()).await.unwrap();
     let mut addr = listener.local_addr().unwrap();
     set_ip_local(&mut addr);
@@ -112,14 +117,13 @@ pub async fn run_test_client(upstream_address: SocketAddr) -> (JoinHandle<()>, S
                     socks5_address,
                     upstreams: hashmap! {
                         String::from("echo") => UpstreamConfig {
-                            protocol: UpstreamProtocol::TcpMan(TcpMan {
-                                address: Address::IP(upstream_address),
-                                ssl: false,
-                                allows_udp: true,
-                                credentials: None,
-                            }),
+                            protocol: DynamicProtocol::Tcpman(Tcpman::new(
+                                upstream_address.into(),
+                                false,
+                                password,
+                            )),
+                            groups: None,
                             enabled: true,
-                            groups: Default::default(),
                         }
                     },
                     fwmark: None,
@@ -136,13 +140,19 @@ pub async fn run_test_client(upstream_address: SocketAddr) -> (JoinHandle<()>, S
     )
 }
 
-pub async fn run_test_server() -> (JoinHandle<()>, SocketAddr) {
+pub async fn run_test_server() -> (JoinHandle<anyhow::Result<()>>, SocketAddr, String) {
     let listener = bind_tcp(&Default::default()).await.unwrap();
     let mut addr = listener.local_addr().unwrap();
     set_ip_local(&mut addr);
+    let password = String::from("password");
     (
-        spawn(async move { run_server(Shutdown::new(), listener).await.unwrap() }),
+        spawn(run_tcpman_server(
+            Shutdown::new(),
+            Tcpman::derive_key(&password).unwrap(),
+            listener,
+        )),
         addr,
+        password,
     )
 }
 
