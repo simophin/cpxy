@@ -35,7 +35,7 @@ pub struct ProxyRequest {
 impl<'a> From<Address<'a>> for ProxyRequest {
     fn from(value: Address<'a>) -> Self {
         Self {
-            dst: value,
+            dst: value.into_owned(),
             initial_data: None,
         }
     }

@@ -84,12 +84,9 @@ impl Protocol for Socks5 {
         .await
         .context("Requesting SOCKS5 proxy")?;
 
-        let upstream = if req.tls {
-            TlsStream::connect_tls(self.address.get_host().as_ref(), upstream).await
-        } else {
-            TlsStream::connect_plain(upstream).await
-        }
-        .context("Connecting to upstream")?;
+        let upstream = TlsStream::connect_plain(upstream)
+            .await
+            .context("Connecting to upstream")?;
 
         let mut upstream = CounterStream::new(upstream, stats.rx.clone(), stats.tx.clone());
         match &req.initial_data {

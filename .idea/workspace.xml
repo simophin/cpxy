@@ -8,16 +8,19 @@
   </component>
   <component name="ChangeListManager">
     <list default="true" id="998b8231-524b-486c-9a00-9672a65c1a7c" name="Changes" comment="Tidy up">
-      <change afterPath="$PROJECT_DIR$/src/http/utils.rs" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/src/protocol/tcpman/server.rs" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/cipher/mod.rs" beforeDir="false" afterPath="$PROJECT_DIR$/src/cipher/mod.rs" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/cipher/stream.rs" beforeDir="false" afterPath="$PROJECT_DIR$/src/cipher/stream.rs" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/http/mod.rs" beforeDir="false" afterPath="$PROJECT_DIR$/src/http/mod.rs" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/protocol/dynamic.rs" beforeDir="false" afterPath="$PROJECT_DIR$/src/protocol/dynamic.rs" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/protocol/tcpman/crypto.rs" beforeDir="false" afterPath="$PROJECT_DIR$/src/protocol/tcpman/crypto.rs" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/protocol/tcpman/mod.rs" beforeDir="false" afterPath="$PROJECT_DIR$/src/protocol/tcpman/mod.rs" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/http/req.rs" beforeDir="false" afterPath="$PROJECT_DIR$/src/http/req.rs" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/http/res.rs" beforeDir="false" afterPath="$PROJECT_DIR$/src/http/res.rs" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/lib.rs" beforeDir="false" afterPath="$PROJECT_DIR$/src/lib.rs" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/protocol/direct/mod.rs" beforeDir="false" afterPath="$PROJECT_DIR$/src/protocol/direct/mod.rs" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/protocol/http/mod.rs" beforeDir="false" afterPath="$PROJECT_DIR$/src/protocol/http/mod.rs" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/protocol/http/server.rs" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/protocol/mod.rs" beforeDir="false" afterPath="$PROJECT_DIR$/src/protocol/mod.rs" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/protocol/socks5/mod.rs" beforeDir="false" afterPath="$PROJECT_DIR$/src/protocol/socks5/mod.rs" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/src/protocol/tcpman/params.rs" beforeDir="false" afterPath="$PROJECT_DIR$/src/protocol/tcpman/params.rs" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/protocol/tcpman/server.rs" beforeDir="false" afterPath="$PROJECT_DIR$/src/protocol/tcpman/server.rs" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/protocol/test.rs" beforeDir="false" afterPath="$PROJECT_DIR$/src/protocol/test.rs" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/socks5/addr.rs" beforeDir="false" afterPath="$PROJECT_DIR$/src/socks5/addr.rs" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -82,10 +85,10 @@
     &quot;WebServerToolWindowFactoryState&quot;: &quot;false&quot;,
     &quot;dart.analysis.tool.window.visible&quot;: &quot;false&quot;,
     &quot;git-widget-placeholder&quot;: &quot;tokio&quot;,
-    &quot;last_opened_file_path&quot;: &quot;/home/fanchao/Projects/cpxy/src/http&quot;,
+    &quot;last_opened_file_path&quot;: &quot;/home/fanchao/Projects/kogan-android-intellij&quot;,
     &quot;nodejs_package_manager_path&quot;: &quot;yarn&quot;,
     &quot;org.rust.cargo.project.model.PROJECT_DISCOVERY&quot;: &quot;true&quot;,
-    &quot;settings.editor.selected.configurable&quot;: &quot;language.rust.cargo.check&quot;,
+    &quot;settings.editor.selected.configurable&quot;: &quot;preferences.pluginManager&quot;,
     &quot;show.migrate.to.gradle.popup&quot;: &quot;false&quot;
   }
 }</component>
@@ -353,7 +356,23 @@
       <option name="project" value="LOCAL" />
       <updated>1687961176647</updated>
     </task>
-    <option name="localTasksCounter" value="14" />
+    <task id="LOCAL-00014" summary="Tidy up">
+      <option name="closed" value="true" />
+      <created>1688006691774</created>
+      <option name="number" value="00014" />
+      <option name="presentableId" value="LOCAL-00014" />
+      <option name="project" value="LOCAL" />
+      <updated>1688006691774</updated>
+    </task>
+    <task id="LOCAL-00015" summary="Tidy up">
+      <option name="closed" value="true" />
+      <created>1688052611966</created>
+      <option name="number" value="00015" />
+      <option name="presentableId" value="LOCAL-00015" />
+      <option name="project" value="LOCAL" />
+      <updated>1688052611966</updated>
+    </task>
+    <option name="localTasksCounter" value="16" />
     <servers />
   </component>
   <component name="TypeScriptGeneratedFilesManager">

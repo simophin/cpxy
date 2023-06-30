@@ -84,12 +84,9 @@ async fn execute_proxy_request(
         .await
         .context("connecting to upstream")?;
 
-    let mut upstream = if req.tls {
-        TlsStream::connect_tls(req.dst.get_host().as_ref(), upstream).await
-    } else {
-        TlsStream::connect_plain(upstream).await
-    }
-    .context("connecting to TLS")?;
+    let mut upstream = TlsStream::connect_plain(upstream)
+        .await
+        .context("connecting to TLS")?;
 
     if let Some(data) = req.initial_data {
         upstream
@@ -137,7 +134,6 @@ async fn parse_tcpman_request(
             upload_cipher,
             download_cipher,
             dst,
-            tls,
         } = ConnectionParameters::decrypt_from_path(req.path.context("missing path")?, key)
             .context("decrypting connection parameters")?;
 

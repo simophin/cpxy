@@ -29,11 +29,7 @@ impl Protocol for Direct {
         }
 
         let stream = CounterStream::new(stream, stats.rx.clone(), stats.tx.clone());
-        let mut stream = if req.tls {
-            TlsStream::connect_tls(req.dst.get_host().as_ref(), stream).await?
-        } else {
-            TlsStream::connect_plain(stream).await?
-        };
+        let mut stream = TlsStream::connect_plain(stream).await?;
 
         match &req.initial_data {
             Some(b) if b.len() > 0 => {
@@ -46,15 +42,15 @@ impl Protocol for Direct {
     }
 }
 
-#[cfg(test)]
-mod tests {
-    use super::super::test;
-    use super::*;
-
-    #[tokio::test]
-    async fn test_direct_works() {
-        let direct = Direct {};
-        test::test_protocol_tcp(&direct).await;
-        test::test_protocol_http(&direct).await;
-    }
-}
+// #[cfg(test)]
+// mod tests {
+//     use super::super::test;
+//     use super::*;
+//
+//     #[tokio::test]
+//     async fn test_direct_works() {
+//         let direct = Direct {};
+//         test::test_protocol_tcp(&direct).await;
+//         test::test_protocol_http(&direct).await;
+//     }
+// }

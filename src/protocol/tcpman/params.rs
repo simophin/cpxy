@@ -17,13 +17,12 @@ pub struct ConnectionParameters {
     pub upload_cipher: CipherConfig<ChaCha20>,
     pub download_cipher: CipherConfig<ChaCha20>,
     pub dst: Address<'static>,
-    pub tls: bool,
 }
 
 impl ConnectionParameters {
     pub fn create_for_request(req: &ProxyRequest) -> Self {
-        match (req.dst.get_port(), req.tls) {
-            (443, false) | (22, false) => {
+        match req.dst.get_port() {
+            443 | 22 => {
                 let (key, iv) = ChaCha20::rand_key_iv();
                 Self {
                     upload_cipher: CipherConfig::FirstNBytes {
@@ -33,7 +32,6 @@ impl ConnectionParameters {
                     },
                     download_cipher: CipherConfig::None,
                     dst: req.dst.clone(),
-                    tls: req.tls,
                 }
             }
 
@@ -43,7 +41,6 @@ impl ConnectionParameters {
                     upload_cipher: CipherConfig::Full { key, iv },
                     download_cipher: CipherConfig::Full { key, iv },
                     dst: req.dst.clone(),
-                    tls: req.tls,
                 }
             }
         }

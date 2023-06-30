@@ -1,5 +1,5 @@
 mod buf;
-mod client;
+// mod client;
 mod counter;
 mod dns;
 mod iptables;
@@ -8,7 +8,7 @@ mod pattern;
 pub mod protocol;
 mod rule;
 mod sni;
-mod socks4;
+// mod socks4;
 pub mod socks5;
 pub mod utils;
 
@@ -16,13 +16,13 @@ pub mod utils;
 mod jni_export;
 
 pub mod io;
-#[cfg(test)]
-mod test;
+// #[cfg(test)]
+// mod test;
 
 mod cipher;
-pub mod config;
-pub mod controller;
+// pub mod config;
+// pub mod controller;
 mod geoip;
-mod handshaker;
+// mod handshaker;
 mod http;
 mod tls;

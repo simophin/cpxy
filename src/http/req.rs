@@ -76,7 +76,7 @@ pub fn httparse_to_hyper_request(
         .uri(req.path.context("expecting path")?)
         .method(req.method.context("expecting method")?);
 
-    for hdr in req.headers {
+    for hdr in req.headers.iter() {
         builder = builder.header(hdr.name, hdr.value);
     }
 

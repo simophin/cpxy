@@ -341,7 +341,6 @@ impl std::fmt::Debug for Address<'_> {
 #[cfg(test)]
 mod test {
     use super::*;
-    use tokio::task::block_in_place;
 
     #[test]
     fn test_encoding() {
@@ -419,8 +418,8 @@ mod test {
                     assert_eq!(addr, parsed);
                     assert_eq!(b"hello, world", &buf[offset..]);
 
-                    let mut buf = buf.as_slice();
-                    let parsed = block_in_place(move || Address::parse_async(&mut buf)).unwrap();
+                    let buf = buf.as_slice();
+                    let (_, parsed) = Address::parse(&buf).unwrap().unwrap();
                     assert_eq!(addr, parsed);
                 }
                 Err(e) => {
