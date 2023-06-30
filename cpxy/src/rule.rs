@@ -410,9 +410,7 @@ impl FromStr for HostMatch {
         let mut splits = s.split(':');
         Ok(match (splits.next(), splits.next()) {
             (Some("matches"), Some(p)) => Self::Pattern(p.parse()?),
-            _ => bail!(
-                "Invalid host match string: {s}. Expect: list:gfw, list:adblock or matches:pattern"
-            ),
+            _ => bail!("Invalid host match string: {s}. Expect: matches:pattern"),
         })
     }
 }
@@ -459,13 +457,11 @@ mod tests {
     fn rule_parsing_works() {
         let rules = "\
         main:\n\
-            test -d domain:list:gfw -p tcp -a proxy:proxy1\n\
-            test -d domain:list:adblock -p tcp -a proxy:proxy1\n\
-            test -d geoip:cn -d geoip:us -p udp -a reject\n\
+            test -d geoip:cn -d geoip:us -a reject\n\
             test -d geoip:nz -a jump:nz\n\
             test -a reject\n\
         nz:\n\
-            test -p udp -a return\n\
+            test -a return\n\
             test -a proxygroup:group\n\
         ";
 

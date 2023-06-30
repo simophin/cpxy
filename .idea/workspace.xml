@@ -7,20 +7,172 @@
     <cargoProject FILE="$PROJECT_DIR$/Cargo.toml" />
   </component>
   <component name="ChangeListManager">
-    <list default="true" id="998b8231-524b-486c-9a00-9672a65c1a7c" name="Changes" comment="Tidy up">
+    <list default="true" id="998b8231-524b-486c-9a00-9672a65c1a7c" name="Changes" comment="Comment out">
+      <change afterPath="$PROJECT_DIR$/netstack-lwip" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/.gitignore" beforeDir="false" afterPath="$PROJECT_DIR$/.gitignore" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/.gitmodules" beforeDir="false" afterPath="$PROJECT_DIR$/.gitmodules" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/http/req.rs" beforeDir="false" afterPath="$PROJECT_DIR$/src/http/req.rs" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/http/res.rs" beforeDir="false" afterPath="$PROJECT_DIR$/src/http/res.rs" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/lib.rs" beforeDir="false" afterPath="$PROJECT_DIR$/src/lib.rs" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/protocol/direct/mod.rs" beforeDir="false" afterPath="$PROJECT_DIR$/src/protocol/direct/mod.rs" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/protocol/http/mod.rs" beforeDir="false" afterPath="$PROJECT_DIR$/src/protocol/http/mod.rs" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/protocol/http/server.rs" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/protocol/mod.rs" beforeDir="false" afterPath="$PROJECT_DIR$/src/protocol/mod.rs" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/protocol/socks5/mod.rs" beforeDir="false" afterPath="$PROJECT_DIR$/src/protocol/socks5/mod.rs" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/protocol/tcpman/params.rs" beforeDir="false" afterPath="$PROJECT_DIR$/src/protocol/tcpman/params.rs" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/protocol/tcpman/server.rs" beforeDir="false" afterPath="$PROJECT_DIR$/src/protocol/tcpman/server.rs" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/protocol/test.rs" beforeDir="false" afterPath="$PROJECT_DIR$/src/protocol/test.rs" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/socks5/addr.rs" beforeDir="false" afterPath="$PROJECT_DIR$/src/socks5/addr.rs" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/Cargo.lock" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/Cargo.toml" beforeDir="false" afterPath="$PROJECT_DIR$/cpxy/Cargo.toml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/android/.gitignore" beforeDir="false" afterPath="$PROJECT_DIR$/cpxy/android/.gitignore" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/android/app/.gitignore" beforeDir="false" afterPath="$PROJECT_DIR$/cpxy/android/app/.gitignore" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/android/app/build.gradle" beforeDir="false" afterPath="$PROJECT_DIR$/cpxy/android/app/build.gradle" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/android/app/proguard-rules.pro" beforeDir="false" afterPath="$PROJECT_DIR$/cpxy/android/app/proguard-rules.pro" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/android/app/src/main/AndroidManifest.xml" beforeDir="false" afterPath="$PROJECT_DIR$/cpxy/android/app/src/main/AndroidManifest.xml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/android/app/src/main/java/dev/fanchao/CJKProxy.java" beforeDir="false" afterPath="$PROJECT_DIR$/cpxy/android/app/src/main/java/dev/fanchao/CJKProxy.java" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/android/app/src/main/java/dev/fanchao/cjkproxy/App.kt" beforeDir="false" afterPath="$PROJECT_DIR$/cpxy/android/app/src/main/java/dev/fanchao/cjkproxy/App.kt" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/android/app/src/main/java/dev/fanchao/cjkproxy/Service.kt" beforeDir="false" afterPath="$PROJECT_DIR$/cpxy/android/app/src/main/java/dev/fanchao/cjkproxy/Service.kt" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/android/app/src/main/java/dev/fanchao/cjkproxy/ui/AdminActivity.kt" beforeDir="false" afterPath="$PROJECT_DIR$/cpxy/android/app/src/main/java/dev/fanchao/cjkproxy/ui/AdminActivity.kt" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/android/app/src/main/java/dev/fanchao/cjkproxy/ui/MainActivity.kt" beforeDir="false" afterPath="$PROJECT_DIR$/cpxy/android/app/src/main/java/dev/fanchao/cjkproxy/ui/MainActivity.kt" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/android/app/src/main/res/drawable-v24/ic_launcher_foreground.xml" beforeDir="false" afterPath="$PROJECT_DIR$/cpxy/android/app/src/main/res/drawable-v24/ic_launcher_foreground.xml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/android/app/src/main/res/drawable/ic_add.xml" beforeDir="false" afterPath="$PROJECT_DIR$/cpxy/android/app/src/main/res/drawable/ic_add.xml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/android/app/src/main/res/drawable/ic_delete.xml" beforeDir="false" afterPath="$PROJECT_DIR$/cpxy/android/app/src/main/res/drawable/ic_delete.xml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/android/app/src/main/res/drawable/ic_launcher_background.xml" beforeDir="false" afterPath="$PROJECT_DIR$/cpxy/android/app/src/main/res/drawable/ic_launcher_background.xml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/android/app/src/main/res/drawable/ic_play.xml" beforeDir="false" afterPath="$PROJECT_DIR$/cpxy/android/app/src/main/res/drawable/ic_play.xml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/android/app/src/main/res/drawable/ic_stop.xml" beforeDir="false" afterPath="$PROJECT_DIR$/cpxy/android/app/src/main/res/drawable/ic_stop.xml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/android/app/src/main/res/layout/activity_main.xml" beforeDir="false" afterPath="$PROJECT_DIR$/cpxy/android/app/src/main/res/layout/activity_main.xml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/android/app/src/main/res/menu/main.xml" beforeDir="false" afterPath="$PROJECT_DIR$/cpxy/android/app/src/main/res/menu/main.xml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/android/app/src/main/res/menu/main_action.xml" beforeDir="false" afterPath="$PROJECT_DIR$/cpxy/android/app/src/main/res/menu/main_action.xml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/android/app/src/main/res/mipmap-anydpi-v26/ic_launcher.xml" beforeDir="false" afterPath="$PROJECT_DIR$/cpxy/android/app/src/main/res/mipmap-anydpi-v26/ic_launcher.xml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/android/app/src/main/res/mipmap-anydpi-v26/ic_launcher_round.xml" beforeDir="false" afterPath="$PROJECT_DIR$/cpxy/android/app/src/main/res/mipmap-anydpi-v26/ic_launcher_round.xml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/android/app/src/main/res/mipmap-hdpi/ic_launcher.webp" beforeDir="false" afterPath="$PROJECT_DIR$/cpxy/android/app/src/main/res/mipmap-hdpi/ic_launcher.webp" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/android/app/src/main/res/mipmap-hdpi/ic_launcher_round.webp" beforeDir="false" afterPath="$PROJECT_DIR$/cpxy/android/app/src/main/res/mipmap-hdpi/ic_launcher_round.webp" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/android/app/src/main/res/mipmap-mdpi/ic_launcher.webp" beforeDir="false" afterPath="$PROJECT_DIR$/cpxy/android/app/src/main/res/mipmap-mdpi/ic_launcher.webp" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/android/app/src/main/res/mipmap-mdpi/ic_launcher_round.webp" beforeDir="false" afterPath="$PROJECT_DIR$/cpxy/android/app/src/main/res/mipmap-mdpi/ic_launcher_round.webp" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/android/app/src/main/res/mipmap-xhdpi/ic_launcher.webp" beforeDir="false" afterPath="$PROJECT_DIR$/cpxy/android/app/src/main/res/mipmap-xhdpi/ic_launcher.webp" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/android/app/src/main/res/mipmap-xhdpi/ic_launcher_round.webp" beforeDir="false" afterPath="$PROJECT_DIR$/cpxy/android/app/src/main/res/mipmap-xhdpi/ic_launcher_round.webp" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/android/app/src/main/res/mipmap-xxhdpi/ic_launcher.webp" beforeDir="false" afterPath="$PROJECT_DIR$/cpxy/android/app/src/main/res/mipmap-xxhdpi/ic_launcher.webp" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/android/app/src/main/res/mipmap-xxhdpi/ic_launcher_round.webp" beforeDir="false" afterPath="$PROJECT_DIR$/cpxy/android/app/src/main/res/mipmap-xxhdpi/ic_launcher_round.webp" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/android/app/src/main/res/mipmap-xxxhdpi/ic_launcher.webp" beforeDir="false" afterPath="$PROJECT_DIR$/cpxy/android/app/src/main/res/mipmap-xxxhdpi/ic_launcher.webp" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/android/app/src/main/res/mipmap-xxxhdpi/ic_launcher_round.webp" beforeDir="false" afterPath="$PROJECT_DIR$/cpxy/android/app/src/main/res/mipmap-xxxhdpi/ic_launcher_round.webp" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/android/app/src/main/res/values-night/themes.xml" beforeDir="false" afterPath="$PROJECT_DIR$/cpxy/android/app/src/main/res/values-night/themes.xml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/android/app/src/main/res/values/colors.xml" beforeDir="false" afterPath="$PROJECT_DIR$/cpxy/android/app/src/main/res/values/colors.xml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/android/app/src/main/res/values/strings.xml" beforeDir="false" afterPath="$PROJECT_DIR$/cpxy/android/app/src/main/res/values/strings.xml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/android/app/src/main/res/values/themes.xml" beforeDir="false" afterPath="$PROJECT_DIR$/cpxy/android/app/src/main/res/values/themes.xml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/android/app/src/main/res/xml/network_security_config.xml" beforeDir="false" afterPath="$PROJECT_DIR$/cpxy/android/app/src/main/res/xml/network_security_config.xml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/android/build.gradle" beforeDir="false" afterPath="$PROJECT_DIR$/cpxy/android/build.gradle" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/android/etc/debug.keystore" beforeDir="false" afterPath="$PROJECT_DIR$/cpxy/android/etc/debug.keystore" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/android/gradle.properties" beforeDir="false" afterPath="$PROJECT_DIR$/cpxy/android/gradle.properties" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/android/gradle/wrapper/gradle-wrapper.jar" beforeDir="false" afterPath="$PROJECT_DIR$/cpxy/android/gradle/wrapper/gradle-wrapper.jar" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/android/gradle/wrapper/gradle-wrapper.properties" beforeDir="false" afterPath="$PROJECT_DIR$/cpxy/android/gradle/wrapper/gradle-wrapper.properties" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/android/gradlew" beforeDir="false" afterPath="$PROJECT_DIR$/cpxy/android/gradlew" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/android/gradlew.bat" beforeDir="false" afterPath="$PROJECT_DIR$/cpxy/android/gradlew.bat" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/android/settings.gradle" beforeDir="false" afterPath="$PROJECT_DIR$/cpxy/android/settings.gradle" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/devit.toml" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/fetcher/Cargo.lock" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/fetcher/Cargo.toml" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/fetcher/src/main.rs" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/fly.toml" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/rust-toolchain.toml" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/bench_client/mod.rs" beforeDir="false" afterPath="$PROJECT_DIR$/cpxy/src/bench_client/mod.rs" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/bin/cpxy.rs" beforeDir="false" afterPath="$PROJECT_DIR$/cpxy/src/bin/cpxy.rs" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/buf.rs" beforeDir="false" afterPath="$PROJECT_DIR$/cpxy/src/buf.rs" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/cipher/chacha20.rs" beforeDir="false" afterPath="$PROJECT_DIR$/cpxy/src/cipher/chacha20.rs" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/cipher/mod.rs" beforeDir="false" afterPath="$PROJECT_DIR$/cpxy/src/cipher/mod.rs" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/cipher/stream.rs" beforeDir="false" afterPath="$PROJECT_DIR$/cpxy/src/cipher/stream.rs" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/client/common.rs" beforeDir="false" afterPath="$PROJECT_DIR$/cpxy/src/client/common.rs" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/client/handler.rs" beforeDir="false" afterPath="$PROJECT_DIR$/cpxy/src/client/handler.rs" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/client/mod.rs" beforeDir="false" afterPath="$PROJECT_DIR$/cpxy/src/client/mod.rs" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/client/stats.rs" beforeDir="false" afterPath="$PROJECT_DIR$/cpxy/src/client/stats.rs" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/client/tcp.rs" beforeDir="false" afterPath="$PROJECT_DIR$/cpxy/src/client/tcp.rs" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/client/utils.rs" beforeDir="false" afterPath="$PROJECT_DIR$/cpxy/src/client/utils.rs" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/config.rs" beforeDir="false" afterPath="$PROJECT_DIR$/cpxy/src/config.rs" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/controller/api/get_stats.rs" beforeDir="false" afterPath="$PROJECT_DIR$/cpxy/src/controller/api/get_stats.rs" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/controller/api/mod.rs" beforeDir="false" afterPath="$PROJECT_DIR$/cpxy/src/controller/api/mod.rs" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/controller/fs_provider.rs" beforeDir="false" afterPath="$PROJECT_DIR$/cpxy/src/controller/fs_provider.rs" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/controller/mod.rs" beforeDir="false" afterPath="$PROJECT_DIR$/cpxy/src/controller/mod.rs" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/controller_old.rs" beforeDir="false" afterPath="$PROJECT_DIR$/cpxy/src/controller_old.rs" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/counter.rs" beforeDir="false" afterPath="$PROJECT_DIR$/cpxy/src/counter.rs" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/dns.rs" beforeDir="false" afterPath="$PROJECT_DIR$/cpxy/src/dns.rs" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/geoip/country_code.rs" beforeDir="false" afterPath="$PROJECT_DIR$/cpxy/src/geoip/country_code.rs" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/geoip/ipv4.dat" beforeDir="false" afterPath="$PROJECT_DIR$/cpxy/src/geoip/ipv4.dat" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/geoip/mod.rs" beforeDir="false" afterPath="$PROJECT_DIR$/cpxy/src/geoip/mod.rs" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/handshaker.rs" beforeDir="false" afterPath="$PROJECT_DIR$/cpxy/src/handshaker.rs" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/http/mod.rs" beforeDir="false" afterPath="$PROJECT_DIR$/cpxy/src/http/mod.rs" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/http/req.rs" beforeDir="false" afterPath="$PROJECT_DIR$/cpxy/src/http/req.rs" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/http/res.rs" beforeDir="false" afterPath="$PROJECT_DIR$/cpxy/src/http/res.rs" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/http/utils.rs" beforeDir="false" afterPath="$PROJECT_DIR$/cpxy/src/http/utils.rs" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/io/bytes_ref.rs" beforeDir="false" afterPath="$PROJECT_DIR$/cpxy/src/io/bytes_ref.rs" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/io/mod.rs" beforeDir="false" afterPath="$PROJECT_DIR$/cpxy/src/io/mod.rs" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/io/stream.rs" beforeDir="false" afterPath="$PROJECT_DIR$/cpxy/src/io/stream.rs" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/io/tcp.rs" beforeDir="false" afterPath="$PROJECT_DIR$/cpxy/src/io/tcp.rs" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/io/utils.rs" beforeDir="false" afterPath="$PROJECT_DIR$/cpxy/src/io/utils.rs" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/iptables.rs" beforeDir="false" afterPath="$PROJECT_DIR$/cpxy/src/iptables.rs" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/jni_export.rs" beforeDir="false" afterPath="$PROJECT_DIR$/cpxy/src/jni_export.rs" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/lib.rs" beforeDir="false" afterPath="$PROJECT_DIR$/cpxy/src/lib.rs" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/parse.rs" beforeDir="false" afterPath="$PROJECT_DIR$/cpxy/src/parse.rs" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/pattern.rs" beforeDir="false" afterPath="$PROJECT_DIR$/cpxy/src/pattern.rs" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/protocol/direct/mod.rs" beforeDir="false" afterPath="$PROJECT_DIR$/cpxy/src/protocol/direct/mod.rs" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/protocol/dynamic.rs" beforeDir="false" afterPath="$PROJECT_DIR$/cpxy/src/protocol/dynamic.rs" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/protocol/firetcp/cipher/mod.rs" beforeDir="false" afterPath="$PROJECT_DIR$/cpxy/src/protocol/firetcp/cipher/mod.rs" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/protocol/firetcp/cipher/read.rs" beforeDir="false" afterPath="$PROJECT_DIR$/cpxy/src/protocol/firetcp/cipher/read.rs" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/protocol/firetcp/cipher/test.rs" beforeDir="false" afterPath="$PROJECT_DIR$/cpxy/src/protocol/firetcp/cipher/test.rs" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/protocol/firetcp/cipher/write.rs" beforeDir="false" afterPath="$PROJECT_DIR$/cpxy/src/protocol/firetcp/cipher/write.rs" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/protocol/firetcp/mod.rs" beforeDir="false" afterPath="$PROJECT_DIR$/cpxy/src/protocol/firetcp/mod.rs" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/protocol/firetcp/proto.rs" beforeDir="false" afterPath="$PROJECT_DIR$/cpxy/src/protocol/firetcp/proto.rs" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/protocol/firetcp/pw.rs" beforeDir="false" afterPath="$PROJECT_DIR$/cpxy/src/protocol/firetcp/pw.rs" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/protocol/firetcp/server.rs" beforeDir="false" afterPath="$PROJECT_DIR$/cpxy/src/protocol/firetcp/server.rs" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/protocol/http/mod.rs" beforeDir="false" afterPath="$PROJECT_DIR$/cpxy/src/protocol/http/mod.rs" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/protocol/mod.rs" beforeDir="false" afterPath="$PROJECT_DIR$/cpxy/src/protocol/mod.rs" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/protocol/socks5/mod.rs" beforeDir="false" afterPath="$PROJECT_DIR$/cpxy/src/protocol/socks5/mod.rs" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/protocol/stream.rs" beforeDir="false" afterPath="$PROJECT_DIR$/cpxy/src/protocol/stream.rs" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/protocol/tcpman/crypto.rs" beforeDir="false" afterPath="$PROJECT_DIR$/cpxy/src/protocol/tcpman/crypto.rs" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/protocol/tcpman/mod.rs" beforeDir="false" afterPath="$PROJECT_DIR$/cpxy/src/protocol/tcpman/mod.rs" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/protocol/tcpman/params.rs" beforeDir="false" afterPath="$PROJECT_DIR$/cpxy/src/protocol/tcpman/params.rs" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/protocol/tcpman/server.rs" beforeDir="false" afterPath="$PROJECT_DIR$/cpxy/src/protocol/tcpman/server.rs" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/protocol/tcpman_old/cipher/client.rs" beforeDir="false" afterPath="$PROJECT_DIR$/cpxy/src/protocol/tcpman_old/cipher/client.rs" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/protocol/tcpman_old/cipher/mod.rs" beforeDir="false" afterPath="$PROJECT_DIR$/cpxy/src/protocol/tcpman_old/cipher/mod.rs" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/protocol/tcpman_old/cipher/partial.rs" beforeDir="false" afterPath="$PROJECT_DIR$/cpxy/src/protocol/tcpman_old/cipher/partial.rs" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/protocol/tcpman_old/cipher/server.rs" beforeDir="false" afterPath="$PROJECT_DIR$/cpxy/src/protocol/tcpman_old/cipher/server.rs" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/protocol/tcpman_old/cipher/strategy.rs" beforeDir="false" afterPath="$PROJECT_DIR$/cpxy/src/protocol/tcpman_old/cipher/strategy.rs" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/protocol/tcpman_old/cipher/stream.rs" beforeDir="false" afterPath="$PROJECT_DIR$/cpxy/src/protocol/tcpman_old/cipher/stream.rs" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/protocol/tcpman_old/cipher/suite.rs" beforeDir="false" afterPath="$PROJECT_DIR$/cpxy/src/protocol/tcpman_old/cipher/suite.rs" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/protocol/tcpman_old/mod.rs" beforeDir="false" afterPath="$PROJECT_DIR$/cpxy/src/protocol/tcpman_old/mod.rs" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/protocol/tcpman_old/proto.rs" beforeDir="false" afterPath="$PROJECT_DIR$/cpxy/src/protocol/tcpman_old/proto.rs" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/protocol/tcpman_old/server/handler.rs" beforeDir="false" afterPath="$PROJECT_DIR$/cpxy/src/protocol/tcpman_old/server/handler.rs" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/protocol/tcpman_old/server/mod.rs" beforeDir="false" afterPath="$PROJECT_DIR$/cpxy/src/protocol/tcpman_old/server/mod.rs" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/protocol/test.rs" beforeDir="false" afterPath="$PROJECT_DIR$/cpxy/src/protocol/test.rs" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/rule.rs" beforeDir="false" afterPath="$PROJECT_DIR$/cpxy/src/rule.rs" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/sni.rs" beforeDir="false" afterPath="$PROJECT_DIR$/cpxy/src/sni.rs" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/socks4.rs" beforeDir="false" afterPath="$PROJECT_DIR$/cpxy/src/socks4.rs" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/socks5/addr.rs" beforeDir="false" afterPath="$PROJECT_DIR$/cpxy/src/socks5/addr.rs" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/socks5/greeting.rs" beforeDir="false" afterPath="$PROJECT_DIR$/cpxy/src/socks5/greeting.rs" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/socks5/mod.rs" beforeDir="false" afterPath="$PROJECT_DIR$/cpxy/src/socks5/mod.rs" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/socks5/req.rs" beforeDir="false" afterPath="$PROJECT_DIR$/cpxy/src/socks5/req.rs" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/test/http.rs" beforeDir="false" afterPath="$PROJECT_DIR$/cpxy/src/test/http.rs" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/test/mod.rs" beforeDir="false" afterPath="$PROJECT_DIR$/cpxy/src/test/mod.rs" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/test/raw_tls_packet.bin" beforeDir="false" afterPath="$PROJECT_DIR$/cpxy/src/test/raw_tls_packet.bin" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/test/tcp_socks5.rs" beforeDir="false" afterPath="$PROJECT_DIR$/cpxy/src/test/tcp_socks5.rs" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/tls.rs" beforeDir="false" afterPath="$PROJECT_DIR$/cpxy/src/tls.rs" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/utils.rs" beforeDir="false" afterPath="$PROJECT_DIR$/cpxy/src/utils.rs" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/web/.gitignore" beforeDir="false" afterPath="$PROJECT_DIR$/cpxy/web/.gitignore" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/web/README.md" beforeDir="false" afterPath="$PROJECT_DIR$/cpxy/web/README.md" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/web/package.json" beforeDir="false" afterPath="$PROJECT_DIR$/cpxy/web/package.json" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/web/public/favicon.ico" beforeDir="false" afterPath="$PROJECT_DIR$/cpxy/web/public/favicon.ico" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/web/public/index.html" beforeDir="false" afterPath="$PROJECT_DIR$/cpxy/web/public/index.html" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/web/public/logo192.png" beforeDir="false" afterPath="$PROJECT_DIR$/cpxy/web/public/logo192.png" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/web/public/logo512.png" beforeDir="false" afterPath="$PROJECT_DIR$/cpxy/web/public/logo512.png" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/web/public/manifest.json" beforeDir="false" afterPath="$PROJECT_DIR$/cpxy/web/public/manifest.json" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/web/public/robots.txt" beforeDir="false" afterPath="$PROJECT_DIR$/cpxy/web/public/robots.txt" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/web/src/App.css" beforeDir="false" afterPath="$PROJECT_DIR$/cpxy/web/src/App.css" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/web/src/App.test.tsx" beforeDir="false" afterPath="$PROJECT_DIR$/cpxy/web/src/App.test.tsx" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/web/src/App.tsx" beforeDir="false" afterPath="$PROJECT_DIR$/cpxy/web/src/App.tsx" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/web/src/BasicSettingsEdit.tsx" beforeDir="false" afterPath="$PROJECT_DIR$/cpxy/web/src/BasicSettingsEdit.tsx" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/web/src/UpstreamEdit.tsx" beforeDir="false" afterPath="$PROJECT_DIR$/cpxy/web/src/UpstreamEdit.tsx" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/web/src/UpstreamList.tsx" beforeDir="false" afterPath="$PROJECT_DIR$/cpxy/web/src/UpstreamList.tsx" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/web/src/config.ts" beforeDir="false" afterPath="$PROJECT_DIR$/cpxy/web/src/config.ts" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/web/src/index.css" beforeDir="false" afterPath="$PROJECT_DIR$/cpxy/web/src/index.css" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/web/src/index.tsx" beforeDir="false" afterPath="$PROJECT_DIR$/cpxy/web/src/index.tsx" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/web/src/logo.svg" beforeDir="false" afterPath="$PROJECT_DIR$/cpxy/web/src/logo.svg" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/web/src/models.ts" beforeDir="false" afterPath="$PROJECT_DIR$/cpxy/web/src/models.ts" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/web/src/react-app-env.d.ts" beforeDir="false" afterPath="$PROJECT_DIR$/cpxy/web/src/react-app-env.d.ts" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/web/src/reportWebVitals.ts" beforeDir="false" afterPath="$PROJECT_DIR$/cpxy/web/src/reportWebVitals.ts" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/web/src/setupTests.ts" beforeDir="false" afterPath="$PROJECT_DIR$/cpxy/web/src/setupTests.ts" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/web/src/useEditState.ts" beforeDir="false" afterPath="$PROJECT_DIR$/cpxy/web/src/useEditState.ts" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/web/src/useHttp.ts" beforeDir="false" afterPath="$PROJECT_DIR$/cpxy/web/src/useHttp.ts" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/web/src/useSnackbar.tsx" beforeDir="false" afterPath="$PROJECT_DIR$/cpxy/web/src/useSnackbar.tsx" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/web/tsconfig.json" beforeDir="false" afterPath="$PROJECT_DIR$/cpxy/web/tsconfig.json" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/web/yarn.lock" beforeDir="false" afterPath="$PROJECT_DIR$/cpxy/web/yarn.lock" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -55,6 +207,7 @@
   </component>
   <component name="HighlightingSettingsPerFile">
     <setting file="file://$USER_HOME$/.cargo/registry/src/github.com-1ecc6299db9ec823/http-0.2.9/src/method.rs" root0="SKIP_INSPECTION" />
+    <setting file="file://$USER_HOME$/.cargo/registry/src/github.com-1ecc6299db9ec823/http-0.2.9/src/uri/scheme.rs" root0="SKIP_INSPECTION" />
     <setting file="file://$USER_HOME$/.cargo/registry/src/github.com-1ecc6299db9ec823/httparse-1.8.0/src/lib.rs" root0="SKIP_INSPECTION" />
     <setting file="file://$USER_HOME$/.cargo/registry/src/github.com-1ecc6299db9ec823/tokio-1.28.2/src/io/util/buf_reader.rs" root0="SKIP_INSPECTION" />
     <setting file="file://$USER_HOME$/.cargo/registry/src/github.com-1ecc6299db9ec823/tokio-util-0.7.8/src/codec/encoder.rs" root0="SKIP_INSPECTION" />
@@ -77,21 +230,22 @@
     <option name="hideEmptyMiddlePackages" value="true" />
     <option name="showLibraryContents" value="true" />
   </component>
-  <component name="PropertiesComponent">{
-  &quot;keyToString&quot;: {
-    &quot;Git.Branch.Popup.ShowAllRemotes&quot;: &quot;true&quot;,
-    &quot;RunOnceActivity.OpenProjectViewOnStart&quot;: &quot;true&quot;,
-    &quot;RunOnceActivity.ShowReadmeOnStart&quot;: &quot;true&quot;,
-    &quot;WebServerToolWindowFactoryState&quot;: &quot;false&quot;,
-    &quot;dart.analysis.tool.window.visible&quot;: &quot;false&quot;,
-    &quot;git-widget-placeholder&quot;: &quot;tokio&quot;,
-    &quot;last_opened_file_path&quot;: &quot;/home/fanchao/Projects/kogan-android-intellij&quot;,
-    &quot;nodejs_package_manager_path&quot;: &quot;yarn&quot;,
-    &quot;org.rust.cargo.project.model.PROJECT_DISCOVERY&quot;: &quot;true&quot;,
-    &quot;settings.editor.selected.configurable&quot;: &quot;preferences.pluginManager&quot;,
-    &quot;show.migrate.to.gradle.popup&quot;: &quot;false&quot;
+  <component name="PropertiesComponent"><![CDATA[{
+  "keyToString": {
+    "ASKED_ADD_EXTERNAL_FILES": "true",
+    "Git.Branch.Popup.ShowAllRemotes": "true",
+    "RunOnceActivity.OpenProjectViewOnStart": "true",
+    "RunOnceActivity.ShowReadmeOnStart": "true",
+    "WebServerToolWindowFactoryState": "false",
+    "dart.analysis.tool.window.visible": "false",
+    "git-widget-placeholder": "tokio",
+    "last_opened_file_path": "/home/fanchao/Projects/kogan-android-intellij",
+    "nodejs_package_manager_path": "yarn",
+    "org.rust.cargo.project.model.PROJECT_DISCOVERY": "true",
+    "settings.editor.selected.configurable": "preferences.pluginManager",
+    "show.migrate.to.gradle.popup": "false"
   }
-}</component>
+}]]></component>
   <component name="RecentsManager">
     <key name="CopyFile.RECENT_KEYS">
       <recent name="$PROJECT_DIR$/src/http" />
@@ -372,7 +526,15 @@
       <option name="project" value="LOCAL" />
       <updated>1688052611966</updated>
     </task>
-    <option name="localTasksCounter" value="16" />
+    <task id="LOCAL-00016" summary="Comment out">
+      <option name="closed" value="true" />
+      <created>1688117048262</created>
+      <option name="number" value="00016" />
+      <option name="presentableId" value="LOCAL-00016" />
+      <option name="project" value="LOCAL" />
+      <updated>1688117048262</updated>
+    </task>
+    <option name="localTasksCounter" value="17" />
     <servers />
   </component>
   <component name="TypeScriptGeneratedFilesManager">
@@ -403,7 +565,8 @@
     <MESSAGE value="cipher" />
     <MESSAGE value="Stream" />
     <MESSAGE value="Tidy up" />
-    <option name="LAST_COMMIT_MESSAGE" value="Tidy up" />
+    <MESSAGE value="Comment out" />
+    <option name="LAST_COMMIT_MESSAGE" value="Comment out" />
   </component>
   <component name="XSLT-Support.FileAssociations.UIState">
     <expand />

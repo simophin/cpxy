@@ -1,6 +1,4 @@
 target
-android/app/src/main/jniLibs
-#/app/src/geoip/*.dat
-#/app/src/abp/*.dat
+cpxy/android/app/src/main/jniLibs
 .idea
 /.devit-state

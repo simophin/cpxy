@@ -1,12 +1,14 @@
 use anyhow::Context;
 use async_shutdown::Shutdown;
 use clap::{Parser, Subcommand};
-use cpxy::controller::run_controller;
-use cpxy::controller_config::fs::FileConfigProvider;
+use std::future::Future;
+// use cpxy::controller::run_controller;
+// use cpxy::controller_config::fs::FileConfigProvider;
 use cpxy::io::bind_tcp;
-use cpxy::protocol::{firetcp, tcpman};
+use cpxy::protocol::tcpman;
 use cpxy::socks5::Address;
-use futures::Future;
+// use futures::Future;
+use cpxy::protocol::tcpman::Tcpman;
 use std::net::{IpAddr, SocketAddr};
 use std::path::Path;
 use tokio::net::TcpListener;
@@ -92,30 +94,38 @@ async fn main() -> anyhow::Result<()> {
             firetcp_port,
         } => {
             if let Some(port) = tcpman_port {
+                let tcpman_password = std::env::var("TCPMAN_PASSWORD")
+                    .context("Tcpman password must be given via env TCPMAN_PASSWORD")?;
+
+                let tcpman_key =
+                    Tcpman::derive_key(&tcpman_password).context("deriving key from password")?;
+
                 start_serving_tcp(
                     shutdown.clone(),
                     "tcpman".to_string(),
                     host,
                     port,
-                    tcpman::server::run_server,
-                )
-                .await?;
-            }
-
-            if let Some(port) = firetcp_port {
-                let password = std::env::var("FIRETCP_PASSWORD")
-                    .context("Firetcp password must be given via env FIRETCP_PASSWORD")?;
-                start_serving_tcp(
-                    shutdown.clone(),
-                    "firetcp".to_string(),
-                    host,
-                    port,
-                    move |shutdown, listener| async {
-                        firetcp::server::run_server(shutdown, listener, password.into()).await
+                    move |shutdown, listener| {
+                        tcpman::server::run_tcpman_server(shutdown, tcpman_key, listener)
                     },
                 )
                 .await?;
             }
+
+            // if let Some(port) = firetcp_port {
+            //     let password = std::env::var("FIRETCP_PASSWORD")
+            //         .context("Firetcp password must be given via env FIRETCP_PASSWORD")?;
+            //     start_serving_tcp(
+            //         shutdown.clone(),
+            //         "firetcp".to_string(),
+            //         host,
+            //         port,
+            //         move |shutdown, listener| async {
+            //             firetcp::server::run_server(shutdown, listener, password.into()).await
+            //         },
+            //     )
+            //     .await?;
+            // }
 
             let _ = ctrl_c().await;
             shutdown.shutdown();
@@ -131,17 +141,19 @@ async fn main() -> anyhow::Result<()> {
             let addr = SocketAddr::new(controller_host, controller_port);
             log::info!("Start controller at {addr}");
 
-            let (provider, receiver) =
-                FileConfigProvider::new(Path::new(&config).to_path_buf()).await?;
+            todo!()
 
-            run_controller(
-                bind_tcp(&Address::IP(addr))
-                    .await
-                    .context("Binding controller socket")?,
-                receiver,
-                Box::new(provider),
-            )
-            .await
+            // let (provider, receiver) =
+            //     FileConfigProvider::new(Path::new(&config).to_path_buf()).await?;
+            //
+            // run_controller(
+            //     bind_tcp(&Address::IP(addr))
+            //         .await
+            //         .context("Binding controller socket")?,
+            //     receiver,
+            //     Box::new(provider),
+            // )
+            // .await
         }
     }
 }
