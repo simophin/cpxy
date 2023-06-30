@@ -1,25 +1,23 @@
-use std::{sync::Arc, task::Poll};
-
-use tokio::io::{AsyncRead, AsyncWrite, ReadBuf};
-
-use crate::counter::Counter;
-use pin_project_lite::pin_project;
-
 #[cfg(unix)]
 use std::os::unix::prelude::AsRawFd;
+use std::task::Poll;
+
+use pin_project_lite::pin_project;
+use tokio::io::{AsyncRead, AsyncWrite, ReadBuf};
+
+use crate::protocol::BoxProtocolReporter;
 
 pin_project! {
     pub struct CounterStream<S> {
         #[pin]
         stream: S,
-        rx: Arc<Counter>,
-        tx: Arc<Counter>,
+        reporter: BoxProtocolReporter,
     }
 }
 
 impl<S> CounterStream<S> {
-    pub fn new(stream: S, rx: Arc<Counter>, tx: Arc<Counter>) -> Self {
-        Self { stream, rx, tx }
+    pub fn new(stream: S, reporter: BoxProtocolReporter) -> Self {
+        Self { stream, reporter }
     }
 }
 
@@ -34,7 +32,7 @@ impl<S: AsyncRead> AsyncRead for CounterStream<S> {
         let old_remaining = buf.remaining();
         let result = this.stream.poll_read(cx, buf);
         if matches!(result, Poll::Ready(Ok(()))) {
-            this.rx.inc(buf.remaining() - old_remaining);
+            this.reporter.inc_rx(buf.remaining() - old_remaining);
         }
         result
     }
@@ -50,7 +48,7 @@ impl<S: AsyncWrite> AsyncWrite for CounterStream<S> {
         let this = self.project();
         let rc = this.stream.poll_write(cx, buf);
         if let Poll::Ready(Ok(len)) = &rc {
-            this.tx.inc(*len);
+            this.reporter.inc_tx(*len);
         }
         rc
     }
@@ -80,7 +78,7 @@ impl<S: AsyncWrite> AsyncWrite for CounterStream<S> {
         let this = self.project();
         let rc = this.stream.poll_write_vectored(cx, bufs);
         if let Poll::Ready(Ok(len)) = &rc {
-            this.tx.inc(*len);
+            this.reporter.inc_tx(*len);
         }
         rc
     }

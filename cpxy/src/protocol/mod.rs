@@ -5,7 +5,6 @@ use bytes::Bytes;
 use serde::{Deserialize, Serialize};
 use tokio::io::{AsyncRead, AsyncWrite};
 
-use crate::counter::Counter;
 use crate::socks5::Address;
 
 pub mod direct;
@@ -15,16 +14,13 @@ pub mod socks5;
 // pub mod tcpman;
 
 mod dynamic;
+mod reporter;
 mod stream;
 pub mod tcpman;
 #[cfg(test)]
 mod test;
 
-#[derive(Default)]
-pub struct Stats {
-    pub tx: Arc<Counter>,
-    pub rx: Arc<Counter>,
-}
+pub type BoxProtocolReporter = Arc<ProtocolReporter>;
 
 #[derive(Deserialize, Serialize, Debug, Clone)]
 pub struct ProxyRequest {
@@ -48,10 +44,11 @@ pub trait Protocol {
     async fn new_stream(
         &self,
         req: &ProxyRequest,
-        stats: &Stats,
+        reporter: &BoxProtocolReporter,
         fwmark: Option<u32>,
     ) -> anyhow::Result<Self::Stream>;
 }
 
 pub use dynamic::*;
+pub use reporter::*;
 pub use stream::*;

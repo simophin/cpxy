@@ -1,5 +1,5 @@
 mod buf;
-// mod client;
+mod client;
 mod counter;
 mod dns;
 mod iptables;

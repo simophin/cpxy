@@ -514,9 +514,6 @@ mod tests {
             )
             .unwrap();
 
-        assert_eq!(
-            action,
-            Some(RuleExecutionResult::ProxyGroup("group".into()))
-        );
+        assert_eq!(action, Some(RuleExecutionResult::Reject));
     }
 }

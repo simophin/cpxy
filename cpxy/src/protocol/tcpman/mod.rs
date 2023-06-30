@@ -6,9 +6,9 @@ use crate::cipher::chacha20::ChaCha20;
 use crate::cipher::stream::{CipherState, CipherStream};
 use crate::http::parse_response;
 use crate::http::utils::WithHeaders;
-use crate::io::{connect_tcp_marked, CounterStream};
+use crate::io::{connect_tcp_marked, time_future, CounterStream};
 use crate::protocol::tcpman::params::ConnectionParameters;
-use crate::protocol::{ProxyRequest, Stats};
+use crate::protocol::{BoxProtocolReporter, ProxyRequest};
 use crate::socks5::Address;
 use crate::tls::TlsStream;
 use anyhow::{bail, Context};
@@ -52,24 +52,28 @@ impl super::Protocol for Tcpman {
     async fn new_stream(
         &self,
         req: &ProxyRequest,
-        stats: &Stats,
+        reporter: &BoxProtocolReporter,
         fwmark: Option<u32>,
     ) -> anyhow::Result<Self::Stream> {
-        let upstream = CounterStream::new(
-            connect_tcp_marked(&self.address, fwmark)
-                .await
-                .context("connecting to upstream")?,
-            stats.rx.clone(),
-            stats.tx.clone(),
-        );
+        let (upstream, tcp_delay) = time_future(connect_tcp_marked(&self.address, fwmark))
+            .await
+            .context("connecting to upstream")?;
+
+        let upstream = CounterStream::new(upstream, reporter.clone());
 
         // Connect to TLS
-        let mut stream = if self.tls {
-            TlsStream::connect_tls(self.address.get_host().as_ref(), upstream).await
+        let (mut stream, tls_delay) = if self.tls {
+            time_future(TlsStream::connect_tls(
+                self.address.get_host().as_ref(),
+                upstream,
+            ))
+            .await
         } else {
-            TlsStream::connect_plain(upstream).await
+            time_future(TlsStream::connect_plain(upstream)).await
         }
         .context("connecting to TLS")?;
+
+        reporter.report_delay(tcp_delay + tls_delay);
 
         // Determine connection parameters
         let params = ConnectionParameters::create_for_request(req);

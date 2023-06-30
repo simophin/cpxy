@@ -5,14 +5,15 @@ use tokio::io::{AsyncWriteExt, BufReader};
 use tokio::net::TcpStream;
 
 use crate::http::parse_response;
-use crate::protocol::ProxyRequest;
+use crate::protocol::{BoxProtocolReporter, ProxyRequest};
 use crate::tls::TlsStream;
 use crate::{
     io::{connect_tcp_marked, CounterStream},
     socks5::Address,
 };
 
-use super::{Protocol, Stats};
+use super::Protocol;
+use crate::io::time_future;
 use std::io::Write;
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -29,16 +30,15 @@ impl Protocol for HttpProxy {
     async fn new_stream(
         &self,
         req: &ProxyRequest,
-        stats: &Stats,
+        reporter: &BoxProtocolReporter,
         fwmark: Option<u32>,
     ) -> anyhow::Result<Self::Stream> {
-        let mut upstream = CounterStream::new(
-            connect_tcp_marked(&self.address, fwmark)
-                .await
-                .context("Connecting to HTTP Proxy")?,
-            stats.rx.clone(),
-            stats.tx.clone(),
-        );
+        let (upstream, delay) = time_future(connect_tcp_marked(&self.address, fwmark))
+            .await
+            .context("Connecting to HTTP Proxy")?;
+        reporter.report_delay(delay);
+
+        let mut upstream = CounterStream::new(upstream, reporter.clone());
 
         // Establish HTTP tunnel
         let mut request = Vec::new();

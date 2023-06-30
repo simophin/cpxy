@@ -2,7 +2,7 @@ use super::direct;
 use super::http;
 use super::socks5;
 use super::stream::ProtocolStream;
-use crate::protocol::{tcpman, Protocol, ProxyRequest, Stats};
+use crate::protocol::{tcpman, BoxProtocolReporter, Protocol, ProxyRequest};
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 
@@ -29,27 +29,27 @@ impl Protocol for DynamicProtocol {
     async fn new_stream(
         &self,
         req: &ProxyRequest,
-        stats: &Stats,
+        reporter: &BoxProtocolReporter,
         fwmark: Option<u32>,
     ) -> anyhow::Result<Self::Stream> {
         match self {
             DynamicProtocol::Direct(s) => s
-                .new_stream(req, stats, fwmark)
+                .new_stream(req, reporter, fwmark)
                 .await
                 .map(ProtocolStream::Direct),
 
             DynamicProtocol::Http(s) => s
-                .new_stream(req, stats, fwmark)
+                .new_stream(req, reporter, fwmark)
                 .await
                 .map(ProtocolStream::Http),
 
             DynamicProtocol::Socks5(s) => s
-                .new_stream(req, stats, fwmark)
+                .new_stream(req, reporter, fwmark)
                 .await
                 .map(ProtocolStream::Socks5),
 
             DynamicProtocol::Tcpman(s) => s
-                .new_stream(req, stats, fwmark)
+                .new_stream(req, reporter, fwmark)
                 .await
                 .map(ProtocolStream::Tcpman),
         }

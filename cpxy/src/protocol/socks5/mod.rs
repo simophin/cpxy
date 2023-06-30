@@ -5,7 +5,8 @@ use smallvec::smallvec;
 use tokio::io::{AsyncRead, AsyncWrite, AsyncWriteExt};
 use tokio::net::TcpStream;
 
-use crate::protocol::ProxyRequest;
+use crate::io::time_future;
+use crate::protocol::{BoxProtocolReporter, ProxyRequest};
 use crate::tls::TlsStream;
 use crate::{
     io::{connect_tcp_marked, CounterStream},
@@ -14,7 +15,7 @@ use crate::{
     },
 };
 
-use super::{Protocol, Stats};
+use super::Protocol;
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Socks5 {
@@ -67,12 +68,14 @@ impl Protocol for Socks5 {
     async fn new_stream(
         &self,
         req: &ProxyRequest,
-        stats: &Stats,
+        reporter: &BoxProtocolReporter,
         fwmark: Option<u32>,
     ) -> anyhow::Result<Self::Stream> {
-        let mut upstream = connect_tcp_marked(&self.address, fwmark)
+        let (mut upstream, delay) = time_future(connect_tcp_marked(&self.address, fwmark))
             .await
             .context("Connecting to SOCKS sever")?;
+
+        reporter.report_delay(delay);
 
         let _ = request_socks5(
             &mut upstream,
@@ -88,7 +91,7 @@ impl Protocol for Socks5 {
             .await
             .context("Connecting to upstream")?;
 
-        let mut upstream = CounterStream::new(upstream, stats.rx.clone(), stats.tx.clone());
+        let mut upstream = CounterStream::new(upstream, reporter.clone());
         match &req.initial_data {
             Some(b) if b.len() > 0 => upstream
                 .write_all(b)
