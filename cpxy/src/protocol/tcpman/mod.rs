@@ -55,23 +55,18 @@ impl super::Protocol for Tcpman {
         reporter: &BoxProtocolReporter,
         fwmark: Option<u32>,
     ) -> anyhow::Result<Self::Stream> {
-        let (upstream, tcp_delay) = time_future(connect_tcp_marked(&self.address, fwmark))
+        let (stream, tcp_delay) = time_future(connect_tcp_marked(&self.address, fwmark))
             .await
             .context("connecting to upstream")?;
 
-        let upstream = CounterStream::new(upstream, reporter.clone());
+        let stream = CounterStream::new(stream, reporter.clone());
 
         // Connect to TLS
         let (mut stream, tls_delay) = if self.tls {
-            time_future(TlsStream::connect_tls(
-                self.address.get_host().as_ref(),
-                upstream,
-            ))
-            .await
+            time_future(TlsStream::connect_tls(self.address.get_host(), stream)).await?
         } else {
-            time_future(TlsStream::connect_plain(upstream)).await
-        }
-        .context("connecting to TLS")?;
+            time_future(TlsStream::connect_plain(stream)).await?
+        };
 
         reporter.report_delay(tcp_delay + tls_delay);
 

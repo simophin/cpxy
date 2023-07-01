@@ -11,13 +11,13 @@ pub enum TlsStream<S> {
 }
 
 impl<S: AsyncRead + AsyncWrite + Unpin> TlsStream<S> {
-    pub async fn connect_tls(domain: &str, stream: S) -> anyhow::Result<Self> {
+    pub async fn connect_tls(domain: impl AsRef<str>, stream: S) -> anyhow::Result<Self> {
         let connector = tokio_native_tls::TlsConnector::from(
             tokio_native_tls::native_tls::TlsConnector::builder()
                 .build()
                 .context("build tls connector")?,
         );
-        let stream = connector.connect(domain, stream).await?;
+        let stream = connector.connect(domain.as_ref(), stream).await?;
         Ok(Self::Tls(stream))
     }
 

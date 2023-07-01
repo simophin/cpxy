@@ -25,7 +25,7 @@ pub struct HttpProxy {
 
 #[async_trait]
 impl Protocol for HttpProxy {
-    type Stream = TlsStream<BufReader<CounterStream<TcpStream>>>;
+    type Stream = BufReader<TlsStream<CounterStream<TcpStream>>>;
 
     async fn new_stream(
         &self,
@@ -38,7 +38,15 @@ impl Protocol for HttpProxy {
             .context("Connecting to HTTP Proxy")?;
         reporter.report_delay(delay);
 
-        let mut upstream = CounterStream::new(upstream, reporter.clone());
+        let upstream = CounterStream::new(upstream, reporter.clone());
+
+        // Establish TLS if required
+        let mut upstream = if self.ssl {
+            TlsStream::connect_tls(self.address.get_host(), upstream).await
+        } else {
+            TlsStream::connect_plain(upstream).await
+        }
+        .context("Connecting to TLS")?;
 
         // Establish HTTP tunnel
         let mut request = Vec::new();
@@ -67,14 +75,6 @@ impl Protocol for HttpProxy {
             Ok(())
         })
         .await?;
-
-        // Establish TLS if required
-        let upstream = if self.ssl {
-            TlsStream::connect_tls(host.as_ref(), upstream).await
-        } else {
-            TlsStream::connect_plain(upstream).await
-        }
-        .context("Connecting to TLS")?;
 
         Ok(upstream)
     }

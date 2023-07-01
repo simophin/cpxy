@@ -8,10 +8,8 @@ use tokio::io::{AsyncRead, AsyncWrite};
 use crate::socks5::Address;
 
 pub mod direct;
-// pub mod firetcp;
 pub mod http;
 pub mod socks5;
-// pub mod tcpman;
 
 mod dynamic;
 mod reporter;

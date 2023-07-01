@@ -6,6 +6,7 @@ use tokio::net::{TcpListener, TcpStream};
 use tokio::time::timeout;
 
 use crate::socks5::Address;
+use crate::tls::TlsStream;
 
 use super::AsRawFdExt;
 

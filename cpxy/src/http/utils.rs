@@ -1,3 +1,4 @@
+use anyhow::bail;
 use httparse::Header;
 
 pub trait WithHeaders {
@@ -13,6 +14,16 @@ pub trait WithHeaders {
     fn get_header_text(&self, name: &str) -> Option<&str> {
         self.get_header(name)
             .and_then(|v| std::str::from_utf8(v).ok())
+    }
+
+    fn check_header_value(&self, name: &str, expect: impl AsRef<str>) -> anyhow::Result<()> {
+        match self.get_header_text(name) {
+            Some(actual) if actual.eq_ignore_ascii_case(expect.as_ref()) => Ok(()),
+            actual => bail!(
+                "Expect Header {name} to be {} but got '{actual:?}'",
+                expect.as_ref()
+            ),
+        }
     }
 }
 

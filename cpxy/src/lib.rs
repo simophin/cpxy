@@ -26,3 +26,4 @@ mod geoip;
 // mod handshaker;
 mod http;
 mod tls;
+mod ws;
