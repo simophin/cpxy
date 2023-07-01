@@ -7,6 +7,7 @@ use crate::http::utils::WithHeaders;
 use crate::io::connect_tcp;
 use crate::protocol::ProxyRequest;
 use crate::tls::TlsStream;
+use crate::ws;
 use anyhow::{bail, Context};
 use async_shutdown::Shutdown;
 use bytes::{Bytes, BytesMut};
@@ -113,7 +114,7 @@ async fn execute_proxy_request(
 
 async fn parse_tcpman_request(
     key: &SecretKey,
-    mut conn: &mut BufReader<TcpStream>,
+    mut conn: BufReader<TcpStream>,
 ) -> anyhow::Result<(CipherState<ChaCha20>, CipherState<ChaCha20>, ProxyRequest)> {
     parse_request(&mut conn, |req| {
         // Check for ws upgrade

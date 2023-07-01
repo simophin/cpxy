@@ -4,14 +4,14 @@ pub mod server;
 
 use crate::cipher::chacha20::ChaCha20;
 use crate::cipher::stream::{CipherState, CipherStream};
-use crate::http::parse_response;
 use crate::http::utils::WithHeaders;
 use crate::io::{connect_tcp_marked, time_future, CounterStream};
 use crate::protocol::tcpman::params::ConnectionParameters;
 use crate::protocol::{BoxProtocolReporter, ProxyRequest};
 use crate::socks5::Address;
 use crate::tls::TlsStream;
-use anyhow::{bail, Context};
+use crate::ws;
+use anyhow::Context;
 use async_trait::async_trait;
 use bytes::{Bytes, BytesMut};
 use once_cell::sync::OnceCell;
@@ -62,7 +62,7 @@ impl super::Protocol for Tcpman {
         let stream = CounterStream::new(stream, reporter.clone());
 
         // Connect to TLS
-        let (mut stream, tls_delay) = if self.tls {
+        let (stream, tls_delay) = if self.tls {
             time_future(TlsStream::connect_tls(self.address.get_host(), stream)).await?
         } else {
             time_future(TlsStream::connect_plain(stream)).await?
@@ -86,37 +86,30 @@ impl super::Protocol for Tcpman {
             .encrypt_to_path(self.key())
             .context("encrypting connection params")?;
 
-        // Construct a Websocket request
-        let mut req = BytesMut::new();
-        write!(req, "GET {path} HTTP/1.1\r\n")?;
-        write!(req, "Host: {}\r\n", self.address.get_host())?;
-        write!(req, "Connection: Upgrade\r\n")?;
-        write!(req, "Upgrade: websocket\r\n")?;
-        if let Some(data) = encrypted_initial_data {
-            write!(req, "If-None-Match: {data}\r\n")?;
-        }
-        write!(req, "\r\n")?;
-
-        stream.write_all(&req).await.context("Writing request")?;
-
         let mut stream = BufReader::new(stream);
 
-        // Wait for protocol switch
-        let plaintext_initial_reply = parse_response(&mut stream, |res| {
-            if res.code != Some(101) {
-                bail!("Expecting protocol switch status but got: {:?}", res.code);
-            }
-
-            if let Some(data) = res.get_header("ETag") {
-                Ok(Some(Bytes::from(
-                    crypto::decrypt_initial_data(&mut recv_cipher_state, &data)
-                        .context("decrypting initial data")?,
-                )))
-            } else {
-                Ok(None)
-            }
-        })
-        .await?;
+        let plaintext_initial_reply = ws::client::connect(
+            &mut stream,
+            path,
+            self.address.get_host(),
+            Some(move |req: &mut BytesMut| {
+                if let Some(data) = encrypted_initial_data {
+                    write!(req, "If-None-Match: {data}\r\n").unwrap();
+                }
+            }),
+            |res| {
+                if let Some(data) = res.get_header("ETag") {
+                    Ok(Some(Bytes::from(
+                        crypto::decrypt_initial_data(&mut recv_cipher_state, &data)
+                            .context("decrypting initial data")?,
+                    )))
+                } else {
+                    Ok(None)
+                }
+            },
+        )
+        .await
+        .context("Connecting to ws")?;
 
         Ok(CipherStream::new(
             stream,

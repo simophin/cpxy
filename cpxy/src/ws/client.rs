@@ -10,7 +10,7 @@ use once_cell::sync::Lazy;
 use rand::Rng;
 use tokio::io::{AsyncBufRead, AsyncWrite, AsyncWriteExt};
 
-pub async fn connect_ws<T>(
+pub async fn connect<T>(
     stream: &mut (impl AsyncBufRead + AsyncWrite + Unpin),
     path: impl AsRef<str>,
     host: impl AsRef<str>,
@@ -46,6 +46,8 @@ pub async fn connect_ws<T>(
         if res.code != Some(101) {
             bail!("Expecting protocol switch status but got: {:?}", res.code);
         }
+
+        res.check_header_value("Sec-WebSocket-Protocol", "mqtt")?;
 
         let accept_key = res
             .get_header_text("Sec-WebSocket-Accept")

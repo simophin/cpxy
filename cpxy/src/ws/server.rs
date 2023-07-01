@@ -1,24 +1,71 @@
 use crate::http::parse_request;
 use crate::http::utils::WithHeaders;
-use anyhow::{bail, Context};
+use anyhow::Context;
 use bytes::BytesMut;
-use tokio::io::{AsyncBufRead, AsyncWrite};
+use std::fmt::Write;
+use tokio::io::{AsyncBufRead, AsyncWrite, AsyncWriteExt};
 
-pub async fn accept_ws<T>(
-    stream: &mut (impl AsyncBufRead + AsyncWrite + Unpin),
-    extract_request: impl FnOnce(&httparse::Request<'_, '_>, &mut BytesMut) -> anyhow::Result<T>,
-) -> anyhow::Result<T> {
-    parse_request(stream, move |req| {
-        req.check_header_value("Connection", "Upgrade")?;
-        req.check_header_value("Upgrade", "websocket")?;
-        req.check_header_value("Sec-WebSocket-Protocol", "mqtt")?;
-        req.check_header_value("Sec-WebSocket-Version", "13")?;
+pub struct Acceptor<S> {
+    stream: S,
+    key: String,
+}
 
-        let key = req
-            .get_header_text("Sec-WebSocket-Key")
-            .context("Expecting key")?;
+impl<S> Acceptor<S> {
+    pub async fn accept<T>(
+        mut stream: S,
+        extract_request: impl FnOnce(&httparse::Request<'_, '_>) -> anyhow::Result<T>,
+    ) -> anyhow::Result<(Self, T)>
+    where
+        S: AsyncBufRead + Unpin,
+    {
+        let (key, result) = parse_request(&mut stream, move |req| {
+            req.check_header_value("Connection", "Upgrade")?;
+            req.check_header_value("Upgrade", "websocket")?;
+            req.check_header_value("Sec-WebSocket-Protocol", "mqtt")?;
+            req.check_header_value("Sec-WebSocket-Version", "13")?;
 
-        todo!()
-    })
-    .await?
+            let key = req
+                .get_header_text("Sec-WebSocket-Key")
+                .context("Expecting key")?;
+
+            let result = extract_request(req)?;
+
+            Ok((key.to_string(), result))
+        })
+        .await?;
+
+        Ok((Self { stream, key }, result))
+    }
+
+    pub async fn respond(
+        self,
+        is_success: bool,
+        extra_headers: Option<impl FnOnce(&mut BytesMut) -> ()>,
+    ) -> anyhow::Result<S>
+    where
+        S: AsyncWrite + Unpin,
+    {
+        let Self { mut stream, key } = self;
+        let mut res = BytesMut::new();
+        if is_success {
+            write!(res, "HTTP/1.1 101 OK\r\n")?;
+            write!(res, "Sec-WebSocket-Accept: {}\r\n", super::hash_ws_key(key))?;
+            write!(res, "Sec-WebSocket-Protocol: mqtt\r\n")?;
+        } else {
+            write!(res, "HTTP/1.1 500 Internal Server Error\r\n")?;
+        }
+
+        if let Some(extra) = extra_headers {
+            extra(&mut res);
+        }
+
+        write!(res, "\r\n")?;
+
+        stream
+            .write_all(&res)
+            .await
+            .context("Unable to write ws response")?;
+
+        Ok(stream)
+    }
 }
