@@ -118,33 +118,6 @@ impl super::Protocol for Tcpman {
             plaintext_initial_reply,
         ))
     }
-
-    #[cfg(test)]
-    async fn test_servers() -> Vec<(Self, tokio::task::JoinHandle<anyhow::Result<()>>)> {
-        use tokio::net::TcpListener;
-        let server_listener = TcpListener::bind("127.0.0.1:0")
-            .await
-            .expect("To bind a tcp listener");
-        let server = Tcpman::new(
-            server_listener
-                .local_addr()
-                .expect("To have a local address")
-                .into(),
-            false,
-            "123456",
-        );
-
-        let key = aead::SecretKey::from_slice(server.key().unprotected_as_bytes()).unwrap();
-
-        vec![(
-            server,
-            tokio::spawn(server::run_tcpman_server(
-                Default::default(),
-                key,
-                server_listener,
-            )),
-        )]
-    }
 }
 
 impl Tcpman {

@@ -37,6 +37,7 @@ mod tests {
             acceptor
                 .respond(
                     true,
+                    Option::<&str>::None,
                     Some(|buf: &mut BytesMut| {
                         write!(buf, "Response-Data: hello\r\n").unwrap();
                     }),

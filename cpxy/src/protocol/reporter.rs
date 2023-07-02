@@ -1,6 +1,7 @@
 use atomic::Atomic;
 use serde::Serialize;
 use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::Arc;
 use std::time::Duration;
 
 #[derive(Default)]

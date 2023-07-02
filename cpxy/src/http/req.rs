@@ -68,17 +68,3 @@ where
 
     bail!("Excess header length")
 }
-
-pub fn httparse_to_hyper_request(
-    req: &httparse::Request<'_, '_>,
-) -> anyhow::Result<hyper::http::request::Builder> {
-    let mut builder = hyper::Request::builder()
-        .uri(req.path.context("expecting path")?)
-        .method(req.method.context("expecting method")?);
-
-    for hdr in req.headers.iter() {
-        builder = builder.header(hdr.name, hdr.value);
-    }
-
-    Ok(builder)
-}

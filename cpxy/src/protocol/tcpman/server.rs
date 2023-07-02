@@ -4,21 +4,14 @@ use super::params::ConnectionParameters;
 use crate::cipher::chacha20::ChaCha20;
 use crate::cipher::stream::{CipherState, CipherStream};
 use crate::http::utils::WithHeaders;
-use crate::io::connect_tcp;
-use crate::protocol::ProtocolReply;
-use crate::tls::TlsStream;
 use crate::ws;
-use anyhow::{bail, Context};
-use async_shutdown::Shutdown;
+use anyhow::Context;
 use async_trait::async_trait;
 use bytes::{Bytes, BytesMut};
 use orion::aead::SecretKey;
 use std::fmt::Write;
-use std::sync::Arc;
-use std::time::Duration;
-use tokio::io::{copy_bidirectional, AsyncBufRead, AsyncReadExt, AsyncWriteExt, BufReader};
-use tokio::net::{TcpListener, TcpStream};
-use tokio::time::timeout;
+use tokio::io::{AsyncBufRead, BufReader};
+use tokio::net::TcpStream;
 
 pub struct TcpmanAcceptor(SecretKey);
 
@@ -32,18 +25,16 @@ impl ProtocolAcceptor for TcpmanAcceptor {
     ) -> anyhow::Result<(Self::AcceptedState, ProxyRequest)> {
         let stream = BufReader::new(stream);
 
-        let (recv_cipher_state, mut send_cipher_state, req, acceptor) =
+        let (recv_cipher_state, send_cipher_state, req, acceptor) =
             parse_tcpman_request(&self.0, stream).await?;
 
         Ok((
             TcpmanAcceptedState {
                 recv_cipher_state,
                 send_cipher_state,
+                ws_acceptor: acceptor,
             },
-            ProxyRequest {
-                dst: Default::default(),
-                initial_data: None,
-            },
+            req,
         ))
     }
 }
@@ -51,87 +42,60 @@ impl ProtocolAcceptor for TcpmanAcceptor {
 pub struct TcpmanAcceptedState {
     send_cipher_state: CipherState<ChaCha20>,
     recv_cipher_state: CipherState<ChaCha20>,
+    ws_acceptor: ws::server::Acceptor<BufReader<TcpStream>>,
 }
 
 #[async_trait]
 impl ProtocolAcceptedState for TcpmanAcceptedState {
     type ServerStream = CipherStream<BufReader<TcpStream>, ChaCha20, ChaCha20>;
 
-    async fn reply(self, reply: ProtocolReply) -> anyhow::Result<Self::ServerStream> {
-        let (mut upstream, initial_reply) = match execute_proxy_request(req).await {
-            Ok(v) => v,
-            Err(e) => {
-                let _ = acceptor
-                    .respond(false, Some(|_buf: &mut BytesMut| {}))
-                    .await;
-                return Err(e);
-            }
-        };
+    async fn reply_success(
+        self,
+        initial_data: Option<Bytes>,
+    ) -> anyhow::Result<Self::ServerStream> {
+        let Self {
+            mut send_cipher_state,
+            recv_cipher_state,
+            ws_acceptor,
+        } = self;
 
-        let initial_data = if let Some(data) = initial_reply {
+        let initial_data = if let Some(data) = initial_data {
             Some(crypto::encrypt_initial_data(&mut send_cipher_state, data))
         } else {
             None
         };
-        todo!()
-    }
-}
 
-async fn handle_tcpman_connection(key: &SecretKey, conn: TcpStream) -> anyhow::Result<()> {
-    let conn = acceptor
-        .respond(
-            true,
-            Some(move |buf: &mut BytesMut| {
-                if let Some(data) = initial_data {
-                    write!(buf, "ETag: {data}\r\n").unwrap();
-                }
-            }),
-        )
-        .await
-        .context("Responding ws")?;
-
-    let mut conn = CipherStream::new(conn, send_cipher_state, recv_cipher_state, None);
-
-    copy_bidirectional(&mut conn, &mut upstream)
-        .await
-        .context("copying data")?;
-    Ok(())
-}
-
-async fn execute_proxy_request(
-    req: ProxyRequest,
-) -> anyhow::Result<(TlsStream<TcpStream>, Option<BytesMut>)> {
-    log::info!("executing {req:?}");
-
-    let upstream = connect_tcp(&req.dst)
-        .await
-        .context("connecting to upstream")?;
-
-    let mut upstream = TlsStream::connect_plain(upstream)
-        .await
-        .context("connecting to TLS")?;
-
-    if let Some(data) = req.initial_data {
-        upstream
-            .write_all(&data)
+        let conn = ws_acceptor
+            .respond(
+                true,
+                Option::<&str>::None,
+                Some(move |buf: &mut BytesMut| {
+                    if let Some(data) = initial_data {
+                        write!(buf, "ETag: {data}\r\n").unwrap();
+                    }
+                }),
+            )
             .await
-            .context("sending initial data")?;
+            .context("Responding success")?;
+
+        Ok(CipherStream::new(
+            conn,
+            send_cipher_state,
+            recv_cipher_state,
+            None,
+        ))
     }
 
-    // Read initial data and wait for up to 200ms
-    let mut initial_data = BytesMut::zeroed(4096);
-    let initial_data =
-        match timeout(Duration::from_millis(20), upstream.read(&mut initial_data)).await {
-            Ok(Ok(n)) if n > 0 => {
-                initial_data.truncate(n);
-                Some(initial_data)
-            }
-
-            Ok(Ok(_)) | Err(_) => None,
-            Ok(Err(e)) => bail!("error reading initial data: {e}"),
-        };
-
-    return Ok((upstream, initial_data));
+    async fn reply_error(
+        mut self,
+        error: Option<impl AsRef<str> + Send + Sync>,
+    ) -> anyhow::Result<()> {
+        self.ws_acceptor
+            .respond(false, error, Option::<fn(&mut BytesMut) -> ()>::None)
+            .await
+            .context("Responding error")?;
+        Ok(())
+    }
 }
 
 async fn parse_tcpman_request<S>(

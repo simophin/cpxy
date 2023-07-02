@@ -2,7 +2,6 @@ mod client;
 mod counter;
 mod dns;
 mod iptables;
-mod parse;
 mod pattern;
 pub mod protocol;
 mod rule;

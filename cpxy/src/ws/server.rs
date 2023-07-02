@@ -40,6 +40,7 @@ impl<S> Acceptor<S> {
     pub async fn respond(
         self,
         is_success: bool,
+        body: Option<impl AsRef<str> + Send + Sync>,
         extra_headers: Option<impl FnOnce(&mut BytesMut) -> ()>,
     ) -> anyhow::Result<S>
     where
@@ -59,7 +60,20 @@ impl<S> Acceptor<S> {
             extra(&mut res);
         }
 
+        if let Some(body) = &body {
+            write!(
+                res,
+                "Content-Length: {}\r\n",
+                body.as_ref().as_bytes().len()
+            )?;
+            write!(res, "Content-Type: text/plain\r\n")?;
+        }
+
         write!(res, "\r\n")?;
+
+        if let Some(body) = body {
+            res.extend_from_slice(body.as_ref().as_bytes());
+        }
 
         stream
             .write_all(&res)

@@ -1,12 +1,13 @@
 use super::super::{ProtocolAcceptedState, ProtocolAcceptor, ProxyRequest};
 use anyhow::{bail, Context};
 use async_trait::async_trait;
+use bytes::Bytes;
 use socks5_impl::protocol::{
     Address, Command, HandshakeMethod, HandshakeRequest, HandshakeResponse, Reply, Request,
     Response,
 };
+use tokio::io::AsyncWriteExt;
 use tokio::net::TcpStream;
-use crate::protocol::ProtocolReply;
 
 pub struct Socks5Acceptor;
 
@@ -62,22 +63,37 @@ impl ProtocolAcceptor for Socks5Acceptor {
 impl ProtocolAcceptedState for Socks5AcceptedState {
     type ServerStream = TcpStream;
 
-    async fn reply(mut self, reply: ProtocolReply) -> anyhow::Result<Self::ServerStream> {
-        if reply {
-            Response::new(
-                Reply::Succeeded,
-                self.stream
-                    .local_addr()
-                    .context("Getting local address")?
-                    .into(),
-            )
-        } else {
-            Response::new(Reply::GeneralFailure, Address::unspecified())
-        }
+    async fn reply_success(
+        mut self,
+        initial_data: Option<Bytes>,
+    ) -> anyhow::Result<Self::ServerStream> {
+        Response::new(
+            Reply::Succeeded,
+            self.stream
+                .local_addr()
+                .context("Getting local address")?
+                .into(),
+        )
         .write_to(&mut self.stream)
-        .await
-        .context("Writing response")?;
+        .await?;
+
+        if let Some(data) = initial_data {
+            self.stream
+                .write_all(&data)
+                .await
+                .context("Writing initial data")?;
+        }
 
         Ok(self.stream)
+    }
+
+    async fn reply_error(
+        mut self,
+        _error: Option<impl AsRef<str> + Send + Sync>,
+    ) -> anyhow::Result<()> {
+        Response::new(Reply::GeneralFailure, Address::unspecified())
+            .write_to(&mut self.stream)
+            .await?;
+        Ok(())
     }
 }

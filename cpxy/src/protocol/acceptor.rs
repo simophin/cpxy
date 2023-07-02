@@ -23,5 +23,7 @@ pub enum ProtocolReply {
 pub trait ProtocolAcceptedState: Sized {
     type ServerStream: AsyncRead + AsyncWrite + Send + Sync + Unpin + 'static;
 
-    async fn reply(self, reply: ProtocolReply) -> anyhow::Result<Self::ServerStream>;
+    async fn reply_success(self, initial_data: Option<Bytes>)
+        -> anyhow::Result<Self::ServerStream>;
+    async fn reply_error(self, error: Option<impl AsRef<str> + Send + Sync>) -> anyhow::Result<()>;
 }

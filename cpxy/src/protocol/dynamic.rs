@@ -54,9 +54,4 @@ impl Protocol for DynamicProtocol {
                 .map(ProtocolStream::Tcpman),
         }
     }
-
-    #[cfg(test)]
-    async fn test_servers() -> Vec<(Self, tokio::task::JoinHandle<anyhow::Result<()>>)> {
-        panic!("Test server not supported for DynamicProtocol")
-    }
 }
