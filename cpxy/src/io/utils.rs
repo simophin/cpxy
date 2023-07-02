@@ -32,7 +32,7 @@ impl<S: AsyncRead> AsyncRead for CounterStream<S> {
         let old_remaining = buf.remaining();
         let result = this.stream.poll_read(cx, buf);
         if matches!(result, Poll::Ready(Ok(()))) {
-            this.reporter.inc_rx(buf.remaining() - old_remaining);
+            this.reporter.inc_rx(old_remaining - buf.remaining());
         }
         result
     }

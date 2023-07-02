@@ -9,6 +9,7 @@ use socks5_impl::protocol::{
 use tokio::io::AsyncWriteExt;
 use tokio::net::TcpStream;
 
+#[derive(Default, Clone)]
 pub struct Socks5Acceptor;
 
 pub struct Socks5AcceptedState {

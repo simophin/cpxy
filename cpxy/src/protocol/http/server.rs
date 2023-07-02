@@ -12,8 +12,9 @@ use crate::http::parse_request;
 use crate::http::utils::WithHeaders;
 use crate::protocol::ProxyRequest;
 
+#[derive(Clone)]
 pub struct HttpProxyAcceptor {
-    auth_provider: Option<Arc<dyn AuthProvider>>,
+    pub auth_provider: Option<Arc<dyn AuthProvider>>,
 }
 
 pub struct HttpProxyAcceptedState {
@@ -46,7 +47,7 @@ impl super::super::ProtocolAcceptor for HttpProxyAcceptor {
 
             Ok((
                 ProxyRequest::from(addr),
-                req.get_header_text("Proxy-Authenticate")
+                req.get_header_text("Proxy-Authorization")
                     .map(str::to_string),
             ))
         })

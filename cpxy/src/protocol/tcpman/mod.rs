@@ -150,3 +150,23 @@ impl Clone for Tcpman {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use crate::protocol::test;
+    use std::sync::Arc;
+
+    #[tokio::test]
+    async fn tcpman_proxy_works() {
+        let _ = env_logger::try_init();
+
+        test::test_protocol_valid_config(
+            |addr| super::Tcpman::new(addr.into(), false, "password"),
+            Some(super::server::TcpmanAcceptor(Arc::new(
+                super::Tcpman::derive_key("password").unwrap(),
+            ))),
+        )
+        .await
+        .expect("socks5 proxy works");
+    }
+}

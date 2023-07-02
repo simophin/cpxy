@@ -43,7 +43,7 @@ impl Protocol for Socks5 {
             .await
             .context("Receiving handshake response")?;
 
-        if res.method == s5::HandshakeMethod::None {
+        if res.method != s5::HandshakeMethod::None {
             bail!("Unsupported handshake method");
         }
 
@@ -70,5 +70,24 @@ impl Protocol for Socks5 {
         }
 
         Ok(upstream)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::protocol::test;
+
+    #[tokio::test]
+    async fn socks5_proxy_works() {
+        let _ = env_logger::try_init();
+
+        test::test_protocol_valid_config(
+            |addr| super::Socks5 {
+                address: addr.into(),
+            },
+            Some(super::server::Socks5Acceptor::default()),
+        )
+        .await
+        .expect("socks5 proxy works");
     }
 }

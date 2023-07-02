@@ -10,10 +10,12 @@ use async_trait::async_trait;
 use bytes::{Bytes, BytesMut};
 use orion::aead::SecretKey;
 use std::fmt::Write;
+use std::sync::Arc;
 use tokio::io::{AsyncBufRead, BufReader};
 use tokio::net::TcpStream;
 
-pub struct TcpmanAcceptor(SecretKey);
+#[derive(Clone)]
+pub struct TcpmanAcceptor(pub Arc<SecretKey>);
 
 #[async_trait]
 impl ProtocolAcceptor for TcpmanAcceptor {

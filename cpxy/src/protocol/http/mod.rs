@@ -3,6 +3,7 @@ pub mod server;
 
 use anyhow::{bail, Context};
 use async_trait::async_trait;
+use bytes::BytesMut;
 use serde::{Deserialize, Serialize};
 use tokio::io::{AsyncWriteExt, BufReader};
 use tokio::net::TcpStream;
@@ -16,7 +17,7 @@ use crate::{
 };
 
 use crate::io::time_future;
-use std::io::Write;
+use std::fmt::Write;
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct HttpProxy {
@@ -51,11 +52,13 @@ impl Protocol for HttpProxy {
         .context("Connecting to TLS")?;
 
         // Establish HTTP tunnel
-        let mut request = Vec::new();
-        let host = req.dst.host();
-        let port = req.dst.port();
-        write!(request, "CONNECT {host}:{port}\r\n")?;
-        write!(request, "Host: {host}:{port}\r\n")?;
+        let mut request = BytesMut::new();
+        write!(
+            request,
+            "CONNECT {} HTTP/1.1\r\nHost: {}\r\n",
+            req.dst, self.address
+        )?;
+
         if let Some(auth_header) = &self.auth_settings {
             write!(
                 request,
@@ -64,6 +67,12 @@ impl Protocol for HttpProxy {
             )?;
         }
         request.extend_from_slice(b"\r\n");
+
+        log::debug!(
+            "Sending HTTP proxy request to {}: {}",
+            self.address,
+            std::str::from_utf8(&request).unwrap()
+        );
 
         upstream
             .write_all(&request)
@@ -74,6 +83,7 @@ impl Protocol for HttpProxy {
 
         // Wait for the response
         parse_response(&mut upstream, |res| {
+            log::debug!("Got http proxy response: {res:?}");
             let status = res.code.context("Missing status code")?;
             if status < 200 || status >= 300 {
                 bail!("Invalid status code from HTTP Proxy: {status}");
@@ -88,25 +98,50 @@ impl Protocol for HttpProxy {
 
 #[cfg(test)]
 mod tests {
-    // use crate::{
-    //     protocol::test::{test_protocol_http, test_protocol_tcp},
-    //     test::create_http_server,
-    // };
+    use crate::protocol::test;
+    use std::sync::Arc;
 
     #[tokio::test]
     async fn http_proxy_works() {
-        // let _ = env_logger::try_init();
-        // let (server, server_url) = create_http_server().await;
-        // let url: HttpUrl = server_url.as_str().try_into().unwrap();
-        // spawn(server::serve(Shutdown::new(), server, Direct {}));
-        //
-        // let protocol = HttpProxy {
-        //     address: url.address.clone().into_owned(),
-        //     ssl: url.is_https,
-        //     auth_header: None,
-        // };
-        //
-        // test_protocol_http(&protocol).await;
-        // test_protocol_tcp(&protocol).await;
+        let _ = env_logger::try_init();
+
+        test::test_protocol_valid_config(
+            |addr| super::HttpProxy {
+                address: addr.into(),
+                ssl: false,
+                auth_settings: None,
+            },
+            Some(super::server::HttpProxyAcceptor {
+                auth_provider: None,
+            }),
+        )
+        .await
+        .expect("http proxy works");
+    }
+
+    #[tokio::test]
+    async fn http_proxy_authed_works() {
+        let _ = env_logger::try_init();
+
+        let settings = super::auth::BasicAuthSettings {
+            user: "test".into(),
+            password: "test".into(),
+        };
+
+        test::test_protocol_valid_config(
+            {
+                let settings = settings.clone();
+                move |addr| super::HttpProxy {
+                    address: addr.into(),
+                    ssl: false,
+                    auth_settings: Some(settings),
+                }
+            },
+            Some(super::server::HttpProxyAcceptor {
+                auth_provider: Some(Arc::new(super::auth::BasicAuthProvider(settings))),
+            }),
+        )
+        .await
+        .expect("http proxy works");
     }
 }

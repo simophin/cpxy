@@ -6,7 +6,6 @@ use std::future::Future;
 // use cpxy::controller_config::fs::FileConfigProvider;
 use cpxy::io::bind_tcp;
 use cpxy::protocol::tcpman;
-use cpxy::socks5::Address;
 // use futures::Future;
 use cpxy::protocol::tcpman::Tcpman;
 use std::net::{IpAddr, SocketAddr};
@@ -54,26 +53,26 @@ enum Command {
     },
 }
 
-async fn start_serving_tcp<Fut: Future<Output = anyhow::Result<()>> + Send + Sync + 'static>(
-    shutdown: Shutdown,
-    service_name: String,
-    host: IpAddr,
-    port: u16,
-    run: impl FnOnce(Shutdown, TcpListener) -> Fut + Send + Sync + 'static,
-) -> anyhow::Result<()> {
-    let addr = SocketAddr::new(host, port);
-    let listener = bind_tcp(&Address::IP(addr))
-        .await
-        .with_context(|| format!("Binding on {addr} for {service_name}"))?;
-    log::info!("{service_name} started on {addr}");
-    spawn(async move {
-        if let Some(Err(e)) = shutdown.wrap_cancel(run(shutdown.clone(), listener)).await {
-            log::error!("{service_name} error: {e}");
-        }
-    });
+// async fn start_serving_tcp<Fut: Future<Output = anyhow::Result<()>> + Send + Sync + 'static>(
+//     shutdown: Shutdown,
+//     service_name: String,
+//     host: IpAddr,
+//     port: u16,
+//     run: impl FnOnce(Shutdown, TcpListener) -> Fut + Send + Sync + 'static,
+// ) -> anyhow::Result<()> {
+//     let addr = SocketAddr::new(host, port);
+//     let listener = bind_tcp(&Address::IP(addr))
+//         .await
+//         .with_context(|| format!("Binding on {addr} for {service_name}"))?;
+//     log::info!("{service_name} started on {addr}");
+//     spawn(async move {
+//         if let Some(Err(e)) = shutdown.wrap_cancel(run(shutdown.clone(), listener)).await {
+//             log::error!("{service_name} error: {e}");
+//         }
+//     });
 
-    Ok(())
-}
+//     Ok(())
+// }
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
@@ -94,22 +93,22 @@ async fn main() -> anyhow::Result<()> {
             firetcp_port,
         } => {
             if let Some(port) = tcpman_port {
-                let tcpman_password = std::env::var("TCPMAN_PASSWORD")
-                    .context("Tcpman password must be given via env TCPMAN_PASSWORD")?;
+                // let tcpman_password = std::env::var("TCPMAN_PASSWORD")
+                //     .context("Tcpman password must be given via env TCPMAN_PASSWORD")?;
 
-                let tcpman_key =
-                    Tcpman::derive_key(&tcpman_password).context("deriving key from password")?;
+                // let tcpman_key =
+                //     Tcpman::derive_key(&tcpman_password).context("deriving key from password")?;
 
-                start_serving_tcp(
-                    shutdown.clone(),
-                    "tcpman".to_string(),
-                    host,
-                    port,
-                    move |shutdown, listener| {
-                        tcpman::server::run_tcpman_server(shutdown, tcpman_key, listener)
-                    },
-                )
-                .await?;
+                // start_serving_tcp(
+                //     shutdown.clone(),
+                //     "tcpman".to_string(),
+                //     host,
+                //     port,
+                //     move |shutdown, listener| {
+                //         tcpman::server::run_tcpman_server(shutdown, tcpman_key, listener)
+                //     },
+                // )
+                // .await?;
             }
 
             // if let Some(port) = firetcp_port {

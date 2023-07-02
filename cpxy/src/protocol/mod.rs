@@ -12,6 +12,7 @@ mod acceptor;
 mod dynamic;
 mod reporter;
 mod req;
+pub mod server;
 mod stream;
 #[cfg(test)]
 mod test;

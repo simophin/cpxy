@@ -6,7 +6,7 @@ use tokio::net::TcpStream;
 
 #[async_trait]
 pub trait ProtocolAcceptor: Sized {
-    type AcceptedState: ProtocolAcceptedState;
+    type AcceptedState: ProtocolAcceptedState + Send + Sync + 'static;
 
     async fn accept(
         &self,

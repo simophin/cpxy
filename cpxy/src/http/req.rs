@@ -12,7 +12,7 @@ where
         bail!("EOF while reading request");
     }
 
-    return match parse_request_full(buf, f)? {
+    return match parse_request_full(buf, f).context("Parsing request in full")? {
         Ok((t, length)) => {
             r.consume(length);
             Ok(t)
@@ -54,7 +54,9 @@ where
         let fill_buf_len = fill_buf.len();
         buf.extend_from_slice(fill_buf);
 
-        match parse_request_full(&buf, f)? {
+        match parse_request_full(&buf, f)
+            .context("Parsing request in full while started partially")?
+        {
             Ok((t, length)) => {
                 r.consume(buf.len() - length);
                 return Ok(t);
