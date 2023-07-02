@@ -4,25 +4,25 @@ use serde::{Deserialize, Serialize};
 use tokio::io::AsyncWriteExt;
 use tokio::net::TcpStream;
 
+use super::{BoxProtocolReporter, ProxyRequest};
 use crate::io::{connect_tcp, AsRawFdExt, CounterStream};
-use crate::protocol::{BoxProtocolReporter, ProxyRequest};
 use crate::tls::TlsStream;
 
 use super::Protocol;
 
-#[derive(Clone, Debug, Serialize, Deserialize, Eq, PartialEq)]
+#[derive(Clone, Debug, Serialize, Deserialize, Eq, PartialEq, Default)]
 pub struct Direct;
 
 #[async_trait]
 impl Protocol for Direct {
-    type Stream = TlsStream<CounterStream<TcpStream>>;
+    type ClientStream = TlsStream<CounterStream<TcpStream>>;
 
     async fn new_stream(
         &self,
         req: &ProxyRequest,
         reporter: &BoxProtocolReporter,
         fwmark: Option<u32>,
-    ) -> anyhow::Result<Self::Stream> {
+    ) -> anyhow::Result<Self::ClientStream> {
         let stream = connect_tcp(&req.dst).await?;
         if let Some(fwmark) = fwmark {
             stream.set_sock_mark(fwmark)?;

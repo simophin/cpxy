@@ -1,12 +1,12 @@
 use bytes::{Bytes, BytesMut};
+use either::Either;
 use std::net::SocketAddr;
 use std::time::Duration;
 use tokio::io::{AsyncRead, AsyncReadExt};
 use tokio::net::{TcpListener, TcpStream};
 use tokio::time::timeout;
 
-use crate::socks5::Address;
-use crate::tls::TlsStream;
+use crate::addr::Address;
 
 use super::AsRawFdExt;
 
@@ -58,17 +58,14 @@ impl TcpStreamExt for TcpStream {
     }
 }
 
-pub async fn connect_tcp(a: &Address<'_>) -> std::io::Result<TcpStream> {
-    match a {
-        Address::IP(addr) => Ok(TcpStream::connect(addr).await?),
-        Address::Name { host, port } => Ok(TcpStream::connect((host.as_ref(), *port)).await?),
+pub async fn connect_tcp(a: &Address) -> std::io::Result<TcpStream> {
+    match a.domain_or_ip() {
+        Either::Left(addr) => TcpStream::connect(addr).await,
+        Either::Right(addr) => TcpStream::connect(addr).await,
     }
 }
 
-pub async fn connect_tcp_marked(
-    a: &Address<'_>,
-    fwmark: Option<u32>,
-) -> std::io::Result<TcpStream> {
+pub async fn connect_tcp_marked(a: &Address, fwmark: Option<u32>) -> std::io::Result<TcpStream> {
     let stream = connect_tcp(a).await?;
     if let Some(mark) = fwmark {
         stream.set_sock_mark(mark)?;
@@ -76,10 +73,10 @@ pub async fn connect_tcp_marked(
     Ok(stream)
 }
 
-pub async fn bind_tcp(a: &Address<'_>) -> std::io::Result<TcpListener> {
-    match a {
-        Address::IP(addr) => Ok(TcpListener::bind(addr).await?),
-        Address::Name { host, port } => Ok(TcpListener::bind((host.as_ref(), *port)).await?),
+pub async fn bind_tcp(a: &Address) -> std::io::Result<TcpListener> {
+    match a.domain_or_ip() {
+        Either::Right(addr) => TcpListener::bind(addr).await,
+        Either::Left(addr) => TcpListener::bind(addr).await,
     }
 }
 

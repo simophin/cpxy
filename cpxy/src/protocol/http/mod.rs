@@ -1,38 +1,40 @@
+mod auth;
+pub mod server;
+
 use anyhow::{bail, Context};
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 use tokio::io::{AsyncWriteExt, BufReader};
 use tokio::net::TcpStream;
 
+use super::{BoxProtocolReporter, Protocol, ProxyRequest};
 use crate::http::parse_response;
-use crate::protocol::{BoxProtocolReporter, ProxyRequest};
 use crate::tls::TlsStream;
 use crate::{
+    addr::Address,
     io::{connect_tcp_marked, CounterStream},
-    socks5::Address,
 };
 
-use super::Protocol;
 use crate::io::time_future;
 use std::io::Write;
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct HttpProxy {
-    pub address: Address<'static>,
+    pub address: Address,
     pub ssl: bool,
-    pub auth_header: Option<String>,
+    pub auth_settings: Option<auth::BasicAuthSettings>,
 }
 
 #[async_trait]
 impl Protocol for HttpProxy {
-    type Stream = BufReader<TlsStream<CounterStream<TcpStream>>>;
+    type ClientStream = BufReader<TlsStream<CounterStream<TcpStream>>>;
 
     async fn new_stream(
         &self,
         req: &ProxyRequest,
         reporter: &BoxProtocolReporter,
         fwmark: Option<u32>,
-    ) -> anyhow::Result<Self::Stream> {
+    ) -> anyhow::Result<Self::ClientStream> {
         let (upstream, delay) = time_future(connect_tcp_marked(&self.address, fwmark))
             .await
             .context("Connecting to HTTP Proxy")?;
@@ -42,7 +44,7 @@ impl Protocol for HttpProxy {
 
         // Establish TLS if required
         let mut upstream = if self.ssl {
-            TlsStream::connect_tls(self.address.get_host(), upstream).await
+            TlsStream::connect_tls(self.address.host(), upstream).await
         } else {
             TlsStream::connect_plain(upstream).await
         }
@@ -50,12 +52,16 @@ impl Protocol for HttpProxy {
 
         // Establish HTTP tunnel
         let mut request = Vec::new();
-        let host = req.dst.get_host();
-        let port = req.dst.get_port();
+        let host = req.dst.host();
+        let port = req.dst.port();
         write!(request, "CONNECT {host}:{port}\r\n")?;
         write!(request, "Host: {host}:{port}\r\n")?;
-        if let Some(auth_header) = &self.auth_header {
-            write!(request, "Proxy-Authorization: {}\r\n", auth_header)?;
+        if let Some(auth_header) = &self.auth_settings {
+            write!(
+                request,
+                "Proxy-Authorization: {}\r\n",
+                auth_header.to_header_value()
+            )?;
         }
         request.extend_from_slice(b"\r\n");
 

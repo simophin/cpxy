@@ -1,72 +1,94 @@
+use super::super::{ProtocolAcceptedState, ProtocolAcceptor, ProxyRequest};
 use super::crypto;
 use super::params::ConnectionParameters;
 use crate::cipher::chacha20::ChaCha20;
 use crate::cipher::stream::{CipherState, CipherStream};
-use crate::http::parse_request;
 use crate::http::utils::WithHeaders;
 use crate::io::connect_tcp;
-use crate::protocol::ProxyRequest;
+use crate::protocol::ProtocolReply;
 use crate::tls::TlsStream;
 use crate::ws;
 use anyhow::{bail, Context};
 use async_shutdown::Shutdown;
+use async_trait::async_trait;
 use bytes::{Bytes, BytesMut};
 use orion::aead::SecretKey;
 use std::fmt::Write;
 use std::sync::Arc;
 use std::time::Duration;
-use tokio::io::{copy_bidirectional, AsyncReadExt, AsyncWriteExt, BufReader};
+use tokio::io::{copy_bidirectional, AsyncBufRead, AsyncReadExt, AsyncWriteExt, BufReader};
 use tokio::net::{TcpListener, TcpStream};
 use tokio::time::timeout;
 
-pub async fn run_tcpman_server(
-    shutdown: Shutdown,
-    key: SecretKey,
-    listener: TcpListener,
-) -> anyhow::Result<()> {
-    let key = Arc::new(key);
-    loop {
-        let (conn, addr) = listener.accept().await.context("accepting connection")?;
-        log::info!("accepted connection from {addr}");
+pub struct TcpmanAcceptor(SecretKey);
 
-        let shutdown = shutdown.clone();
-        let key = key.clone();
-        tokio::spawn(async move {
-            if let Some(Err(e)) = shutdown
-                .wrap_cancel(handle_tcpman_connection(&key, conn))
-                .await
-            {
-                log::error!("error handling connection: {e:?}");
+#[async_trait]
+impl ProtocolAcceptor for TcpmanAcceptor {
+    type AcceptedState = TcpmanAcceptedState;
+
+    async fn accept(
+        &self,
+        stream: TcpStream,
+    ) -> anyhow::Result<(Self::AcceptedState, ProxyRequest)> {
+        let stream = BufReader::new(stream);
+
+        let (recv_cipher_state, mut send_cipher_state, req, acceptor) =
+            parse_tcpman_request(&self.0, stream).await?;
+
+        Ok((
+            TcpmanAcceptedState {
+                recv_cipher_state,
+                send_cipher_state,
+            },
+            ProxyRequest {
+                dst: Default::default(),
+                initial_data: None,
+            },
+        ))
+    }
+}
+
+pub struct TcpmanAcceptedState {
+    send_cipher_state: CipherState<ChaCha20>,
+    recv_cipher_state: CipherState<ChaCha20>,
+}
+
+#[async_trait]
+impl ProtocolAcceptedState for TcpmanAcceptedState {
+    type ServerStream = CipherStream<BufReader<TcpStream>, ChaCha20, ChaCha20>;
+
+    async fn reply(self, reply: ProtocolReply) -> anyhow::Result<Self::ServerStream> {
+        let (mut upstream, initial_reply) = match execute_proxy_request(req).await {
+            Ok(v) => v,
+            Err(e) => {
+                let _ = acceptor
+                    .respond(false, Some(|_buf: &mut BytesMut| {}))
+                    .await;
+                return Err(e);
             }
+        };
 
-            log::info!("disconnected from {addr}");
-        });
+        let initial_data = if let Some(data) = initial_reply {
+            Some(crypto::encrypt_initial_data(&mut send_cipher_state, data))
+        } else {
+            None
+        };
+        todo!()
     }
 }
 
 async fn handle_tcpman_connection(key: &SecretKey, conn: TcpStream) -> anyhow::Result<()> {
-    let mut conn = BufReader::new(conn);
-
-    let (recv_cipher_state, mut send_cipher_state, req) =
-        parse_tcpman_request(key, &mut conn).await?;
-    let (mut upstream, initial_reply) = execute_proxy_request(req).await?;
-
-    let initial_data = if let Some(data) = initial_reply {
-        Some(crypto::encrypt_initial_data(&mut send_cipher_state, data))
-    } else {
-        None
-    };
-
-    // Response a Protocol switch response
-    let mut resp = BytesMut::new();
-    write!(resp, "HTTP/1.1 101 OK\r\n")?;
-    if let Some(data) = initial_data {
-        write!(resp, "ETag: {data}\r\n")?;
-    }
-    write!(resp, "\r\n")?;
-    conn.write_all(&mut resp)
+    let conn = acceptor
+        .respond(
+            true,
+            Some(move |buf: &mut BytesMut| {
+                if let Some(data) = initial_data {
+                    write!(buf, "ETag: {data}\r\n").unwrap();
+                }
+            }),
+        )
         .await
-        .context("sending response")?;
+        .context("Responding ws")?;
 
     let mut conn = CipherStream::new(conn, send_cipher_state, recv_cipher_state, None);
 
@@ -78,7 +100,7 @@ async fn handle_tcpman_connection(key: &SecretKey, conn: TcpStream) -> anyhow::R
 
 async fn execute_proxy_request(
     req: ProxyRequest,
-) -> anyhow::Result<(TlsStream<TcpStream>, Option<Vec<u8>>)> {
+) -> anyhow::Result<(TlsStream<TcpStream>, Option<BytesMut>)> {
     log::info!("executing {req:?}");
 
     let upstream = connect_tcp(&req.dst)
@@ -97,11 +119,11 @@ async fn execute_proxy_request(
     }
 
     // Read initial data and wait for up to 200ms
-    let mut initial_data = vec![0u8; 4096];
+    let mut initial_data = BytesMut::zeroed(4096);
     let initial_data =
         match timeout(Duration::from_millis(20), upstream.read(&mut initial_data)).await {
             Ok(Ok(n)) if n > 0 => {
-                initial_data.resize(n, 0);
+                initial_data.truncate(n);
                 Some(initial_data)
             }
 
@@ -112,24 +134,19 @@ async fn execute_proxy_request(
     return Ok((upstream, initial_data));
 }
 
-async fn parse_tcpman_request(
+async fn parse_tcpman_request<S>(
     key: &SecretKey,
-    mut conn: BufReader<TcpStream>,
-) -> anyhow::Result<(CipherState<ChaCha20>, CipherState<ChaCha20>, ProxyRequest)> {
-    parse_request(&mut conn, |req| {
-        // Check for ws upgrade
-        match (
-            req.get_header_text("Connection"),
-            req.get_header_text("Upgrade"),
-        ) {
-            (Some(c), Some(u))
-                if c.eq_ignore_ascii_case("upgrade") && u.eq_ignore_ascii_case("websocket") =>
-            {
-                // Do nothing
-            }
-            _ => bail!("not a websocket upgrade request"),
-        };
-
+    conn: S,
+) -> anyhow::Result<(
+    CipherState<ChaCha20>,
+    CipherState<ChaCha20>,
+    ProxyRequest,
+    ws::server::Acceptor<S>,
+)>
+where
+    S: AsyncBufRead + Unpin,
+{
+    let (acceptor, (recv, send, req)) = ws::server::Acceptor::accept(conn, |req| {
         // Extract connection parameters from path
         let ConnectionParameters {
             upload_cipher,
@@ -156,5 +173,7 @@ async fn parse_tcpman_request(
             ProxyRequest { dst, initial_data },
         ))
     })
-    .await
+    .await?;
+
+    Ok((recv, send, req, acceptor))
 }

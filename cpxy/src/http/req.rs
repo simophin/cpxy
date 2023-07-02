@@ -71,7 +71,7 @@ where
 
 pub fn httparse_to_hyper_request(
     req: &httparse::Request<'_, '_>,
-) -> anyhow::Result<hyper::Request<()>> {
+) -> anyhow::Result<hyper::http::request::Builder> {
     let mut builder = hyper::Request::builder()
         .uri(req.path.context("expecting path")?)
         .method(req.method.context("expecting method")?);
@@ -80,5 +80,5 @@ pub fn httparse_to_hyper_request(
         builder = builder.header(hdr.name, hdr.value);
     }
 
-    builder.body(()).context("building hyper request")
+    Ok(builder)
 }

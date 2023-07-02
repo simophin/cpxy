@@ -1,4 +1,3 @@
-mod buf;
 mod client;
 mod counter;
 mod dns;
@@ -8,8 +7,6 @@ mod pattern;
 pub mod protocol;
 mod rule;
 mod sni;
-// mod socks4;
-pub mod socks5;
 pub mod utils;
 
 #[cfg(target_os = "android")]
@@ -24,6 +21,7 @@ mod cipher;
 // pub mod controller;
 mod geoip;
 // mod handshaker;
+mod addr;
 mod http;
 mod tls;
 mod ws;

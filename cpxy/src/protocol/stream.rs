@@ -9,10 +9,10 @@ use std::task::{Context, Poll};
 use tokio::io::{AsyncRead, AsyncWrite, ReadBuf};
 
 pub enum ProtocolStream {
-    Direct(<direct::Direct as Protocol>::Stream),
-    Http(<http::HttpProxy as Protocol>::Stream),
-    Socks5(<socks5::Socks5 as Protocol>::Stream),
-    Tcpman(<tcpman::Tcpman as Protocol>::Stream),
+    Direct(<direct::Direct as Protocol>::ClientStream),
+    Http(<http::HttpProxy as Protocol>::ClientStream),
+    Socks5(<socks5::Socks5 as Protocol>::ClientStream),
+    Tcpman(<tcpman::Tcpman as Protocol>::ClientStream),
 }
 
 macro_rules! delegate_stream_method {

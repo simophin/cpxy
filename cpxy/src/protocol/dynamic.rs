@@ -24,14 +24,14 @@ pub enum DynamicProtocol {
 
 #[async_trait]
 impl Protocol for DynamicProtocol {
-    type Stream = ProtocolStream;
+    type ClientStream = ProtocolStream;
 
     async fn new_stream(
         &self,
         req: &ProxyRequest,
         reporter: &BoxProtocolReporter,
         fwmark: Option<u32>,
-    ) -> anyhow::Result<Self::Stream> {
+    ) -> anyhow::Result<Self::ClientStream> {
         match self {
             DynamicProtocol::Direct(s) => s
                 .new_stream(req, reporter, fwmark)
@@ -53,5 +53,10 @@ impl Protocol for DynamicProtocol {
                 .await
                 .map(ProtocolStream::Tcpman),
         }
+    }
+
+    #[cfg(test)]
+    async fn test_servers() -> Vec<(Self, tokio::task::JoinHandle<anyhow::Result<()>>)> {
+        panic!("Test server not supported for DynamicProtocol")
     }
 }

@@ -1,7 +1,7 @@
 use std::num::NonZeroUsize;
 
+use crate::addr::Address;
 use crate::cipher::stream::CipherConfig;
-use crate::socks5::Address;
 use crate::{cipher::chacha20::ChaCha20, cipher::StreamCipher, protocol::ProxyRequest};
 use anyhow::{bail, Context};
 use base64::engine::general_purpose::URL_SAFE_NO_PAD as B64;
@@ -16,12 +16,12 @@ use serde::{Deserialize, Serialize};
 pub struct ConnectionParameters {
     pub upload_cipher: CipherConfig<ChaCha20>,
     pub download_cipher: CipherConfig<ChaCha20>,
-    pub dst: Address<'static>,
+    pub dst: Address,
 }
 
 impl ConnectionParameters {
     pub fn create_for_request(req: &ProxyRequest) -> Self {
-        match req.dst.get_port() {
+        match req.dst.port() {
             443 | 22 => {
                 let (key, iv) = ChaCha20::rand_key_iv();
                 Self {

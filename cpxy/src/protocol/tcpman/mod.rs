@@ -2,13 +2,13 @@ mod crypto;
 mod params;
 pub mod server;
 
+use crate::addr::Address;
 use crate::cipher::chacha20::ChaCha20;
 use crate::cipher::stream::{CipherState, CipherStream};
 use crate::http::utils::WithHeaders;
 use crate::io::{connect_tcp_marked, time_future, CounterStream};
 use crate::protocol::tcpman::params::ConnectionParameters;
 use crate::protocol::{BoxProtocolReporter, ProxyRequest};
-use crate::socks5::Address;
 use crate::tls::TlsStream;
 use crate::ws;
 use anyhow::Context;
@@ -18,12 +18,12 @@ use once_cell::sync::OnceCell;
 use orion::aead;
 use serde::{Deserialize, Serialize};
 use std::fmt::Write;
-use tokio::io::{AsyncWriteExt, BufReader};
+use tokio::io::BufReader;
 use tokio::net::TcpStream;
 
 #[derive(Debug, Serialize, Deserialize, Eq, PartialEq)]
 pub struct Tcpman {
-    address: Address<'static>,
+    address: Address,
     tls: bool,
     password: String,
 
@@ -32,11 +32,11 @@ pub struct Tcpman {
 }
 
 impl Tcpman {
-    pub fn new(address: Address<'static>, tls: bool, password: String) -> Self {
+    pub fn new(address: Address, tls: bool, password: impl ToString) -> Self {
         Self {
             address,
             tls,
-            password,
+            password: password.to_string(),
             key: OnceCell::new(),
         }
     }
@@ -47,14 +47,14 @@ type TcpmanStream =
 
 #[async_trait]
 impl super::Protocol for Tcpman {
-    type Stream = TcpmanStream;
+    type ClientStream = TcpmanStream;
 
     async fn new_stream(
         &self,
         req: &ProxyRequest,
         reporter: &BoxProtocolReporter,
         fwmark: Option<u32>,
-    ) -> anyhow::Result<Self::Stream> {
+    ) -> anyhow::Result<Self::ClientStream> {
         let (stream, tcp_delay) = time_future(connect_tcp_marked(&self.address, fwmark))
             .await
             .context("connecting to upstream")?;
@@ -63,7 +63,7 @@ impl super::Protocol for Tcpman {
 
         // Connect to TLS
         let (stream, tls_delay) = if self.tls {
-            time_future(TlsStream::connect_tls(self.address.get_host(), stream)).await?
+            time_future(TlsStream::connect_tls(self.address.host(), stream)).await?
         } else {
             time_future(TlsStream::connect_plain(stream)).await?
         };
@@ -91,7 +91,7 @@ impl super::Protocol for Tcpman {
         let plaintext_initial_reply = ws::client::connect(
             &mut stream,
             path,
-            self.address.get_host(),
+            self.address.host(),
             Some(move |req: &mut BytesMut| {
                 if let Some(data) = encrypted_initial_data {
                     write!(req, "If-None-Match: {data}\r\n").unwrap();
@@ -117,6 +117,33 @@ impl super::Protocol for Tcpman {
             recv_cipher_state,
             plaintext_initial_reply,
         ))
+    }
+
+    #[cfg(test)]
+    async fn test_servers() -> Vec<(Self, tokio::task::JoinHandle<anyhow::Result<()>>)> {
+        use tokio::net::TcpListener;
+        let server_listener = TcpListener::bind("127.0.0.1:0")
+            .await
+            .expect("To bind a tcp listener");
+        let server = Tcpman::new(
+            server_listener
+                .local_addr()
+                .expect("To have a local address")
+                .into(),
+            false,
+            "123456",
+        );
+
+        let key = aead::SecretKey::from_slice(server.key().unprotected_as_bytes()).unwrap();
+
+        vec![(
+            server,
+            tokio::spawn(server::run_tcpman_server(
+                Default::default(),
+                key,
+                server_listener,
+            )),
+        )]
     }
 }
 

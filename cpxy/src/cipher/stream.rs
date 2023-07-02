@@ -44,12 +44,12 @@ impl<C: StreamCipher> Clone for CipherConfig<C> {
 impl<C: StreamCipher> Debug for CipherConfig<C> {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         match self {
-            CipherConfig::Full { key, iv } => f
+            CipherConfig::Full { .. } => f
                 .debug_struct("CipherConfig::Full")
                 .field("key", &"******")
                 .field("iv", &"******")
                 .finish(),
-            CipherConfig::FirstNBytes { n, key, iv } => f
+            CipherConfig::FirstNBytes { n, .. } => f
                 .debug_struct("CipherConfig::FirstNBytes")
                 .field("n", n)
                 .field("key", &"******")
@@ -119,7 +119,7 @@ where
 {
     pub fn new(
         stream: S,
-        mut send_cipher_state: CipherState<SC>,
+        send_cipher_state: CipherState<SC>,
         recv_cipher_state: CipherState<RC>,
         pending_plaintext_recv: Option<Bytes>,
     ) -> Self {
