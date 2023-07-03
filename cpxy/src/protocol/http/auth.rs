@@ -1,12 +1,6 @@
 use anyhow::{bail, Context};
-use async_trait::async_trait;
 use base64::display::Base64Display;
 use serde::{Deserialize, Serialize};
-
-#[async_trait]
-pub trait AuthProvider: Send + Sync {
-    async fn check_auth(&self, value: Option<&str>) -> anyhow::Result<()>;
-}
 
 #[derive(Clone, Deserialize, Serialize, Debug, PartialEq, Eq)]
 pub struct BasicAuthSettings {
@@ -26,11 +20,10 @@ impl BasicAuthSettings {
 #[derive(Clone)]
 pub struct BasicAuthProvider(pub BasicAuthSettings);
 
-#[async_trait]
-impl AuthProvider for BasicAuthProvider {
-    async fn check_auth(&self, value: Option<&str>) -> anyhow::Result<()> {
+impl BasicAuthProvider {
+    pub fn check_auth(&self, value: Option<impl AsRef<str>>) -> anyhow::Result<()> {
         let value = value.context("Expecting auth")?;
-        if value.trim() != self.0.to_header_value().trim() {
+        if value.as_ref().trim() != self.0.to_header_value().trim() {
             bail!("Invalid password")
         }
 

@@ -1,12 +1,24 @@
-use anyhow::Context;
+use anyhow::{bail, Context};
 use async_shutdown::Shutdown;
 use clap::{Parser, Subcommand};
+use cpxy::addr::Address;
+use cpxy::http::parse_response;
+use cpxy::http::writer::RequestWriter;
 use cpxy::protocol;
+use cpxy::protocol::http::auth::{BasicAuthProvider, BasicAuthSettings};
+use cpxy::protocol::tcpman::Tcpman;
+use cpxy::protocol::{Protocol, ProtocolAcceptor};
+use cpxy::tls::TlsStream;
+use hyper::{header, Method};
 use std::net::{IpAddr, SocketAddr};
 use std::num::NonZeroU16;
+use std::sync::Arc;
+use std::time::Duration;
+use tokio::io::BufReader;
 use tokio::net::TcpListener;
 use tokio::signal::ctrl_c;
 use tokio::spawn;
+use tokio::time::timeout;
 
 #[derive(Parser)]
 struct Cli {
@@ -25,6 +37,29 @@ enum Command {
 
         #[clap(default_value = "8009", long)]
         port: NonZeroU16,
+    },
+
+    /// Serve http server. To set up basic auth, set environment HTTP_PROXY_USER and HTTP_PROXY_PASSWORD
+    #[clap()]
+    ServeHttpProxy {
+        /// The address to listen on
+        #[clap(default_value = "0.0.0.0", long)]
+        host: IpAddr,
+
+        #[clap(default_value = "8080", long)]
+        port: NonZeroU16,
+    },
+
+    #[clap()]
+    TestTcpman {
+        #[clap(long)]
+        password: String,
+
+        #[clap(default_value_t = false, long)]
+        tls: bool,
+
+        #[clap()]
+        addr: Address,
     },
 
     #[clap()]
@@ -51,37 +86,44 @@ async fn main() -> anyhow::Result<()> {
 
     let Cli { cmd } = Cli::parse();
 
-    let shutdown = Shutdown::new();
-
     match cmd {
         Command::ServeTcpman { host, port } => {
-            let tcpman_password = std::env::var("TCPMAN_PASSWORD")
-                .context("Tcpman password must be given via env TCPMAN_PASSWORD")?;
+            let acceptor = protocol::tcpman::server::TcpmanAcceptor(
+                std::env::var("TCPMAN_PASSWORD")
+                    .expect("to have set env TCPMAN_PASSWORD")
+                    .parse()
+                    .expect("valid password"),
+            );
 
-            let listener = TcpListener::bind((host, port.get()))
-                .await
-                .with_context(|| format!("Binding tcp on {host}:{port}"))?;
+            serve_protocol_server("tcpman", host, port, acceptor).await;
+            Ok(())
+        }
 
-            log::info!("tcpman started on {host}:{port}");
-
-            spawn(protocol::server::run_server(
-                shutdown.clone(),
-                "tcpman",
-                listener,
-                protocol::tcpman::server::TcpmanAcceptor(
-                    tcpman_password.parse().context("Parsing tcpman password")?,
+        Command::ServeHttpProxy { host, port } => {
+            let auth = match (
+                std::env::var("HTTP_PROXY_USER"),
+                std::env::var("HTTP_PROXY_PASSWORD"),
+            ) {
+                (Ok(user), Ok(password)) if !user.is_empty() && !password.is_empty() => {
+                    Some(BasicAuthSettings { user, password })
+                }
+                (Err(_), Err(_)) => None,
+                _ => panic!(
+                    "Must specify both HTTP_PROXY_USER and HTTP_PROXY_PASSWORD or leave them unset"
                 ),
-                protocol::direct::Direct::default(),
-            ));
+            };
 
-            let _ = ctrl_c().await;
-            shutdown.shutdown();
-            shutdown.wait_shutdown_complete().await;
+            let acceptor = protocol::http::server::HttpProxyAcceptor {
+                auth_provider: auth.map(|settings| Arc::new(BasicAuthProvider(settings))),
+            };
+
+            serve_protocol_server("http_proxy", host, port, acceptor).await;
+
             Ok(())
         }
 
         Command::Client {
-            config,
+            config: _,
             controller_host,
             controller_port,
         } => {
@@ -102,5 +144,80 @@ async fn main() -> anyhow::Result<()> {
             // )
             // .await
         }
+
+        Command::TestTcpman {
+            password,
+            tls,
+            addr,
+        } => {
+            timeout(Duration::from_secs(10), test_tcpman(addr, tls, password))
+                .await
+                .expect("To not timeout");
+
+            Ok(())
+        }
     }
+}
+
+async fn serve_protocol_server(
+    name: &'static str,
+    host: IpAddr,
+    port: NonZeroU16,
+    acceptor: impl ProtocolAcceptor + Clone + Send + Sync + 'static,
+) {
+    let listener = TcpListener::bind((host, port.get()))
+        .await
+        .with_context(|| format!("Binding tcp on {host}:{port}"))
+        .unwrap();
+
+    let shutdown = Shutdown::new();
+
+    log::info!("{name} started on {host}:{port}");
+
+    let task = spawn(protocol::server::run_server(
+        shutdown.clone(),
+        name,
+        listener,
+        acceptor,
+        protocol::direct::Direct::default(),
+    ));
+
+    let _ = ctrl_c().await;
+    shutdown.shutdown();
+    shutdown.wait_shutdown_complete().await;
+
+    task.await
+        .expect("Server to complete")
+        .expect("server to exit successfully");
+}
+
+async fn test_tcpman(addr: Address, tls: bool, password: String) {
+    let p = Tcpman::new(addr, tls, password).expect("Creating client");
+    let upstream = p
+        .new_stream(
+            &"www.baidu.com:443".parse().expect("parsing address"),
+            &Default::default(),
+            None,
+        )
+        .await
+        .expect("connecting to upstream");
+
+    let mut upstream = BufReader::new(
+        TlsStream::connect_tls("www.baidu.com", upstream)
+            .await
+            .expect("Connect to TLS"),
+    );
+
+    let mut writer = RequestWriter::write(Method::GET, "/");
+    writer.write_header(header::HOST, "www.baidu.com");
+    writer
+        .to_async(&mut upstream)
+        .await
+        .expect("To write request");
+
+    let code = parse_response(&mut upstream, |r| r.code.context("status code"))
+        .await
+        .expect("to parse response");
+
+    assert_eq!(code, 200);
 }

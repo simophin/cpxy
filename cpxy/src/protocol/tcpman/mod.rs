@@ -30,11 +30,11 @@ pub struct Tcpman {
 }
 
 impl Tcpman {
-    pub fn new(address: Address, tls: bool, password: &str) -> anyhow::Result<Self> {
+    pub fn new(address: Address, tls: bool, password: impl AsRef<str>) -> anyhow::Result<Self> {
         Ok(Self {
             address,
             tls,
-            password: password.parse()?,
+            password: password.as_ref().parse()?,
         })
     }
 }

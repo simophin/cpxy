@@ -6,16 +6,16 @@ use std::sync::Arc;
 use tokio::io::{AsyncWriteExt, BufReader};
 use tokio::net::TcpStream;
 
-use super::auth::AuthProvider;
+use super::auth::BasicAuthProvider;
+use super::ProxyRequest;
 use crate::addr::Address;
 use crate::http::parse_request;
 use crate::http::utils::WithHeaders;
 use crate::http::writer::ResponseWriter;
-use crate::protocol::ProxyRequest;
 
 #[derive(Clone)]
 pub struct HttpProxyAcceptor {
-    pub auth_provider: Option<Arc<dyn AuthProvider>>,
+    pub auth_provider: Option<Arc<BasicAuthProvider>>,
 }
 
 pub struct HttpProxyAcceptedState {
@@ -66,10 +66,7 @@ impl super::super::ProtocolAcceptor for HttpProxyAcceptor {
 
         // Check auth
         if let Some(auth_provider) = &self.auth_provider {
-            match auth_provider
-                .check_auth(auth.as_ref().map(|v| v.as_ref()))
-                .await
-            {
+            match auth_provider.check_auth(auth) {
                 Ok(_) => {}
                 Err(err) => {
                     ResponseWriter::write(403, "auth required")
