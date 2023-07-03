@@ -6,6 +6,7 @@ use crate::addr::Address;
 use crate::cipher::chacha20::ChaCha20;
 use crate::cipher::stream::{CipherState, CipherStream};
 use crate::http::utils::WithHeaders;
+use crate::http::writer::HeaderWriter;
 use crate::io::{connect_tcp_marked, time_future, CounterStream};
 use crate::protocol::tcpman::params::ConnectionParameters;
 use crate::protocol::{BoxProtocolReporter, ProxyRequest};
@@ -13,11 +14,11 @@ use crate::tls::TlsStream;
 use crate::ws;
 use anyhow::Context;
 use async_trait::async_trait;
-use bytes::{Bytes, BytesMut};
+use bytes::Bytes;
+use hyper::header;
 use once_cell::sync::OnceCell;
 use orion::aead;
 use serde::{Deserialize, Serialize};
-use std::fmt::Write;
 use tokio::io::BufReader;
 use tokio::net::TcpStream;
 
@@ -92,13 +93,13 @@ impl super::Protocol for Tcpman {
             &mut stream,
             path,
             self.address.host(),
-            Some(move |req: &mut BytesMut| {
+            Some(move |req: &mut HeaderWriter| {
                 if let Some(data) = encrypted_initial_data {
-                    write!(req, "If-None-Match: {data}\r\n").unwrap();
+                    req.write_header(header::IF_NONE_MATCH, data);
                 }
             }),
             |res| {
-                if let Some(data) = res.get_header("ETag") {
+                if let Some(data) = res.get_header(header::ETAG) {
                     Ok(Some(Bytes::from(
                         crypto::decrypt_initial_data(&mut recv_cipher_state, &data)
                             .context("decrypting initial data")?,
@@ -132,8 +133,8 @@ impl Tcpman {
 
         let hashed = pwhash::hash_password(
             &pwhash::Password::from_slice(password.as_bytes()).context("invalid password")?,
-            10,
-            2,
+            3,
+            1 << 16,
         )
         .context("hashing password")?;
         aead::SecretKey::from_slice(hashed.unprotected_as_bytes()).context("invalid key")

@@ -30,6 +30,7 @@ where
     let mut req = httparse::Request::new(&mut headers);
     return match req.parse(buf).context("Parsing http request")? {
         httparse::Status::Complete(length) => {
+            log::debug!("Parsed http request: {req:?}");
             let result = f(&req);
             result.map(|t| Ok((t, length)))
         }

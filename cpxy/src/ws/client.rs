@@ -1,43 +1,38 @@
-use std::fmt::Write;
-
 use super::{hash_ws_key, B64};
 use crate::http::parse_response;
 use crate::http::utils::WithHeaders;
+use crate::http::writer::{HeaderWriter, RequestWriter};
 use anyhow::{bail, Context};
 use base64::Engine;
-use bytes::BytesMut;
+use hyper::{header, Method};
 use once_cell::sync::Lazy;
 use rand::Rng;
-use tokio::io::{AsyncBufRead, AsyncWrite, AsyncWriteExt};
+use tokio::io::{AsyncBufRead, AsyncWrite};
 
 pub async fn connect<T>(
     stream: &mut (impl AsyncBufRead + AsyncWrite + Unpin),
     path: impl AsRef<str>,
     host: impl AsRef<str>,
-    extra_request_header: Option<impl FnOnce(&mut BytesMut)>,
+    extra_request_header: Option<impl FnOnce(&mut HeaderWriter)>,
     extract_response: impl FnOnce(&httparse::Response) -> anyhow::Result<T>,
 ) -> anyhow::Result<T> {
-    let mut req = BytesMut::new();
-    write!(req, "GET {} HTTP/1.1\r\n", path.as_ref())?;
-    write!(req, "Host: {}\r\n", host.as_ref())?;
-    write!(req, "Connection: Upgrade\r\n")?;
-    write!(req, "Upgrade: websocket\r\n")?;
-    write!(req, "Sec-WebSocket-Protocol: mqtt\r\n")?;
-    write!(req, "Sec-WebSocket-Version: 13\r\n")?;
-    write!(req, "Referer: http://{}\r\n", host.as_ref())?;
-    write!(req, "User-Agent: {}\r\n", pick_random_user_agent())?;
-
+    let mut req = RequestWriter::write(Method::GET, path.as_ref());
     let key = B64.encode(rand::random::<[u8; 16]>());
 
-    write!(req, "Sec-WebSocket-Key: {key}\r\n",)?;
+    req.write_header(header::HOST, host.as_ref())
+        .write_header(header::CONNECTION, "Upgrade")
+        .write_header(header::UPGRADE, "websocket")
+        .write_header(header::SEC_WEBSOCKET_PROTOCOL, "mqtt")
+        .write_header(header::SEC_WEBSOCKET_VERSION, "13")
+        .write_header(header::REFERER, host.as_ref())
+        .write_header(header::USER_AGENT, pick_random_user_agent())
+        .write_header(header::SEC_WEBSOCKET_KEY, &key);
 
     if let Some(cb) = extra_request_header {
         cb(&mut req);
     }
-    write!(req, "\r\n")?;
 
-    stream
-        .write_all(&req)
+    req.to_async(stream)
         .await
         .context("Writing websocket request")?;
 
@@ -47,10 +42,10 @@ pub async fn connect<T>(
             bail!("Expecting protocol switch status but got: {:?}", res.code);
         }
 
-        res.check_header_value("Sec-WebSocket-Protocol", "mqtt")?;
+        res.check_header_value(header::SEC_WEBSOCKET_PROTOCOL, "mqtt")?;
 
         let accept_key = res
-            .get_header_text("Sec-WebSocket-Accept")
+            .get_header_text(header::SEC_WEBSOCKET_ACCEPT)
             .context("expecting Sec-WebSocket-Accept")?;
 
         let expecting = hash_ws_key(key);

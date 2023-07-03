@@ -7,21 +7,25 @@
     <cargoProject FILE="$PROJECT_DIR$/Cargo.toml" />
   </component>
   <component name="ChangeListManager">
-    <list default="true" id="7de0cd98-9439-4cfb-afda-9e677609ff4a" name="Changes" comment="Acceptors">
-      <change afterPath="$PROJECT_DIR$/cpxy/src/protocol/server.rs" afterDir="false" />
+    <list default="true" id="7de0cd98-9439-4cfb-afda-9e677609ff4a" name="Changes" comment="More tests">
+      <change afterPath="$PROJECT_DIR$/cpxy/src/http/writer.rs" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/cpxy/src/bin/cpxy.rs" beforeDir="false" afterPath="$PROJECT_DIR$/cpxy/src/bin/cpxy.rs" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/cpxy/src/cipher/mod.rs" beforeDir="false" afterPath="$PROJECT_DIR$/cpxy/src/cipher/mod.rs" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/cpxy/src/cipher/stream.rs" beforeDir="false" afterPath="$PROJECT_DIR$/cpxy/src/cipher/stream.rs" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/cpxy/src/handshaker.rs" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/cpxy/src/http/mod.rs" beforeDir="false" afterPath="$PROJECT_DIR$/cpxy/src/http/mod.rs" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/cpxy/src/http/req.rs" beforeDir="false" afterPath="$PROJECT_DIR$/cpxy/src/http/req.rs" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/cpxy/src/io/utils.rs" beforeDir="false" afterPath="$PROJECT_DIR$/cpxy/src/io/utils.rs" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/cpxy/src/protocol/acceptor.rs" beforeDir="false" afterPath="$PROJECT_DIR$/cpxy/src/protocol/acceptor.rs" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/cpxy/src/http/res.rs" beforeDir="false" afterPath="$PROJECT_DIR$/cpxy/src/http/res.rs" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/cpxy/src/http/utils.rs" beforeDir="false" afterPath="$PROJECT_DIR$/cpxy/src/http/utils.rs" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/cpxy/src/protocol/http/mod.rs" beforeDir="false" afterPath="$PROJECT_DIR$/cpxy/src/protocol/http/mod.rs" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/cpxy/src/protocol/http/server.rs" beforeDir="false" afterPath="$PROJECT_DIR$/cpxy/src/protocol/http/server.rs" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/cpxy/src/protocol/mod.rs" beforeDir="false" afterPath="$PROJECT_DIR$/cpxy/src/protocol/mod.rs" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/cpxy/src/protocol/socks5/mod.rs" beforeDir="false" afterPath="$PROJECT_DIR$/cpxy/src/protocol/socks5/mod.rs" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/cpxy/src/protocol/socks5/server.rs" beforeDir="false" afterPath="$PROJECT_DIR$/cpxy/src/protocol/socks5/server.rs" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/cpxy/src/protocol/tcpman/mod.rs" beforeDir="false" afterPath="$PROJECT_DIR$/cpxy/src/protocol/tcpman/mod.rs" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/cpxy/src/protocol/tcpman/params.rs" beforeDir="false" afterPath="$PROJECT_DIR$/cpxy/src/protocol/tcpman/params.rs" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/cpxy/src/protocol/tcpman/server.rs" beforeDir="false" afterPath="$PROJECT_DIR$/cpxy/src/protocol/tcpman/server.rs" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/cpxy/src/protocol/test.rs" beforeDir="false" afterPath="$PROJECT_DIR$/cpxy/src/protocol/test.rs" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/cpxy/src/ws/client.rs" beforeDir="false" afterPath="$PROJECT_DIR$/cpxy/src/ws/client.rs" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/cpxy/src/ws/mod.rs" beforeDir="false" afterPath="$PROJECT_DIR$/cpxy/src/ws/mod.rs" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/cpxy/src/ws/server.rs" beforeDir="false" afterPath="$PROJECT_DIR$/cpxy/src/ws/server.rs" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -37,6 +41,9 @@
   </component>
   <component name="Git.Settings">
     <option name="RECENT_GIT_ROOT_PATH" value="$PROJECT_DIR$" />
+  </component>
+  <component name="HighlightingSettingsPerFile">
+    <setting file="file://$USER_HOME$/.rustup/toolchains/stable-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/core/src/cmp.rs" root0="SKIP_INSPECTION" />
   </component>
   <component name="MacroExpansionManager">
     <option name="directoryName" value="3f2egimn" />
@@ -65,7 +72,7 @@
   <component name="RsExternalLinterProjectSettings">
     <option name="runOnTheFly" value="true" />
   </component>
-  <component name="RunManager" selected="Cargo.Test tcpman::tests">
+  <component name="RunManager" selected="Cargo.Test writer::tests">
     <configuration name="Check" type="CargoCommandRunConfiguration" factoryName="Cargo Command" nameIsGenerated="true">
       <option name="command" value="check" />
       <option name="workingDirectory" value="file://$PROJECT_DIR$" />
@@ -102,6 +109,23 @@
         <option name="CARGO.BUILD_TASK_PROVIDER" enabled="true" />
       </method>
     </configuration>
+    <configuration name="Test params::tests" type="CargoCommandRunConfiguration" factoryName="Cargo Command" temporary="true">
+      <option name="command" value="test --package cpxy --lib protocol::tcpman::params::tests" />
+      <option name="workingDirectory" value="file://$PROJECT_DIR$" />
+      <option name="emulateTerminal" value="false" />
+      <option name="channel" value="DEFAULT" />
+      <option name="requiredFeatures" value="true" />
+      <option name="allFeatures" value="false" />
+      <option name="withSudo" value="false" />
+      <option name="buildTarget" value="REMOTE" />
+      <option name="backtrace" value="SHORT" />
+      <envs />
+      <option name="isRedirectInput" value="false" />
+      <option name="redirectInputPath" value="" />
+      <method v="2">
+        <option name="CARGO.BUILD_TASK_PROVIDER" enabled="true" />
+      </method>
+    </configuration>
     <configuration name="Test socks5::tests" type="CargoCommandRunConfiguration" factoryName="Cargo Command" temporary="true">
       <option name="command" value="test --package cpxy --lib protocol::socks5::tests" />
       <option name="workingDirectory" value="file://$PROJECT_DIR$" />
@@ -129,15 +153,17 @@
       <option name="withSudo" value="false" />
       <option name="buildTarget" value="REMOTE" />
       <option name="backtrace" value="SHORT" />
-      <envs />
+      <envs>
+        <env name="RUST_LOG" value="debug" />
+      </envs>
       <option name="isRedirectInput" value="false" />
       <option name="redirectInputPath" value="" />
       <method v="2">
         <option name="CARGO.BUILD_TASK_PROVIDER" enabled="true" />
       </method>
     </configuration>
-    <configuration name="Test ws::tests" type="CargoCommandRunConfiguration" factoryName="Cargo Command" temporary="true">
-      <option name="command" value="test --package cpxy --lib ws::tests" />
+    <configuration name="Test writer::tests" type="CargoCommandRunConfiguration" factoryName="Cargo Command" temporary="true">
+      <option name="command" value="test --package cpxy --lib http::writer::tests" />
       <option name="workingDirectory" value="file://$PROJECT_DIR$" />
       <option name="emulateTerminal" value="false" />
       <option name="channel" value="DEFAULT" />
@@ -146,7 +172,9 @@
       <option name="withSudo" value="false" />
       <option name="buildTarget" value="REMOTE" />
       <option name="backtrace" value="SHORT" />
-      <envs />
+      <envs>
+        <env name="RUST_LOG" value="debug" />
+      </envs>
       <option name="isRedirectInput" value="false" />
       <option name="redirectInputPath" value="" />
       <method v="2">
@@ -155,17 +183,19 @@
     </configuration>
     <list>
       <item itemvalue="Cargo.Check" />
+      <item itemvalue="Cargo.Test writer::tests" />
+      <item itemvalue="Cargo.Test params::tests" />
       <item itemvalue="Cargo.Test socks5::tests" />
       <item itemvalue="Cargo.Test tcpman::tests" />
       <item itemvalue="Cargo.Test http::tests" />
-      <item itemvalue="Cargo.Test ws::tests" />
     </list>
     <recent_temporary>
       <list>
+        <item itemvalue="Cargo.Test writer::tests" />
         <item itemvalue="Cargo.Test tcpman::tests" />
+        <item itemvalue="Cargo.Test params::tests" />
         <item itemvalue="Cargo.Test http::tests" />
         <item itemvalue="Cargo.Test socks5::tests" />
-        <item itemvalue="Cargo.Test ws::tests" />
       </list>
     </recent_temporary>
   </component>
@@ -225,7 +255,15 @@
       <option name="project" value="LOCAL" />
       <updated>1688305524977</updated>
     </task>
-    <option name="localTasksCounter" value="6" />
+    <task id="LOCAL-00006" summary="More tests">
+      <option name="closed" value="true" />
+      <created>1688310563466</created>
+      <option name="number" value="00006" />
+      <option name="presentableId" value="LOCAL-00006" />
+      <option name="project" value="LOCAL" />
+      <updated>1688310563466</updated>
+    </task>
+    <option name="localTasksCounter" value="7" />
     <servers />
   </component>
   <component name="VcsManagerConfiguration">
@@ -234,7 +272,8 @@
     <MESSAGE value="Protocol" />
     <MESSAGE value="Tidy up" />
     <MESSAGE value="Acceptors" />
-    <option name="LAST_COMMIT_MESSAGE" value="Acceptors" />
+    <MESSAGE value="More tests" />
+    <option name="LAST_COMMIT_MESSAGE" value="More tests" />
   </component>
   <component name="XSLT-Support.FileAssociations.UIState">
     <expand />

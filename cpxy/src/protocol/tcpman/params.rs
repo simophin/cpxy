@@ -12,7 +12,7 @@ use orion::aead;
 use rand::Rng;
 use serde::{Deserialize, Serialize};
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, PartialEq, Eq)]
 pub struct ConnectionParameters {
     pub upload_cipher: CipherConfig<ChaCha20>,
     pub download_cipher: CipherConfig<ChaCha20>,
@@ -63,7 +63,9 @@ impl ConnectionParameters {
         for i in 0..output.len() {
             if i == next_slash_position && n > 0 {
                 new_output.push(b'/');
-                next_slash_position = rng.gen_range(i + 1..output.len());
+                if i < output.len() - 1 {
+                    next_slash_position = rng.gen_range(i + 1..output.len());
+                }
                 n -= 1;
             }
 
@@ -74,6 +76,7 @@ impl ConnectionParameters {
     }
 
     pub fn decrypt_from_path(path: &str, key: &aead::SecretKey) -> anyhow::Result<Self> {
+        log::debug!("Decrypting {path}");
         // Remove all / from the path
         let path = path.replace("/", "");
 
@@ -92,5 +95,31 @@ impl ConnectionParameters {
         }
 
         Ok(rmp_serde::from_slice(&output).context("deserializing connection parameters")?)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn params_encryption_works() {
+        let key = aead::SecretKey::default();
+
+        let params = ConnectionParameters {
+            upload_cipher: CipherConfig::Full {
+                key: Default::default(),
+                iv: Default::default(),
+            },
+            download_cipher: CipherConfig::Full {
+                key: Default::default(),
+                iv: Default::default(),
+            },
+            dst: "example.com:443".parse().expect("To parse address"),
+        };
+
+        let path = params.encrypt_to_path(&key).expect("To encrypt");
+        let actual = ConnectionParameters::decrypt_from_path(&path, &key).expect("To decrypt");
+        assert_eq!(params, actual);
     }
 }

@@ -3,9 +3,8 @@ pub mod server;
 
 use anyhow::{bail, Context};
 use async_trait::async_trait;
-use bytes::BytesMut;
 use serde::{Deserialize, Serialize};
-use tokio::io::{AsyncWriteExt, BufReader};
+use tokio::io::BufReader;
 use tokio::net::TcpStream;
 
 use super::{BoxProtocolReporter, Protocol, ProxyRequest};
@@ -16,8 +15,9 @@ use crate::{
     io::{connect_tcp_marked, CounterStream},
 };
 
+use crate::http::writer::RequestWriter;
 use crate::io::time_future;
-use std::fmt::Write;
+use hyper::{header, Method};
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct HttpProxy {
@@ -52,32 +52,16 @@ impl Protocol for HttpProxy {
         .context("Connecting to TLS")?;
 
         // Establish HTTP tunnel
-        let mut request = BytesMut::new();
-        write!(
-            request,
-            "CONNECT {} HTTP/1.1\r\nHost: {}\r\n",
-            req.dst, self.address
-        )?;
+        let mut writer = RequestWriter::write(Method::CONNECT, &req.dst);
 
         if let Some(auth_header) = &self.auth_settings {
-            write!(
-                request,
-                "Proxy-Authorization: {}\r\n",
-                auth_header.to_header_value()
-            )?;
+            writer.write_header(header::PROXY_AUTHORIZATION, auth_header.to_header_value());
         }
-        request.extend_from_slice(b"\r\n");
 
-        log::debug!(
-            "Sending HTTP proxy request to {}: {}",
-            self.address,
-            std::str::from_utf8(&request).unwrap()
-        );
-
-        upstream
-            .write_all(&request)
+        writer
+            .to_async(&mut upstream)
             .await
-            .context("Tunnel request")?;
+            .context("Writing tunnel request")?;
 
         let mut upstream = BufReader::new(upstream);
 

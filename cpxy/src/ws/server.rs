@@ -1,8 +1,8 @@
 use crate::http::parse_request;
 use crate::http::utils::WithHeaders;
+use crate::http::writer::{HeaderWriter, ResponseWriter};
 use anyhow::Context;
-use bytes::BytesMut;
-use std::fmt::Write;
+use hyper::header;
 use tokio::io::{AsyncBufRead, AsyncWrite, AsyncWriteExt};
 
 pub struct Acceptor<S> {
@@ -19,13 +19,13 @@ impl<S> Acceptor<S> {
         S: AsyncBufRead + Unpin,
     {
         let (key, result) = parse_request(&mut stream, move |req| {
-            req.check_header_value("Connection", "Upgrade")?;
-            req.check_header_value("Upgrade", "websocket")?;
-            req.check_header_value("Sec-WebSocket-Protocol", "mqtt")?;
-            req.check_header_value("Sec-WebSocket-Version", "13")?;
+            req.check_header_value(header::CONNECTION, "Upgrade")?;
+            req.check_header_value(header::UPGRADE, "websocket")?;
+            req.check_header_value(header::SEC_WEBSOCKET_PROTOCOL, "mqtt")?;
+            req.check_header_value(header::SEC_WEBSOCKET_VERSION, "13")?;
 
             let key = req
-                .get_header_text("Sec-WebSocket-Key")
+                .get_header_text(header::SEC_WEBSOCKET_KEY)
                 .context("Expecting key")?;
 
             let result = extract_request(req)?;
@@ -41,42 +41,34 @@ impl<S> Acceptor<S> {
         self,
         is_success: bool,
         body: Option<impl AsRef<str> + Send + Sync>,
-        extra_headers: Option<impl FnOnce(&mut BytesMut) -> ()>,
+        extra_headers: Option<impl FnOnce(&mut HeaderWriter) -> ()>,
     ) -> anyhow::Result<S>
     where
         S: AsyncWrite + Unpin,
     {
         let Self { mut stream, key } = self;
-        let mut res = BytesMut::new();
-        if is_success {
-            write!(res, "HTTP/1.1 101 OK\r\n")?;
-            write!(res, "Sec-WebSocket-Accept: {}\r\n", super::hash_ws_key(key))?;
-            write!(res, "Sec-WebSocket-Protocol: mqtt\r\n")?;
+        let mut res = if is_success {
+            let mut w = ResponseWriter::write(101, "Switching Protocol");
+            w.write_header(header::SEC_WEBSOCKET_ACCEPT, super::hash_ws_key(key));
+            w.write_header(header::SEC_WEBSOCKET_PROTOCOL, "mqtt");
+            w.write_header(header::SEC_WEBSOCKET_VERSION, "13");
+            w
         } else {
-            write!(res, "HTTP/1.1 500 Internal Server Error\r\n")?;
-        }
+            ResponseWriter::write(500, "Internal server error")
+        };
 
         if let Some(extra) = extra_headers {
             extra(&mut res);
         }
 
-        if let Some(body) = &body {
-            write!(
-                res,
-                "Content-Length: {}\r\n",
-                body.as_ref().as_bytes().len()
-            )?;
-            write!(res, "Content-Type: text/plain\r\n")?;
-        }
-
-        write!(res, "\r\n")?;
-
-        if let Some(body) = body {
-            res.extend_from_slice(body.as_ref().as_bytes());
-        }
+        let buf = if let Some(body) = body {
+            res.finish_with_body("text/plain", body.as_ref().as_bytes())
+        } else {
+            res.finish()
+        };
 
         stream
-            .write_all(&res)
+            .write_all(&buf)
             .await
             .context("Unable to write ws response")?;
 

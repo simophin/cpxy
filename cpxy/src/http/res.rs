@@ -27,10 +27,11 @@ where
     F: FnOnce(&httparse::Response<'_, '_>) -> anyhow::Result<T>,
 {
     let mut headers = [httparse::EMPTY_HEADER; 32];
-    let mut req = httparse::Response::new(&mut headers);
-    return match req.parse(buf).context("Parsing http request")? {
+    let mut res = httparse::Response::new(&mut headers);
+    return match res.parse(buf).context("Parsing http request")? {
         httparse::Status::Complete(length) => {
-            let result = f(&req);
+            log::debug!("Parsed http response: {res:?}");
+            let result = f(&res);
             result.map(|t| Ok((t, length)))
         }
 

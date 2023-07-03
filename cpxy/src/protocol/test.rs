@@ -1,13 +1,15 @@
 use super::{Protocol, ProtocolAcceptor};
 use crate::addr::Address;
 use crate::http::parse_response;
+use crate::http::writer::RequestWriter;
 use crate::protocol::direct::Direct;
 use crate::protocol::ProxyRequest;
 use crate::tls::TlsStream;
 use anyhow::Context;
 use async_shutdown::Shutdown;
+use hyper::Method;
 use std::net::SocketAddr;
-use tokio::io::{AsyncWriteExt, BufReader};
+use tokio::io::BufReader;
 use tokio::net::TcpListener;
 use tokio::spawn;
 
@@ -47,7 +49,10 @@ where
         .await
         .context("Connecting to TLS")?;
 
-    conn.write_all(b"GET / HTTP/1.1\r\nHost: www.baidu.com\r\n\r\n")
+    let mut writer = RequestWriter::write(Method::GET, "/");
+    writer.write_header("Host", "www.baidu.com");
+    writer
+        .to_async(&mut conn)
         .await
         .context("Writing request")?;
 

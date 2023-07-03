@@ -24,6 +24,32 @@ pub enum CipherConfig<C: StreamCipher> {
     None,
 }
 
+impl<C: StreamCipher> Eq for CipherConfig<C> {}
+
+impl<C: StreamCipher> PartialEq for CipherConfig<C> {
+    fn eq(&self, other: &Self) -> bool {
+        match (self, other) {
+            (Self::Full { key: k1, iv: i1 }, Self::Full { key: k2, iv: i2 }) => {
+                k1 == k2 && i1 == i2
+            }
+            (
+                Self::FirstNBytes {
+                    n: n1,
+                    key: k1,
+                    iv: i1,
+                },
+                Self::FirstNBytes {
+                    n: n2,
+                    key: k2,
+                    iv: i2,
+                },
+            ) => n1 == n2 && k1 == k2 && i1 == i2,
+            (Self::None, Self::None) => true,
+            _ => false,
+        }
+    }
+}
+
 impl<C: StreamCipher> Clone for CipherConfig<C> {
     fn clone(&self) -> Self {
         match self {

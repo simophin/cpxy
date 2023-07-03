@@ -6,8 +6,24 @@ pub mod chacha20;
 pub mod stream;
 
 pub trait StreamCipher {
-    type Key: AsRef<[u8]> + AsMut<[u8]> + Default + Clone + Serialize + DeserializeOwned + 'static;
-    type Iv: AsRef<[u8]> + AsMut<[u8]> + Default + Clone + Serialize + DeserializeOwned + 'static;
+    type Key: AsRef<[u8]>
+        + AsMut<[u8]>
+        + Default
+        + Clone
+        + Serialize
+        + DeserializeOwned
+        + Eq
+        + PartialEq
+        + 'static;
+    type Iv: AsRef<[u8]>
+        + AsMut<[u8]>
+        + Default
+        + Clone
+        + Serialize
+        + DeserializeOwned
+        + Eq
+        + PartialEq
+        + 'static;
 
     fn new(key: &Self::Key, iv: &Self::Iv) -> Self;
 

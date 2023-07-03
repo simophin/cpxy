@@ -1,15 +1,16 @@
 use anyhow::{bail, Context};
 use async_trait::async_trait;
-use bytes::{Bytes, BytesMut};
-use std::fmt::Write;
+use bytes::Bytes;
+use hyper::header;
 use std::sync::Arc;
-use tokio::io::{AsyncWrite, AsyncWriteExt, BufReader};
+use tokio::io::{AsyncWriteExt, BufReader};
 use tokio::net::TcpStream;
 
 use super::auth::AuthProvider;
 use crate::addr::Address;
 use crate::http::parse_request;
 use crate::http::utils::WithHeaders;
+use crate::http::writer::ResponseWriter;
 use crate::protocol::ProxyRequest;
 
 #[derive(Clone)]
@@ -47,7 +48,7 @@ impl super::super::ProtocolAcceptor for HttpProxyAcceptor {
 
             Ok((
                 ProxyRequest::from(addr),
-                req.get_header_text("Proxy-Authorization")
+                req.get_header_text(header::PROXY_AUTHORIZATION)
                     .map(str::to_string),
             ))
         })
@@ -56,7 +57,8 @@ impl super::super::ProtocolAcceptor for HttpProxyAcceptor {
         let (req, auth) = match result {
             Ok(v) => v,
             Err(err) => {
-                write_response(&mut stream, 400, "invalid parameters", Option::<&str>::None)
+                ResponseWriter::write(400, "invalid parameters")
+                    .to_async(&mut stream)
                     .await?;
                 return Err(err);
             }
@@ -70,7 +72,9 @@ impl super::super::ProtocolAcceptor for HttpProxyAcceptor {
             {
                 Ok(_) => {}
                 Err(err) => {
-                    write_response(&mut stream, 403, "auth required", Option::<&str>::None).await?;
+                    ResponseWriter::write(403, "auth required")
+                        .to_async(&mut stream)
+                        .await?;
                     return Err(err);
                 }
             }
@@ -88,7 +92,9 @@ impl super::super::ProtocolAcceptedState for HttpProxyAcceptedState {
         mut self,
         initial_data: Option<Bytes>,
     ) -> anyhow::Result<Self::ServerStream> {
-        write_response(&mut self.stream, 200, "OK", Option::<&str>::None).await?;
+        ResponseWriter::write(200, "OK")
+            .to_async(&mut self.stream)
+            .await?;
         if let Some(data) = initial_data {
             self.stream
                 .write_all(&data)
@@ -103,32 +109,19 @@ impl super::super::ProtocolAcceptedState for HttpProxyAcceptedState {
         mut self,
         error: Option<impl AsRef<str> + Send + Sync>,
     ) -> anyhow::Result<()> {
-        write_response(&mut self.stream, 500, "Internal error", error).await
+        if let Some(error) = error {
+            self.stream
+                .write_all(
+                    &ResponseWriter::write(500, "Internal error")
+                        .finish_with_body("Content-Type: text/plain", error.as_ref().as_bytes()),
+                )
+                .await?;
+        } else {
+            ResponseWriter::write(500, "Internal error")
+                .to_async(&mut self.stream)
+                .await?;
+        }
+
+        Ok(())
     }
-}
-
-async fn write_response(
-    stream: &mut (impl AsyncWrite + Unpin),
-    code: u16,
-    reason: impl AsRef<str>,
-    body: Option<impl AsRef<str>>,
-) -> anyhow::Result<()> {
-    let mut resp = BytesMut::new();
-
-    write!(resp, "HTTP/1.1 {code} {}\r\n", reason.as_ref())?;
-
-    if let Some(body) = body {
-        write!(resp, "Content-Type: text/plain\r\n")?;
-        write!(
-            resp,
-            "Content-Length: {}\r\n\r\n",
-            body.as_ref().as_bytes().len()
-        )?;
-        resp.extend_from_slice(body.as_ref().as_bytes());
-    } else {
-        write!(resp, "\r\n")?;
-    }
-
-    stream.write_all(&resp).await.context("Writing response")?;
-    Ok(())
 }

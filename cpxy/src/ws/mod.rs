@@ -17,10 +17,9 @@ fn hash_ws_key(key: impl AsRef<str>) -> String {
 mod tests {
     use super::*;
     use crate::http::utils::WithHeaders;
+    use crate::http::writer::HeaderWriter;
     use crate::ws::server::Acceptor;
     use anyhow::Context;
-    use bytes::BytesMut;
-    use std::fmt::Write;
     use tokio::io::{duplex, BufReader};
     use tokio::spawn;
 
@@ -38,8 +37,8 @@ mod tests {
                 .respond(
                     true,
                     Option::<&str>::None,
-                    Some(|buf: &mut BytesMut| {
-                        write!(buf, "Response-Data: hello\r\n").unwrap();
+                    Some(|buf: &mut HeaderWriter| {
+                        buf.write_header("Response-Data", "hello");
                     }),
                 )
                 .await
@@ -50,8 +49,8 @@ mod tests {
             &mut client,
             "/path",
             "host",
-            Some(|buf: &mut BytesMut| {
-                write!(buf, "Request-Data: data\r\n").unwrap();
+            Some(|buf: &mut HeaderWriter| {
+                buf.write_header("Request-Data", "data");
             }),
             |res| {
                 res.get_header_text("Response-Data")

@@ -4,12 +4,13 @@ use super::params::ConnectionParameters;
 use crate::cipher::chacha20::ChaCha20;
 use crate::cipher::stream::{CipherState, CipherStream};
 use crate::http::utils::WithHeaders;
+use crate::http::writer::HeaderWriter;
 use crate::ws;
 use anyhow::Context;
 use async_trait::async_trait;
-use bytes::{Bytes, BytesMut};
+use bytes::Bytes;
+use hyper::header;
 use orion::aead::SecretKey;
-use std::fmt::Write;
 use std::sync::Arc;
 use tokio::io::{AsyncBufRead, BufReader};
 use tokio::net::TcpStream;
@@ -71,9 +72,9 @@ impl ProtocolAcceptedState for TcpmanAcceptedState {
             .respond(
                 true,
                 Option::<&str>::None,
-                Some(move |buf: &mut BytesMut| {
+                Some(move |writer: &mut HeaderWriter| {
                     if let Some(data) = initial_data {
-                        write!(buf, "ETag: {data}\r\n").unwrap();
+                        writer.write_header(header::ETAG, data);
                     }
                 }),
             )
@@ -93,7 +94,7 @@ impl ProtocolAcceptedState for TcpmanAcceptedState {
         error: Option<impl AsRef<str> + Send + Sync>,
     ) -> anyhow::Result<()> {
         self.ws_acceptor
-            .respond(false, error, Option::<fn(&mut BytesMut) -> ()>::None)
+            .respond(false, error, Option::<fn(&mut HeaderWriter) -> ()>::None)
             .await
             .context("Responding error")?;
         Ok(())
