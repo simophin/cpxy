@@ -1,4 +1,4 @@
-mod server;
+pub mod server;
 
 use anyhow::{bail, Context};
 use async_trait::async_trait;

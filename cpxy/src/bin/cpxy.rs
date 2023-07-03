@@ -1,4 +1,4 @@
-use anyhow::{bail, Context};
+use anyhow::Context;
 use async_shutdown::Shutdown;
 use clap::{Parser, Subcommand};
 use cpxy::addr::Address;
@@ -47,6 +47,17 @@ enum Command {
         host: IpAddr,
 
         #[clap(default_value = "8080", long)]
+        port: NonZeroU16,
+    },
+
+    /// Serve socks5 server.
+    #[clap()]
+    ServeSocks5 {
+        /// The address to listen on
+        #[clap(default_value = "0.0.0.0", long)]
+        host: IpAddr,
+
+        #[clap(default_value = "3128", long)]
         port: NonZeroU16,
     },
 
@@ -118,7 +129,12 @@ async fn main() -> anyhow::Result<()> {
             };
 
             serve_protocol_server("http_proxy", host, port, acceptor).await;
+            Ok(())
+        }
 
+        Command::ServeSocks5 { host, port } => {
+            let acceptor = protocol::socks5::server::Socks5Acceptor::default();
+            serve_protocol_server("socks5_proxy", host, port, acceptor).await;
             Ok(())
         }
 
@@ -183,10 +199,13 @@ async fn serve_protocol_server(
     ));
 
     let _ = ctrl_c().await;
+    log::info!("{name} shutting down...");
     shutdown.shutdown();
     shutdown.wait_shutdown_complete().await;
 
-    task.await
+    timeout(Duration::from_secs(10), task)
+        .await
+        .expect("timeout waiting for shutting down")
         .expect("Server to complete")
         .expect("server to exit successfully");
 }

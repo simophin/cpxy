@@ -13,11 +13,8 @@ pub async fn run_server(
     acceptor: impl ProtocolAcceptor + Clone + Send + Sync + 'static,
     upstream: impl Protocol + Clone + Send + Sync + 'static,
 ) -> anyhow::Result<()> {
-    loop {
-        let (conn, addr) = tcp_listener
-            .accept()
-            .await
-            .context("Accepting connection")?;
+    while let Some(r) = shutdown.wrap_cancel(tcp_listener.accept()).await {
+        let (conn, addr) = r.context("Accepting connection")?;
 
         log::info!("{name}: New connection from {addr}");
 
@@ -27,7 +24,7 @@ pub async fn run_server(
 
         spawn(async move {
             if let Some(Err(e)) = shutdown
-                .wrap_cancel(serve_conn(conn, acceptor, upstream))
+                .wrap_cancel(serve_conn(name, conn, acceptor, upstream))
                 .await
             {
                 log::error!("{name}: Connection error: {e:?}");
@@ -36,9 +33,12 @@ pub async fn run_server(
             log::info!("{name}: Connection closed from {addr}");
         });
     }
+
+    Ok(())
 }
 
 async fn serve_conn(
+    name: &'static str,
     conn: TcpStream,
     acceptor: impl ProtocolAcceptor,
     upstream: impl Protocol,
@@ -47,6 +47,8 @@ async fn serve_conn(
         .accept(conn)
         .await
         .context("Accepting connection")?;
+
+    log::debug!("{name} got {req:?}");
 
     match upstream
         .new_stream(&req, &Default::default(), None)
@@ -61,9 +63,8 @@ async fn serve_conn(
                 .reply_success(initial_data)
                 .await
                 .context("Replying success")?;
-            copy_bidirectional(&mut conn, &mut upstream)
-                .await
-                .context("Copying data")?;
+
+            let _ = copy_bidirectional(&mut conn, &mut upstream).await;
             Ok(())
         }
 
