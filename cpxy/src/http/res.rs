@@ -1,3 +1,4 @@
+use crate::http::display::ResponseDisplay;
 use anyhow::{bail, Context};
 use bytes::BytesMut;
 use tokio::io::{AsyncBufRead, AsyncBufReadExt};
@@ -30,7 +31,7 @@ where
     let mut res = httparse::Response::new(&mut headers);
     return match res.parse(buf).context("Parsing http request")? {
         httparse::Status::Complete(length) => {
-            log::debug!("Parsed http response: {res:?}");
+            log::debug!("Parsed http response: {}", ResponseDisplay(&res));
             let result = f(&res);
             result.map(|t| Ok((t, length)))
         }

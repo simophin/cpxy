@@ -1,3 +1,4 @@
+mod display;
 mod req;
 mod res;
 pub mod utils;

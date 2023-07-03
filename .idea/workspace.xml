@@ -7,25 +7,12 @@
     <cargoProject FILE="$PROJECT_DIR$/Cargo.toml" />
   </component>
   <component name="ChangeListManager">
-    <list default="true" id="7de0cd98-9439-4cfb-afda-9e677609ff4a" name="Changes" comment="More tests">
-      <change afterPath="$PROJECT_DIR$/cpxy/src/http/writer.rs" afterDir="false" />
+    <list default="true" id="7de0cd98-9439-4cfb-afda-9e677609ff4a" name="Changes" comment="http writer">
+      <change afterPath="$PROJECT_DIR$/cpxy/src/http/display.rs" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/cpxy/src/cipher/mod.rs" beforeDir="false" afterPath="$PROJECT_DIR$/cpxy/src/cipher/mod.rs" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/cpxy/src/cipher/stream.rs" beforeDir="false" afterPath="$PROJECT_DIR$/cpxy/src/cipher/stream.rs" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/cpxy/src/handshaker.rs" beforeDir="false" />
       <change beforePath="$PROJECT_DIR$/cpxy/src/http/mod.rs" beforeDir="false" afterPath="$PROJECT_DIR$/cpxy/src/http/mod.rs" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/cpxy/src/http/req.rs" beforeDir="false" afterPath="$PROJECT_DIR$/cpxy/src/http/req.rs" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/cpxy/src/http/res.rs" beforeDir="false" afterPath="$PROJECT_DIR$/cpxy/src/http/res.rs" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/cpxy/src/http/utils.rs" beforeDir="false" afterPath="$PROJECT_DIR$/cpxy/src/http/utils.rs" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/cpxy/src/protocol/http/mod.rs" beforeDir="false" afterPath="$PROJECT_DIR$/cpxy/src/protocol/http/mod.rs" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/cpxy/src/protocol/http/server.rs" beforeDir="false" afterPath="$PROJECT_DIR$/cpxy/src/protocol/http/server.rs" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/cpxy/src/protocol/tcpman/mod.rs" beforeDir="false" afterPath="$PROJECT_DIR$/cpxy/src/protocol/tcpman/mod.rs" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/cpxy/src/protocol/tcpman/params.rs" beforeDir="false" afterPath="$PROJECT_DIR$/cpxy/src/protocol/tcpman/params.rs" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/cpxy/src/protocol/tcpman/server.rs" beforeDir="false" afterPath="$PROJECT_DIR$/cpxy/src/protocol/tcpman/server.rs" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/cpxy/src/protocol/test.rs" beforeDir="false" afterPath="$PROJECT_DIR$/cpxy/src/protocol/test.rs" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/cpxy/src/ws/client.rs" beforeDir="false" afterPath="$PROJECT_DIR$/cpxy/src/ws/client.rs" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/cpxy/src/ws/mod.rs" beforeDir="false" afterPath="$PROJECT_DIR$/cpxy/src/ws/mod.rs" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/cpxy/src/ws/server.rs" beforeDir="false" afterPath="$PROJECT_DIR$/cpxy/src/ws/server.rs" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -72,7 +59,7 @@
   <component name="RsExternalLinterProjectSettings">
     <option name="runOnTheFly" value="true" />
   </component>
-  <component name="RunManager" selected="Cargo.Test writer::tests">
+  <component name="RunManager" selected="Cargo.Test tcpman::tests">
     <configuration name="Check" type="CargoCommandRunConfiguration" factoryName="Cargo Command" nameIsGenerated="true">
       <option name="command" value="check" />
       <option name="workingDirectory" value="file://$PROJECT_DIR$" />
@@ -191,8 +178,8 @@
     </list>
     <recent_temporary>
       <list>
-        <item itemvalue="Cargo.Test writer::tests" />
         <item itemvalue="Cargo.Test tcpman::tests" />
+        <item itemvalue="Cargo.Test writer::tests" />
         <item itemvalue="Cargo.Test params::tests" />
         <item itemvalue="Cargo.Test http::tests" />
         <item itemvalue="Cargo.Test socks5::tests" />
@@ -263,7 +250,15 @@
       <option name="project" value="LOCAL" />
       <updated>1688310563466</updated>
     </task>
-    <option name="localTasksCounter" value="7" />
+    <task id="LOCAL-00007" summary="http writer">
+      <option name="closed" value="true" />
+      <created>1688376547693</created>
+      <option name="number" value="00007" />
+      <option name="presentableId" value="LOCAL-00007" />
+      <option name="project" value="LOCAL" />
+      <updated>1688376547693</updated>
+    </task>
+    <option name="localTasksCounter" value="8" />
     <servers />
   </component>
   <component name="VcsManagerConfiguration">
@@ -273,7 +268,8 @@
     <MESSAGE value="Tidy up" />
     <MESSAGE value="Acceptors" />
     <MESSAGE value="More tests" />
-    <option name="LAST_COMMIT_MESSAGE" value="More tests" />
+    <MESSAGE value="http writer" />
+    <option name="LAST_COMMIT_MESSAGE" value="http writer" />
   </component>
   <component name="XSLT-Support.FileAssociations.UIState">
     <expand />
