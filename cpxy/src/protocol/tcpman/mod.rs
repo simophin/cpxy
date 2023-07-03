@@ -1,4 +1,5 @@
 mod crypto;
+mod key;
 mod params;
 pub mod server;
 
@@ -22,24 +23,20 @@ use serde::{Deserialize, Serialize};
 use tokio::io::BufReader;
 use tokio::net::TcpStream;
 
-#[derive(Debug, Serialize, Deserialize, Eq, PartialEq)]
+#[derive(Debug, Serialize, Deserialize, Eq, PartialEq, Clone)]
 pub struct Tcpman {
     address: Address,
     tls: bool,
-    password: String,
-
-    #[serde(skip)]
-    key: OnceCell<aead::SecretKey>,
+    password: key::SecretKey,
 }
 
 impl Tcpman {
-    pub fn new(address: Address, tls: bool, password: impl ToString) -> Self {
-        Self {
+    pub fn new(address: Address, tls: bool, password: &str) -> anyhow::Result<Self> {
+        Ok(Self {
             address,
             tls,
-            password: password.to_string(),
-            key: OnceCell::new(),
-        }
+            password: password.parse()?,
+        })
     }
 }
 
@@ -84,7 +81,7 @@ impl super::Protocol for Tcpman {
             .map(|input| crypto::encrypt_initial_data(&mut send_cipher_state, input));
 
         let path = params
-            .encrypt_to_path(self.key())
+            .encrypt_to_path(self.password.as_ref())
             .context("encrypting connection params")?;
 
         let mut stream = BufReader::new(stream);
@@ -121,51 +118,19 @@ impl super::Protocol for Tcpman {
     }
 }
 
-impl Tcpman {
-    fn key(&self) -> &aead::SecretKey {
-        self.key
-            .get_or_try_init(|| Self::derive_key(&self.password))
-            .expect("failed to derive key")
-    }
-
-    pub fn derive_key(password: &str) -> anyhow::Result<aead::SecretKey> {
-        use orion::pwhash;
-
-        let hashed = pwhash::hash_password(
-            &pwhash::Password::from_slice(password.as_bytes()).context("invalid password")?,
-            3,
-            1 << 16,
-        )
-        .context("hashing password")?;
-        aead::SecretKey::from_slice(hashed.unprotected_as_bytes()).context("invalid key")
-    }
-}
-
-impl Clone for Tcpman {
-    fn clone(&self) -> Self {
-        Self {
-            address: self.address.clone(),
-            tls: self.tls,
-            password: self.password.clone(),
-            key: Default::default(),
-        }
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use crate::protocol::test;
-    use std::sync::Arc;
 
     #[tokio::test]
     async fn tcpman_proxy_works() {
         let _ = env_logger::try_init();
 
         test::test_protocol_valid_config(
-            |addr| super::Tcpman::new(addr.into(), false, "password"),
-            Some(super::server::TcpmanAcceptor(Arc::new(
-                super::Tcpman::derive_key("password").unwrap(),
-            ))),
+            |addr| super::Tcpman::new(addr.into(), false, "password").expect("Creating tcpman"),
+            Some(super::server::TcpmanAcceptor(
+                "password".parse().expect("To parse password"),
+            )),
         )
         .await
         .expect("socks5 proxy works");

@@ -72,7 +72,7 @@ impl ConnectionParameters {
             new_output.push(output[i]);
         }
 
-        Ok(String::from_utf8(output).unwrap())
+        Ok(String::from_utf8(new_output).unwrap())
     }
 
     pub fn decrypt_from_path(path: &str, key: &aead::SecretKey) -> anyhow::Result<Self> {

@@ -1,5 +1,6 @@
 use super::super::{ProtocolAcceptedState, ProtocolAcceptor, ProxyRequest};
 use super::crypto;
+use super::key::SecretKey;
 use super::params::ConnectionParameters;
 use crate::cipher::chacha20::ChaCha20;
 use crate::cipher::stream::{CipherState, CipherStream};
@@ -10,13 +11,12 @@ use anyhow::Context;
 use async_trait::async_trait;
 use bytes::Bytes;
 use hyper::header;
-use orion::aead::SecretKey;
 use std::sync::Arc;
 use tokio::io::{AsyncBufRead, BufReader};
 use tokio::net::TcpStream;
 
 #[derive(Clone)]
-pub struct TcpmanAcceptor(pub Arc<SecretKey>);
+pub struct TcpmanAcceptor(pub SecretKey);
 
 #[async_trait]
 impl ProtocolAcceptor for TcpmanAcceptor {
@@ -119,8 +119,11 @@ where
             upload_cipher,
             download_cipher,
             dst,
-        } = ConnectionParameters::decrypt_from_path(req.path.context("missing path")?, key)
-            .context("decrypting connection parameters")?;
+        } = ConnectionParameters::decrypt_from_path(
+            req.path.context("missing path")?,
+            key.as_ref(),
+        )
+        .context("decrypting connection parameters")?;
 
         let mut recv_cipher_state: CipherState<_> = upload_cipher.into();
         let send_cipher_state: CipherState<_> = download_cipher.into();
