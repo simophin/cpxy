@@ -1,5 +1,5 @@
 use anyhow::Context;
-use orion::{aead, pwhash};
+use orion::{aead, kdf};
 use serde_with::{DeserializeFromStr, SerializeDisplay};
 use std::fmt::{Debug, Display, Formatter};
 use std::str::FromStr;
@@ -35,15 +35,16 @@ impl FromStr for SecretKey {
     type Err = anyhow::Error;
 
     fn from_str(password: &str) -> Result<Self, Self::Err> {
-        let hashed = pwhash::hash_password(
-            &pwhash::Password::from_slice(password.as_bytes()).context("creating password")?,
+        let key = kdf::derive_key(
+            &kdf::Password::from_slice(password.as_bytes()).context("creating password")?,
+            &kdf::Salt::from_slice(b"tcpman_protocol_password").context("creating salt")?,
             3,
             1 << 16,
+            32,
         )
-        .context("hash password")?;
+        .context("deriving key")?;
 
-        let key =
-            aead::SecretKey::from_slice(hashed.unprotected_as_bytes()).context("invalid key")?;
+        let key = aead::SecretKey::from_slice(key.unprotected_as_bytes()).context("invalid key")?;
 
         Ok(Self {
             password: password.to_string(),
@@ -55,5 +56,18 @@ impl FromStr for SecretKey {
 impl AsRef<aead::SecretKey> for SecretKey {
     fn as_ref(&self) -> &aead::SecretKey {
         &self.key
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn key_works() {
+        let key1: SecretKey = "password".parse().expect("To parse password");
+        let key2: SecretKey = "password".parse().expect("To parse password");
+
+        assert_eq!(key1, key2);
     }
 }

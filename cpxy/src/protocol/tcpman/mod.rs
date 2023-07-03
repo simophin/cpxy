@@ -17,8 +17,6 @@ use anyhow::Context;
 use async_trait::async_trait;
 use bytes::Bytes;
 use hyper::header;
-use once_cell::sync::OnceCell;
-use orion::aead;
 use serde::{Deserialize, Serialize};
 use tokio::io::BufReader;
 use tokio::net::TcpStream;
@@ -90,8 +88,8 @@ impl super::Protocol for Tcpman {
             &mut stream,
             path,
             self.address.host(),
-            Some(move |req: &mut HeaderWriter| {
-                if let Some(data) = encrypted_initial_data {
+            encrypted_initial_data.map(|data| {
+                move |req: &mut HeaderWriter| {
                     req.write_header(header::IF_NONE_MATCH, data);
                 }
             }),

@@ -215,7 +215,7 @@ where
         }
 
         if this.send_cipher_state.will_apply() {
-            this.pending_send.clone_from_slice(buf);
+            this.pending_send.extend_from_slice(buf);
             this.send_cipher_state.apply(&mut this.pending_send);
             let sent = ready!(this.stream.poll_write(cx, this.pending_send.as_ref()))?;
             let _ = this.pending_send.split_to(sent);

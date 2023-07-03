@@ -11,7 +11,6 @@ use anyhow::Context;
 use async_trait::async_trait;
 use bytes::Bytes;
 use hyper::header;
-use std::sync::Arc;
 use tokio::io::{AsyncBufRead, BufReader};
 use tokio::net::TcpStream;
 
@@ -128,7 +127,7 @@ where
         let mut recv_cipher_state: CipherState<_> = upload_cipher.into();
         let send_cipher_state: CipherState<_> = download_cipher.into();
 
-        let initial_data = if let Some(data) = req.get_header("If-None-Match") {
+        let initial_data = if let Some(data) = req.get_header(header::IF_NONE_MATCH) {
             Some(Bytes::from(
                 crypto::decrypt_initial_data(&mut recv_cipher_state, data)
                     .context("decrypting initial data")?,

@@ -58,7 +58,7 @@ impl ConnectionParameters {
         let mut n = rng.gen_range(1usize..=5);
 
         let mut new_output = Vec::with_capacity(output.len() + n);
-        let mut next_slash_position = rng.gen_range(0usize..output.len());
+        let mut next_slash_position = 0;
 
         for i in 0..output.len() {
             if i == next_slash_position && n > 0 {
@@ -83,8 +83,7 @@ impl ConnectionParameters {
         let current_timestamp = DateTime::<Utc>::default().timestamp();
 
         let input = B64.decode(path).context("decoding connection parameters")?;
-        let output =
-            Bytes::from(aead::open(&key, &input).context("decrypting connection parameters")?);
+        let output = Bytes::from(aead::open(key, &input).context("decrypting")?);
 
         // Split the last 8 bytes into timestamp
         let (output, mut timestamp_buffer) = output.split_at(output.len() - 8);
@@ -106,7 +105,7 @@ mod tests {
     fn params_encryption_works() {
         let key = aead::SecretKey::default();
 
-        let params = ConnectionParameters {
+        let expect = ConnectionParameters {
             upload_cipher: CipherConfig::Full {
                 key: Default::default(),
                 iv: Default::default(),
@@ -118,8 +117,8 @@ mod tests {
             dst: "example.com:443".parse().expect("To parse address"),
         };
 
-        let path = params.encrypt_to_path(&key).expect("To encrypt");
+        let path = expect.encrypt_to_path(&key).expect("To encrypt");
         let actual = ConnectionParameters::decrypt_from_path(&path, &key).expect("To decrypt");
-        assert_eq!(params, actual);
+        assert_eq!(expect, actual);
     }
 }
