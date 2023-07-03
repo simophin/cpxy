@@ -24,7 +24,7 @@ pub trait Protocol: Sized {
     async fn new_stream(
         &self,
         req: &ProxyRequest,
-        reporter: &BoxProtocolReporter,
+        reporter: &Arc<ProtocolReporter>,
         fwmark: Option<u32>,
     ) -> anyhow::Result<Self::ClientStream>;
 }
@@ -36,7 +36,7 @@ impl<P: Protocol + Send + Sync> Protocol for Arc<P> {
     async fn new_stream(
         &self,
         req: &ProxyRequest,
-        reporter: &BoxProtocolReporter,
+        reporter: &Arc<ProtocolReporter>,
         fwmark: Option<u32>,
     ) -> anyhow::Result<Self::ClientStream> {
         self.as_ref().new_stream(req, reporter, fwmark).await

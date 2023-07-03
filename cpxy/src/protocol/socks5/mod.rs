@@ -3,14 +3,16 @@ mod server;
 use anyhow::{bail, Context};
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
+use std::sync::Arc;
 use tokio::io::AsyncWriteExt;
 use tokio::net::TcpStream;
 
-use super::{BoxProtocolReporter, Protocol, ProxyRequest};
+use super::{Protocol, ProxyRequest};
 use crate::io::time_future;
 use crate::io::{connect_tcp_marked, CounterStream};
 
 use crate::addr::Address;
+use crate::protocol::ProtocolReporter;
 use socks5_impl::protocol as s5;
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -25,7 +27,7 @@ impl Protocol for Socks5 {
     async fn new_stream(
         &self,
         req: &ProxyRequest,
-        reporter: &BoxProtocolReporter,
+        reporter: &Arc<ProtocolReporter>,
         fwmark: Option<u32>,
     ) -> anyhow::Result<Self::ClientStream> {
         let (mut upstream, delay) = time_future(connect_tcp_marked(&self.address, fwmark))

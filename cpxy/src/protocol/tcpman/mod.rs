@@ -10,7 +10,7 @@ use crate::http::utils::WithHeaders;
 use crate::http::writer::HeaderWriter;
 use crate::io::{connect_tcp_marked, time_future, CounterStream};
 use crate::protocol::tcpman::params::ConnectionParameters;
-use crate::protocol::{BoxProtocolReporter, ProxyRequest};
+use crate::protocol::{ProtocolReporter, ProxyRequest};
 use crate::tls::TlsStream;
 use crate::ws;
 use anyhow::Context;
@@ -18,6 +18,7 @@ use async_trait::async_trait;
 use bytes::Bytes;
 use hyper::header;
 use serde::{Deserialize, Serialize};
+use std::sync::Arc;
 use tokio::io::BufReader;
 use tokio::net::TcpStream;
 
@@ -48,7 +49,7 @@ impl super::Protocol for Tcpman {
     async fn new_stream(
         &self,
         req: &ProxyRequest,
-        reporter: &BoxProtocolReporter,
+        reporter: &Arc<ProtocolReporter>,
         fwmark: Option<u32>,
     ) -> anyhow::Result<Self::ClientStream> {
         let (stream, tcp_delay) = time_future(connect_tcp_marked(&self.address, fwmark))

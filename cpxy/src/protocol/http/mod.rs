@@ -4,10 +4,11 @@ pub mod server;
 use anyhow::{bail, Context};
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
+use std::sync::Arc;
 use tokio::io::BufReader;
 use tokio::net::TcpStream;
 
-use super::{BoxProtocolReporter, Protocol, ProxyRequest};
+use super::{Protocol, ProxyRequest};
 use crate::http::parse_response;
 use crate::tls::TlsStream;
 use crate::{
@@ -17,6 +18,7 @@ use crate::{
 
 use crate::http::writer::RequestWriter;
 use crate::io::time_future;
+use crate::protocol::ProtocolReporter;
 use hyper::{header, Method};
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -33,7 +35,7 @@ impl Protocol for HttpProxy {
     async fn new_stream(
         &self,
         req: &ProxyRequest,
-        reporter: &BoxProtocolReporter,
+        reporter: &Arc<ProtocolReporter>,
         fwmark: Option<u32>,
     ) -> anyhow::Result<Self::ClientStream> {
         let (upstream, delay) = time_future(connect_tcp_marked(&self.address, fwmark))

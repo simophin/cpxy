@@ -1,11 +1,13 @@
 use anyhow::Context;
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
+use std::sync::Arc;
 use tokio::io::AsyncWriteExt;
 use tokio::net::TcpStream;
 
-use super::{BoxProtocolReporter, ProxyRequest};
+use super::ProxyRequest;
 use crate::io::{connect_tcp, AsRawFdExt, CounterStream};
+use crate::protocol::ProtocolReporter;
 use crate::tls::TlsStream;
 
 use super::Protocol;
@@ -20,7 +22,7 @@ impl Protocol for Direct {
     async fn new_stream(
         &self,
         req: &ProxyRequest,
-        reporter: &BoxProtocolReporter,
+        reporter: &Arc<ProtocolReporter>,
         fwmark: Option<u32>,
     ) -> anyhow::Result<Self::ClientStream> {
         let stream = connect_tcp(&req.dst).await?;

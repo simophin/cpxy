@@ -1,24 +1,13 @@
 use anyhow::Context;
 use async_shutdown::Shutdown;
 use clap::{Parser, Subcommand};
-use std::future::Future;
-// use cpxy::controller::run_controller;
-// use cpxy::controller_config::fs::FileConfigProvider;
-use cpxy::io::bind_tcp;
-use cpxy::protocol::tcpman;
-// use futures::Future;
-use cpxy::protocol::tcpman::Tcpman;
+use cpxy::protocol;
 use std::net::{IpAddr, SocketAddr};
-use std::path::Path;
+use std::num::NonZeroU16;
 use tokio::net::TcpListener;
 use tokio::signal::ctrl_c;
 use tokio::spawn;
 
-// #[cfg(not(target_env = "msvc"))]
-// #[global_allocator]
-// static GLOBAL: tikv_jemallocator::Jemalloc = tikv_jemallocator::Jemalloc;
-
-/// SOCKS5 over HTTPs
 #[derive(Parser)]
 struct Cli {
     #[clap(subcommand)]
@@ -27,16 +16,15 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Command {
+    /// Serve tcpman server. TCPMAN_PASSWORD must be given as an environment variable.
     #[clap()]
-    Server {
+    ServeTcpman {
         /// The address to listen on
         #[clap(default_value = "0.0.0.0", long)]
         host: IpAddr,
-        /// The TCPMan port to listen on
-        #[clap(long)]
-        tcpman_port: Option<u16>,
-        #[clap(long)]
-        firetcp_port: Option<u16>,
+
+        #[clap(default_value = "8009", long)]
+        port: NonZeroU16,
     },
 
     #[clap()]
@@ -53,27 +41,6 @@ enum Command {
     },
 }
 
-// async fn start_serving_tcp<Fut: Future<Output = anyhow::Result<()>> + Send + Sync + 'static>(
-//     shutdown: Shutdown,
-//     service_name: String,
-//     host: IpAddr,
-//     port: u16,
-//     run: impl FnOnce(Shutdown, TcpListener) -> Fut + Send + Sync + 'static,
-// ) -> anyhow::Result<()> {
-//     let addr = SocketAddr::new(host, port);
-//     let listener = bind_tcp(&Address::IP(addr))
-//         .await
-//         .with_context(|| format!("Binding on {addr} for {service_name}"))?;
-//     log::info!("{service_name} started on {addr}");
-//     spawn(async move {
-//         if let Some(Err(e)) = shutdown.wrap_cancel(run(shutdown.clone(), listener)).await {
-//             log::error!("{service_name} error: {e}");
-//         }
-//     });
-
-//     Ok(())
-// }
-
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
     if std::env::var_os("RUST_LOG").is_none() {
@@ -87,44 +54,25 @@ async fn main() -> anyhow::Result<()> {
     let shutdown = Shutdown::new();
 
     match cmd {
-        Command::Server {
-            host,
-            tcpman_port,
-            firetcp_port,
-        } => {
-            if let Some(port) = tcpman_port {
-                // let tcpman_password = std::env::var("TCPMAN_PASSWORD")
-                //     .context("Tcpman password must be given via env TCPMAN_PASSWORD")?;
+        Command::ServeTcpman { host, port } => {
+            let tcpman_password = std::env::var("TCPMAN_PASSWORD")
+                .context("Tcpman password must be given via env TCPMAN_PASSWORD")?;
 
-                // let tcpman_key =
-                //     Tcpman::derive_key(&tcpman_password).context("deriving key from password")?;
+            let listener = TcpListener::bind((host, port.get()))
+                .await
+                .with_context(|| format!("Binding tcp on {host}:{port}"))?;
 
-                // start_serving_tcp(
-                //     shutdown.clone(),
-                //     "tcpman".to_string(),
-                //     host,
-                //     port,
-                //     move |shutdown, listener| {
-                //         tcpman::server::run_tcpman_server(shutdown, tcpman_key, listener)
-                //     },
-                // )
-                // .await?;
-            }
+            log::info!("tcpman started on {host}:{port}");
 
-            // if let Some(port) = firetcp_port {
-            //     let password = std::env::var("FIRETCP_PASSWORD")
-            //         .context("Firetcp password must be given via env FIRETCP_PASSWORD")?;
-            //     start_serving_tcp(
-            //         shutdown.clone(),
-            //         "firetcp".to_string(),
-            //         host,
-            //         port,
-            //         move |shutdown, listener| async {
-            //             firetcp::server::run_server(shutdown, listener, password.into()).await
-            //         },
-            //     )
-            //     .await?;
-            // }
+            spawn(protocol::server::run_server(
+                shutdown.clone(),
+                "tcpman",
+                listener,
+                protocol::tcpman::server::TcpmanAcceptor(
+                    tcpman_password.parse().context("Parsing tcpman password")?,
+                ),
+                protocol::direct::Direct::default(),
+            ));
 
             let _ = ctrl_c().await;
             shutdown.shutdown();

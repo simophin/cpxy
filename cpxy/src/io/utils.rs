@@ -2,21 +2,22 @@
 use std::os::unix::prelude::AsRawFd;
 use std::task::Poll;
 
+use crate::protocol::ProtocolReporter;
 use pin_project_lite::pin_project;
 use tokio::io::{AsyncRead, AsyncWrite, ReadBuf};
 
-use crate::protocol::BoxProtocolReporter;
+use std::sync::Arc;
 
 pin_project! {
     pub struct CounterStream<S> {
         #[pin]
         stream: S,
-        reporter: BoxProtocolReporter,
+        reporter: Arc<ProtocolReporter>,
     }
 }
 
 impl<S> CounterStream<S> {
-    pub fn new(stream: S, reporter: BoxProtocolReporter) -> Self {
+    pub fn new(stream: S, reporter: Arc<ProtocolReporter>) -> Self {
         Self { stream, reporter }
     }
 }
