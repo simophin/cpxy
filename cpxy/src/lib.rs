@@ -1,6 +1,7 @@
 mod client;
 mod counter;
 mod dns;
+pub mod dnsman;
 mod iptables;
 mod pattern;
 pub mod protocol;

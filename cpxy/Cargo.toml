@@ -60,6 +60,7 @@ rmp-serde = "1"
 netstack-lwip = { path = "../netstack-lwip" }
 sha1_smol = "1"
 socks5-impl = "0"
+dnsclient = { version = "0", default-features = false, features = ["async-tokio"] }
 
 
 [dev-dependencies]
