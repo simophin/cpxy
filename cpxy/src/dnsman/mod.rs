@@ -8,6 +8,7 @@ use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 
 pub mod client;
+pub mod list_base;
 pub mod server;
 
 #[derive(Serialize, Deserialize, Debug)]
