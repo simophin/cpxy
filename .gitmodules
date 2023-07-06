@@ -1,3 +1,3 @@
 [submodule "netstack-lwip"]
 	path = netstack-lwip
-	url = git@github.com:simophin/netstack-lwip.git
+	url = https://github.com/simophin/netstack-lwip.git

@@ -36,7 +36,7 @@ impl Protocol for Socks5 {
 
         reporter.report_delay(delay);
 
-        s5::HandshakeRequest::new(vec![s5::HandshakeMethod::None])
+        s5::HandshakeRequest::new(vec![s5::AuthMethod::None])
             .write_to(&mut upstream)
             .await
             .context("Writing handshake request")?;
@@ -45,7 +45,7 @@ impl Protocol for Socks5 {
             .await
             .context("Receiving handshake response")?;
 
-        if res.method != s5::HandshakeMethod::None {
+        if res.method != s5::AuthMethod::None {
             bail!("Unsupported handshake method");
         }
 

@@ -3,8 +3,7 @@ use anyhow::{bail, Context};
 use async_trait::async_trait;
 use bytes::Bytes;
 use socks5_impl::protocol::{
-    Address, Command, HandshakeMethod, HandshakeRequest, HandshakeResponse, Reply, Request,
-    Response,
+    Address, AuthMethod, Command, HandshakeRequest, HandshakeResponse, Reply, Request, Response,
 };
 use tokio::io::AsyncWriteExt;
 use tokio::net::TcpStream;
@@ -28,11 +27,11 @@ impl ProtocolAcceptor for Socks5Acceptor {
             .await
             .context("Reading handshake request")?;
 
-        if !req.methods.contains(&HandshakeMethod::None) {
+        if !req.methods.contains(&AuthMethod::None) {
             bail!("Only non-password auth is supported")
         }
 
-        HandshakeResponse::new(HandshakeMethod::None)
+        HandshakeResponse::new(AuthMethod::None)
             .write_to(&mut stream)
             .await
             .context("Writing handshake response")?;
