@@ -22,7 +22,7 @@ impl Protocol for Direct {
     async fn new_stream(
         &self,
         req: &ProxyRequest,
-        reporter: &Arc<ProtocolReporter>,
+        reporter: &Arc<dyn ProtocolReporter>,
         fwmark: Option<u32>,
     ) -> anyhow::Result<Self::ClientStream> {
         let stream = connect_tcp(&req.dst).await?;

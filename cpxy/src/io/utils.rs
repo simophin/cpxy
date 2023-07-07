@@ -12,12 +12,12 @@ pin_project! {
     pub struct CounterStream<S> {
         #[pin]
         stream: S,
-        reporter: Arc<ProtocolReporter>,
+        reporter: Arc<dyn ProtocolReporter>,
     }
 }
 
 impl<S> CounterStream<S> {
-    pub fn new(stream: S, reporter: Arc<ProtocolReporter>) -> Self {
+    pub fn new(stream: S, reporter: Arc<dyn ProtocolReporter>) -> Self {
         Self { stream, reporter }
     }
 }

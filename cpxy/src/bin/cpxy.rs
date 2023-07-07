@@ -4,9 +4,9 @@ use clap::{Parser, Subcommand};
 use cpxy::addr::Address;
 use cpxy::http::parse_response;
 use cpxy::http::writer::RequestWriter;
-use cpxy::protocol;
 use cpxy::protocol::http::auth::{BasicAuthProvider, BasicAuthSettings};
 use cpxy::protocol::tcpman::Tcpman;
+use cpxy::protocol::{self, NoopProtocolReporter, ProtocolReporter};
 use cpxy::protocol::{Protocol, ProtocolAcceptor};
 use cpxy::tls::TlsStream;
 use hyper::{header, Method};
@@ -211,11 +211,13 @@ async fn serve_protocol_server(
 }
 
 async fn test_tcpman(addr: Address, tls: bool, password: String) {
+    let reporter: Arc<dyn ProtocolReporter> = Arc::new(NoopProtocolReporter::default());
+
     let p = Tcpman::new(addr, tls, password).expect("Creating client");
     let upstream = p
         .new_stream(
             &"www.baidu.com:443".parse().expect("parsing address"),
-            &Default::default(),
+            &reporter,
             None,
         )
         .await

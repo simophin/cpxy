@@ -1,5 +1,8 @@
+use std::sync::Arc;
+
 use super::{Protocol, ProtocolAcceptedState, ProtocolAcceptor};
 use crate::io::read_data_with_timeout;
+use crate::protocol::{NoopProtocolReporter, ProtocolReporter};
 use anyhow::Context;
 use async_shutdown::Shutdown;
 use tokio::io::copy_bidirectional;
@@ -50,8 +53,10 @@ async fn serve_conn(
 
     log::debug!("{name} got {req:?}");
 
+    let reporter: Arc<dyn ProtocolReporter> = Arc::new(NoopProtocolReporter::default());
+
     match upstream
-        .new_stream(&req, &Default::default(), None)
+        .new_stream(&req, &reporter, None)
         .await
         .context("Connecting to upstream")
     {

@@ -30,7 +30,7 @@ impl Protocol for DynamicProtocol {
     async fn new_stream(
         &self,
         req: &ProxyRequest,
-        reporter: &Arc<ProtocolReporter>,
+        reporter: &Arc<dyn ProtocolReporter>,
         fwmark: Option<u32>,
     ) -> anyhow::Result<Self::ClientStream> {
         match self {

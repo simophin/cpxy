@@ -171,12 +171,12 @@ pub enum PacketDestination<'a> {
     IP {
         addr: SocketAddr,
         country_code: Option<CountryCode>,
-        resolved_host: Vec<Arc<str>>,
+        resolved_host: &'a [&'a str],
     },
     Domain {
         hostname: &'a str,
         port: u16,
-        resolved_ips: Vec<(Option<CountryCode>, IpAddr)>,
+        resolved_ips: &'a [(Option<CountryCode>, IpAddr)],
     },
 }
 

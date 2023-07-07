@@ -49,7 +49,7 @@ impl super::Protocol for Tcpman {
     async fn new_stream(
         &self,
         req: &ProxyRequest,
-        reporter: &Arc<ProtocolReporter>,
+        reporter: &Arc<dyn ProtocolReporter>,
         fwmark: Option<u32>,
     ) -> anyhow::Result<Self::ClientStream> {
         let (stream, tcp_delay) = time_future(connect_tcp_marked(&self.address, fwmark))

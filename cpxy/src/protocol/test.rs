@@ -3,12 +3,13 @@ use crate::addr::Address;
 use crate::http::parse_response;
 use crate::http::writer::RequestWriter;
 use crate::protocol::direct::Direct;
-use crate::protocol::ProxyRequest;
+use crate::protocol::{NoopProtocolReporter, ProtocolReporter, ProxyRequest};
 use crate::tls::TlsStream;
 use anyhow::Context;
 use async_shutdown::Shutdown;
 use hyper::Method;
 use std::net::SocketAddr;
+use std::sync::Arc;
 use tokio::io::BufReader;
 use tokio::net::TcpListener;
 use tokio::spawn;
@@ -37,10 +38,12 @@ where
         ));
     }
 
+    let reporter: Arc<dyn ProtocolReporter> = Arc::new(NoopProtocolReporter::default());
+
     let conn = p
         .new_stream(
             &ProxyRequest::from("www.baidu.com:443".parse::<Address>().unwrap()),
-            &Default::default(),
+            &reporter,
             None,
         )
         .await?;
