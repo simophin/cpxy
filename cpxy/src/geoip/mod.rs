@@ -2,12 +2,6 @@ use std::net::IpAddr;
 
 use anyhow::{bail, Context};
 
-#[derive(Clone)]
-pub struct GeoIPDatabase {
-    v4: Bytes,
-    v6: Bytes,
-}
-
 mod country_code;
 
 use bytes::Bytes;
@@ -63,6 +57,20 @@ impl<A> Record<A> {
 type IPv4Record = Record<[u8; 4]>;
 type IPv6Record = Record<[u8; 16]>;
 
+#[derive(Clone)]
+pub struct GeoIPDatabase {
+    v4: Bytes,
+    v6: Bytes,
+}
+
+// Lazy global instance of GeoIPDatabase.
+static BUNDLED_DB: once_cell::sync::Lazy<anyhow::Result<GeoIPDatabase>> =
+    once_cell::sync::Lazy::new(|| {
+        let v4 = include_bytes!("ipv4.zstd");
+        let v6 = include_bytes!("ipv6.zstd");
+        GeoIPDatabase::initialise_from_zstd(v4, v6).context("to initialise")
+    });
+
 impl GeoIPDatabase {
     pub fn initialise_from_zstd(v4: &[u8], v6: &[u8]) -> anyhow::Result<Self> {
         measure_this!("GeoIPDatabase::initialise_from_zstd");
@@ -74,6 +82,10 @@ impl GeoIPDatabase {
         let _ = IPv6Record::from_slice(&v6).context("Decoding v6 rcord")?;
 
         Ok(Self { v4, v6 })
+    }
+
+    pub fn bundled() -> Result<&'static Self, &'static anyhow::Error> {
+        BUNDLED_DB.as_ref()
     }
 
     fn v4_records(&self) -> &[IPv4Record] {
@@ -103,11 +115,7 @@ mod test {
         let _ = dotenvy::dotenv();
         let _ = env_logger::try_init();
 
-        let db = GeoIPDatabase::initialise_from_zstd(
-            include_bytes!("ipv4.zstd"),
-            include_bytes!("ipv6.zstd"),
-        )
-        .expect("To initialise db");
+        let db = GeoIPDatabase::bundled().expect("to initialise");
 
         assert_eq!(db.find_country(&"142.250.67.4".parse().unwrap()), None);
         assert_eq!(

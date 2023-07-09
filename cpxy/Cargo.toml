@@ -64,6 +64,7 @@ dnsclient = { version = "0", default-features = false, features = ["async-tokio"
 dashmap = { version = "5", features = ["serde"] }
 zstd = "0"
 dotenvy = "0"
+non-empty-string = "0"
 
 [dev-dependencies]
 maplit = "1"

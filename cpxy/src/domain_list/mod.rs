@@ -31,6 +31,13 @@ pub struct DomainListRepository {
     sorted_records: Vec<Record<'static>>,
 }
 
+// Global instance of domain list repository.
+static BUNDLED_REPOSITORY: once_cell::sync::Lazy<anyhow::Result<DomainListRepository>> =
+    once_cell::sync::Lazy::new(|| {
+        let data = include_bytes!("bundled_list.zstd");
+        DomainListRepository::initialise_from_zstd(data).context("to initialise")
+    });
+
 impl DomainListRepository {
     pub fn initialise_from_zstd(data: &[u8]) -> anyhow::Result<Self> {
         measure_this!("DomainListRepository::initialise_from_zstd");
@@ -50,6 +57,10 @@ impl DomainListRepository {
             _data: data,
             sorted_records,
         })
+    }
+
+    pub fn bundled() -> anyhow::Result<&'static Self, &'static anyhow::Error> {
+        BUNDLED_REPOSITORY.as_ref()
     }
 
     pub fn find_country(&self, base_domain: &str) -> Option<CountryCode> {
@@ -92,8 +103,7 @@ mod tests {
         let _ = dotenvy::dotenv();
         let _ = env_logger::try_init();
 
-        let repo = DomainListRepository::initialise_from_zstd(include_bytes!("bundled_list.zstd"))
-            .expect("to initialise");
+        let repo = DomainListRepository::bundled().expect("to initialise");
 
         assert_eq!(repo.find_country("baidu.com"), Some("cn".parse().unwrap()));
         assert_eq!(repo.find_country("qq.com"), Some("cn".parse().unwrap()));
@@ -107,8 +117,7 @@ mod tests {
         let _ = dotenvy::dotenv();
         let _ = env_logger::try_init();
 
-        let repo = DomainListRepository::initialise_from_zstd(include_bytes!("bundled_list.zstd"))
-            .expect("to initialise");
+        let repo = DomainListRepository::bundled().expect("to initialise");
 
         assert_eq!(
             repo.find_country_recusive("baidu.com"),
