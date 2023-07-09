@@ -1,39 +1,86 @@
 use std::{
+    borrow::Cow,
+    fs::File,
     io::{BufRead, BufReader},
+    ops::Deref,
     path::Path,
+    str::FromStr,
 };
 
-use rusqlite::{Connection, OpenFlags};
+use zstd::Encoder;
+
+mod domain_list;
+mod geoip;
+
+#[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord)]
+pub struct CountryCode(pub [u8; 2]);
+
+impl Deref for CountryCode {
+    type Target = [u8; 2];
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+impl FromStr for CountryCode {
+    type Err = &'static str;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        if s.len() != 2 {
+            return Err("Invalid country code length");
+        }
+
+        let mut buf = [0u8; 2];
+        buf.copy_from_slice(s.as_bytes().to_ascii_uppercase().as_ref());
+
+        Ok(Self(buf))
+    }
+}
+
+impl AsRef<str> for CountryCode {
+    fn as_ref(&self) -> &str {
+        std::str::from_utf8(&self.0).expect("to be valid utf8")
+    }
+}
 
 fn main() {
     let project_dir = Path::new(env!("CARGO_MANIFEST_DIR"));
-    let geo_path = project_dir.parent().unwrap().join("cpxy/src/geo.sqlitedb");
+    let dest_folder = project_dir.parent().unwrap().join("cpxy/src");
 
-    let conn = Connection::open_with_flags(&geo_path, OpenFlags::SQLITE_OPEN_CREATE)
-        .expect("To create db");
+    let cn: CountryCode = "CN".parse().expect("to parse");
 
-    // Drop if any and re-create table for ip address ranges with start and end
-    conn.execute_batch(
-        "DROP TABLE IF EXISTS geoips;
-         CREATE TABLE geoips (
-             start INTEGER NOT NULL,
-             end INTEGER NOT NULL,
-             v4 BOOL NOT NULL,
-             country TEXT NOT NULL
-         );",
-    )
-    .expect("Creating geoips");
-
-    download_and_insert(
+    geoip::download_and_save_geoips(
+        &mut Encoder::new(
+            File::create(dest_folder.join("geoip/ipv4.zstd")).expect("to create geoip file"),
+            0,
+        )
+        .expect("to create encoder")
+        .auto_finish(),
+        &mut Encoder::new(
+            File::create(dest_folder.join("geoip/ipv6.zstd")).expect("to create geoip file"),
+            0,
+        )
+        .expect("to create encoder")
+        .auto_finish(),
         "https://github.com/pmkol/easymosdns/raw/main/rules/china_ip_list.txt",
-        |line| {
-            // Parse the line as IP network and insert into database as ip ranges with country = CN
-            
-        },
+        |line| Some((line.parse().ok()?, cn)),
+    );
+
+    domain_list::download_and_save_domain_list(
+        &mut Encoder::new(
+            File::create(dest_folder.join("domain_list/bundled_list.zstd"))
+                .expect("to create domain list file"),
+            0,
+        )
+        .expect("to create encoder")
+        .auto_finish(),
+        "https://github.com/pmkol/easymosdns/raw/main/rules/china_domain_list.txt",
+        |line| Some((Cow::Borrowed(line), cn)),
     )
 }
 
-fn download_and_insert(url: &str, for_line: impl Fn(String) -> ()) {
+fn download_and_insert(url: &str, mut for_line: impl FnMut(String) -> ()) {
     BufReader::new(reqwest::blocking::get(url).unwrap())
         .lines()
         .for_each(|r| for_line(r.expect("to read line")));

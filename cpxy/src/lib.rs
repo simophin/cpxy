@@ -22,6 +22,8 @@ mod cipher;
 mod geoip;
 // mod handshaker;
 pub mod addr;
+mod domain_list;
 pub mod http;
+pub mod measure;
 pub mod tls;
 mod ws;

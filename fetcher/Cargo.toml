@@ -6,6 +6,7 @@ edition = "2021"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-rusqlite = { version = "0", features = ["bundled"] }
 reqwest = { version = "0", default-features = false, features = ["blocking", "native-tls-vendored"] }
 ipnetwork = "0"
+bytes = "1"
+zstd = "0"

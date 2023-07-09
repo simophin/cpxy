@@ -2,3 +2,4 @@ target
 cpxy/android/app/src/main/jniLibs
 .idea
 /.devit-state
+.env

@@ -1,11 +1,10 @@
 use anyhow::anyhow;
 use serde_with::{DeserializeFromStr, SerializeDisplay};
-use std::borrow::Cow;
-use std::fmt::{Debug, Display, Formatter, Write};
+use std::fmt::{Debug, Display, Formatter};
 use std::num::NonZeroU8;
 use std::str::FromStr;
 
-#[derive(Copy, Clone, Hash, Eq, SerializeDisplay, DeserializeFromStr)]
+#[derive(Copy, Clone, Hash, Eq, SerializeDisplay, DeserializeFromStr, PartialOrd, Ord)]
 #[repr(C)]
 pub struct CountryCode([NonZeroU8; 2]);
 
@@ -13,16 +12,17 @@ impl CountryCode {
     pub fn as_slice(&self) -> &[u8] {
         unsafe { &*(&self.0 as *const [NonZeroU8; 2] as *const [u8; 2]) }
     }
+}
 
-    pub fn as_str(&self) -> Cow<str> {
-        String::from_utf8_lossy(self.as_slice())
+impl AsRef<str> for CountryCode {
+    fn as_ref(&self) -> &str {
+        unsafe { std::str::from_utf8_unchecked(self.as_slice()) }
     }
 }
 
 impl Display for CountryCode {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        f.write_char(self.0[0].get().into())?;
-        f.write_char(self.0[1].get().into())
+        f.write_str(self.as_ref())
     }
 }
 
@@ -34,13 +34,13 @@ impl Debug for CountryCode {
 
 impl PartialEq<str> for CountryCode {
     fn eq(&self, other: &str) -> bool {
-        other.as_bytes().eq_ignore_ascii_case(self.as_slice())
+        self.as_ref().eq_ignore_ascii_case(other.as_ref())
     }
 }
 
 impl PartialEq for CountryCode {
     fn eq(&self, other: &Self) -> bool {
-        self.as_slice().eq_ignore_ascii_case(other.as_slice())
+        self.as_ref().eq_ignore_ascii_case(other.as_ref())
     }
 }
 
