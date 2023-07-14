@@ -1,16 +1,7 @@
-use std::{io::BufRead, num::NonZeroUsize};
 
-use anyhow::Context;
-use byteorder::ReadBytesExt;
-use non_empty_string::NonEmptyString;
-
-pub enum Op {
-    Equals,
-    NotEquals,
-    Contains,
-    NotContains,
-    RegexMatches,
-}
+use anyhow::{bail, Context};
+use bytes::Buf;
+use super::op::*;
 
 pub struct Condition {
     pub key: String,
@@ -23,56 +14,115 @@ pub struct Action {
     pub how: String,
 }
 
-pub enum ParseState {
+enum ParseState {
     Start,
-    CondStarted(NonEmptyString),
-    CondFinished,
-    OpStarted(u8),
-    OpFinished,
-    ValueStarted(String),
-    ValueEscaping(String),
-    ValueFinished,
-}
+    CondKeyStarted(String),
+    CondKeyFinished(String),
+    OpStarted {
+        cond_key: String,
+        op: String,
+    },
+    OpFinished {
+        cond_key: String,
+        op: Op,
+    },
+    CondValueStarted {
+        cond_key: String,
+        op: Op,
 
-pub struct ParseContext<B> {
-    pub line_number: NonZeroUsize,
-    pub reader: B,
-    pub state: ParseState,
+        value: String,
+        escaping: bool,
+    },
+    CondValueFinished,
 }
 
 pub struct RawRule {
-    pub line_number: NonZeroUsize,
     pub conditions: Vec<Condition>,
     pub action: Action,
 }
 
-const FIRST_OP_BYTES: &[u8] = b"=~!";
 
 impl RawRule {
-    pub fn parse(ctx: &mut ParseContext<impl BufRead>) -> anyhow::Result<Self> {
-        match (&mut ctx.state, ctx.reader.read_u8()) {
-            (ParseState::Start, Ok(c)) if !c.is_ascii_whitespace() => {
-                ctx.state = ParseState::CondStarted(NonEmptyString::new(c.to_string()).unwrap());
-            },
+    pub fn parse(reader: &mut impl Buf) -> anyhow::Result<Self> {
+        let mut state = ParseState::Start;
+        let mut conditions = Vec::new();
 
-            (ParseState::CondStarted(cond), Ok(b)) if !b.is_ascii_whitespace() => {
-                cond.push(b as char);
-            },
+        let mut action = None;
 
-            (ParseState::CondStarted(cond), Ok(b)) if b.is_ascii_whitespace() => {
-                ctx.state = ParseState::CondFinished;
-            },
-            
-            (ParseState::CondStarted(_), Err(e)) => {
+        while reader.has_remaining() {
+            match (&mut state, reader.get_u8()) {
+                (ParseState::Start, c) if !c.is_ascii_whitespace() => {
+                        state = ParseState::CondKeyStarted(c.to_string());
+                },
+    
+                (ParseState::CondKeyStarted(cond), b) => {
+                    if b.is_ascii_whitespace() {
+                        state = ParseState::CondKeyFinished(std::mem::take(cond));
+                    } else if FIRST_OP_BYTES.contains(&b) {
+                        state = ParseState::OpStarted {
+                            cond_key: std::mem::take(cond),
+                            op: b.to_string(),
+                        };
+                    } else {
+                        cond.push(b as char);
+                    }
+                },
+    
+                (ParseState::CondKeyFinished(cond), c) if FIRST_OP_BYTES.contains(&c) => {
+                    state = ParseState::OpStarted {
+                        cond_key: std::mem::take(cond),
+                        op: c.to_string(),
+                    };
+                },
 
+                (ParseState::OpStarted { cond_key: cond, op }, c) => {
+                    if c.is_ascii_whitespace() {
+                        state = ParseState::OpFinished {
+                            cond_key: std::mem::take(cond),
+                            op: op.parse().with_context(|| format!("Parsing operator for cond key: {cond}"))?,
+                        };
+                    } else {
+                        op.push(c as char);
+                    }
+                },
+
+                (ParseState::OpFinished { cond_key, op }, c) if !c.is_ascii_whitespace() => {
+                    let start_quote = if c == b'"' || c == b'\'' {
+                        Some(c)
+                    } else {
+                        None
+                    };
+
+                    state = ParseState::CondValueStarted {
+                        start_quote,
+                        cond_key: std::mem::take(cond_key),
+                        op: *op,
+                        value: if start_quote.is_some() {
+                            Default::default()
+                        } else {
+                            c.to_string()
+                        },
+                        escaping: false,
+                    };
+                },
+
+                (ParseState::CondValueStarted { cond_key, op, start_quote, value, escaping }, c) => {
+                    if *escaping {
+                        value.push(c as char);
+                        *escaping = false;
+                        continue;
+                    }
+
+                    match (*start_quote, c) {
+                        (None, _) if c.is_ascii_whitespace() => {
+                            state = ParseState::CondValueFinished;
+                        },
+                    };
+                },
+
+                (ParseState::CondValueEscaping(_), b'')=> todo!(),
+                (ParseState::CondValueFinished, b'')=> todo!(),
             }
-
-            (ParseState::CondFinished, b'')=> todo!(),
-            (ParseState::OpStarted(_), b'')=> todo!(),
-            (ParseState::OpFinished, b'')=> todo!(),
-            (ParseState::ValueStarted(_), b'')=> todo!(),
-            (ParseState::ValueEscaping(_), b'')=> todo!(),
-            (ParseState::ValueFinished, b'')=> todo!(),
         }
         todo!()
     }
