@@ -26,4 +26,4 @@ impl FromStr for Op {
     }
 }
 
-pub const FIRST_OP_BYTES: &[u8] = b"=!i~";
+pub const FIRST_OP_CHARS: &str = "=!i~";

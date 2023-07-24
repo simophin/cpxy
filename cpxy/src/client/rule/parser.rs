@@ -1,7 +1,7 @@
-
-use anyhow::{bail, Context};
-use bytes::Buf;
 use super::op::*;
+use anyhow::{bail, Context};
+use std::str::FromStr;
+use tls_parser::nom::AsChar;
 
 pub struct Condition {
     pub key: String,
@@ -9,31 +9,49 @@ pub struct Condition {
     pub op: Op,
 }
 
+#[derive(Default)]
 pub struct Action {
     pub what: String,
     pub how: String,
 }
 
+#[derive(Copy, Clone)]
+enum AssignOrTest {
+    Assign,
+    Test(Op),
+}
+
+impl FromStr for AssignOrTest {
+    type Err = anyhow::Error;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s {
+            "=" => Ok(Self::Assign),
+            _ => Ok(Self::Test(s.parse()?)),
+        }
+    }
+}
+
 enum ParseState {
     Start,
-    CondKeyStarted(String),
-    CondKeyFinished(String),
+    KeyStarted(String),
+    KeyFinished(String),
     OpStarted {
-        cond_key: String,
+        key: String,
         op: String,
     },
     OpFinished {
-        cond_key: String,
-        op: Op,
+        key: String,
+        op: AssignOrTest,
     },
-    CondValueStarted {
-        cond_key: String,
-        op: Op,
+    ValueStarted {
+        key: String,
+        op: AssignOrTest,
 
         value: String,
         escaping: bool,
     },
-    CondValueFinished,
+    ActionEnd(Action),
 }
 
 pub struct RawRule {
@@ -41,89 +59,128 @@ pub struct RawRule {
     pub action: Action,
 }
 
-
 impl RawRule {
-    pub fn parse(reader: &mut impl Buf) -> anyhow::Result<Self> {
+    pub fn parse<E: std::error::Error + Send + Sync>(
+        reader: &mut impl Iterator<Item = Result<char, E>>,
+    ) -> anyhow::Result<Self> {
         let mut state = ParseState::Start;
         let mut conditions = Vec::new();
 
-        let mut action = None;
-
-        while reader.has_remaining() {
-            match (&mut state, reader.get_u8()) {
+        while let Some(c) = reader.next() {
+            match (&mut state, c.context("reading char")?) {
                 (ParseState::Start, c) if !c.is_ascii_whitespace() => {
-                        state = ParseState::CondKeyStarted(c.to_string());
-                },
-    
-                (ParseState::CondKeyStarted(cond), b) => {
+                    state = ParseState::KeyStarted(c.to_string());
+                }
+
+                (ParseState::KeyStarted(cond), b) => {
                     if b.is_ascii_whitespace() {
-                        state = ParseState::CondKeyFinished(std::mem::take(cond));
-                    } else if FIRST_OP_BYTES.contains(&b) {
+                        state = ParseState::KeyFinished(std::mem::take(cond));
+                    } else if FIRST_OP_CHARS.contains(b) {
                         state = ParseState::OpStarted {
-                            cond_key: std::mem::take(cond),
+                            key: std::mem::take(cond),
                             op: b.to_string(),
                         };
                     } else {
-                        cond.push(b as char);
+                        cond.push(b);
                     }
-                },
-    
-                (ParseState::CondKeyFinished(cond), c) if FIRST_OP_BYTES.contains(&c) => {
+                }
+
+                (ParseState::KeyFinished(cond), c) if FIRST_OP_CHARS.contains(c) => {
                     state = ParseState::OpStarted {
-                        cond_key: std::mem::take(cond),
+                        key: std::mem::take(cond),
                         op: c.to_string(),
                     };
-                },
+                }
 
-                (ParseState::OpStarted { cond_key: cond, op }, c) => {
+                (ParseState::OpStarted { key: cond, op }, c) => {
                     if c.is_ascii_whitespace() {
                         state = ParseState::OpFinished {
-                            cond_key: std::mem::take(cond),
-                            op: op.parse().with_context(|| format!("Parsing operator for cond key: {cond}"))?,
+                            key: std::mem::take(cond),
+                            op: op
+                                .parse()
+                                .with_context(|| format!("Parsing operator: {cond}"))?,
                         };
                     } else {
-                        op.push(c as char);
+                        op.push(c.as_char());
                     }
-                },
+                }
 
-                (ParseState::OpFinished { cond_key, op }, c) if !c.is_ascii_whitespace() => {
-                    let start_quote = if c == b'"' || c == b'\'' {
-                        Some(c)
-                    } else {
-                        None
-                    };
+                (ParseState::OpFinished { key: cond_key, op }, c) if !c.is_ascii_whitespace() => {
+                    if c != '"' {
+                        bail!("Expecting \" but got {c:?}");
+                    }
 
-                    state = ParseState::CondValueStarted {
-                        start_quote,
-                        cond_key: std::mem::take(cond_key),
+                    state = ParseState::ValueStarted {
+                        key: std::mem::take(cond_key),
                         op: *op,
-                        value: if start_quote.is_some() {
-                            Default::default()
-                        } else {
-                            c.to_string()
-                        },
+                        value: Default::default(),
                         escaping: false,
                     };
-                },
+                }
 
-                (ParseState::CondValueStarted { cond_key, op, start_quote, value, escaping }, c) => {
+                (
+                    ParseState::ValueStarted {
+                        key,
+                        op,
+                        value,
+                        escaping,
+                    },
+                    c,
+                ) => {
                     if *escaping {
-                        value.push(c as char);
+                        value.push(c);
                         *escaping = false;
                         continue;
                     }
 
-                    match (*start_quote, c) {
-                        (None, _) if c.is_ascii_whitespace() => {
-                            state = ParseState::CondValueFinished;
-                        },
-                    };
-                },
+                    match c {
+                        '\\' => *escaping = true,
+                        '"' => match op {
+                            AssignOrTest::Assign => {
+                                state = ParseState::ActionEnd(Action {
+                                    what: std::mem::take(key),
+                                    how: std::mem::take(value),
+                                });
+                            }
 
-                (ParseState::CondValueEscaping(_), b'')=> todo!(),
-                (ParseState::CondValueFinished, b'')=> todo!(),
+                            AssignOrTest::Test(op) => {
+                                conditions.push(Condition {
+                                    key: std::mem::take(key),
+                                    value: std::mem::take(value),
+                                    op: *op,
+                                });
+
+                                state = ParseState::Start;
+                            }
+                        },
+
+                        _ => value.push(c),
+                    };
+                }
+
+                (ParseState::ActionEnd(a), c) if !c.is_ascii_whitespace() => {
+                    if c == ';' {
+                        return Ok(Self {
+                            conditions,
+                            action: std::mem::take(a),
+                        });
+                    } else {
+                        bail!("Expecting ; but got {c:?}");
+                    }
+                }
+
+                _ => {}
             }
         }
-        todo!()
+
+        bail!("Unexpected EOF while parsing rule")
     }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn parse_works() {}
 }
