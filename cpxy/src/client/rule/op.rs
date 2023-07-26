@@ -26,4 +26,5 @@ impl FromStr for Op {
     }
 }
 
-pub const FIRST_OP_CHARS: &str = "=!i~";
+pub const FIRST_OP_SYMBOLIC_CHARS: &str = "=!~";
+pub const FIRST_OP_ALPHA_CHARS: &str = "i";
