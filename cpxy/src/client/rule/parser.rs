@@ -1,6 +1,6 @@
 use super::op::*;
 use anyhow::{bail, Context};
-use std::{iter::Peekable, mem::take, str::FromStr};
+use std::{mem::take, str::FromStr};
 use tls_parser::nom::AsChar;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -251,6 +251,24 @@ impl RawTable {
     }
 }
 
+pub struct RawProgram {
+    pub tables: Vec<RawTable>,
+}
+
+impl FromStr for RawProgram {
+    type Err = anyhow::Error;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        let mut chars = s.chars();
+        let mut tables = Vec::new();
+        while let Some(table) = RawTable::parse(&mut chars).context("Parsing table")? {
+            tables.push(table);
+        }
+
+        Ok(Self { tables })
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -274,11 +292,7 @@ mod tests {
 
         "#;
 
-        let mut src = src.chars();
-        let mut tables = Vec::new();
-        while let Some(table) = RawTable::parse(&mut src).expect("To parse table") {
-            tables.push(table);
-        }
+        let RawProgram { tables } = src.parse().expect("To parse table");
 
         assert_eq!(
             tables,
@@ -331,21 +345,14 @@ mod tests {
                 RawTable {
                     name: "t2".to_string(),
                     rules: vec![RawRule {
-                        conditions: vec![
-                            Condition {
-                                key: "k".to_string(),
-                                value: "v".to_string(),
-                                op: Op::Equals
-                            },
-                            Condition {
-                                key: "a".to_string(),
-                                value: "block".to_string(),
-                                op: Op::Equals
-                            },
-                        ],
+                        conditions: vec![Condition {
+                            key: "k".to_string(),
+                            value: "v".to_string(),
+                            op: Op::Equals
+                        },],
                         action: Action {
-                            what: "action".to_string(),
-                            how: "accept".to_string()
+                            what: "a".to_string(),
+                            how: "block".to_string()
                         }
                     }]
                 }
