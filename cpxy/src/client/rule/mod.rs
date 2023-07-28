@@ -4,6 +4,7 @@ use crate::protocol::ProxyRequest;
 
 mod domain;
 mod ip;
+mod line;
 mod op;
 mod parser;
 
