@@ -1,14 +1,5 @@
+use super::Action;
 use anyhow::bail;
-
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub enum Action {
-    Return,
-    Jump(String),
-    Proxy(String),
-    ProxyGroup(String),
-    Direct,
-    Reject,
-}
 
 impl<T: AsRef<str> + Into<String>> TryFrom<(T, T)> for Action {
     type Error = anyhow::Error;

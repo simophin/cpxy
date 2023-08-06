@@ -1,25 +1,53 @@
-use std::num::NonZeroUsize;
+use num_traits::Num;
 
-use crate::protocol::ProxyRequest;
-
+mod action;
 mod domain;
 mod ip;
 mod line;
 mod op;
 mod parser;
-mod action;
+mod program;
+mod value;
 
-pub enum Rule {
-    MatchDomain(domain::DomainRule),
-    MatchIP(ip::IPRule),
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct Condition {
+    pub key: String,
+    pub value: String,
+    pub op: op::Op,
 }
 
-type LineNumber = NonZeroUsize;
+#[derive(Clone, Debug, PartialEq, Eq)]
+enum Action {
+    Return,
+    Jump(String),
+    Proxy(String),
+    ProxyGroup(String),
+    Direct,
+    Reject,
+}
 
-trait RuleMatcher {
-    fn new<'a>(buf: &'a [u8], line_number: &mut LineNumber) -> anyhow::Result<(Self, &'a [u8])>
-    where
-        Self: Sized;
+#[derive(Debug, PartialEq, Eq)]
+struct Table {
+    pub name: String,
+    pub rules: Vec<Rule>,
+}
 
-    fn matches<'a>(&'a self, req: &ProxyRequest) -> Option<LineNumber>;
+#[derive(Debug, PartialEq, Eq)]
+struct Rule {
+    pub conditions: Vec<Condition>,
+    pub action: Action,
+}
+
+pub struct Program {
+    tables: Vec<Table>,
+}
+
+pub enum PropertyValue<'a> {
+    String(&'a str),
+    IPNetwork(ipnetwork::IpNetwork),
+    List(&'a [&'a PropertyValue<'a>]),
+}
+
+pub trait PropertyAccessor {
+    fn get(&self, key: &str) -> Option<&PropertyValue<'_>>;
 }
