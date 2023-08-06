@@ -7,6 +7,7 @@ mod ip;
 mod line;
 mod op;
 mod parser;
+mod action;
 
 pub enum Rule {
     MatchDomain(domain::DomainRule),

@@ -5,9 +5,7 @@ use dashmap::DashMap;
 use parking_lot::RwLock;
 use smallvec::SmallVec;
 
-use crate::protocol::{
-    AtomicProtocolReporter, DynamicProtocol, Protocol, ProtocolReporter, ProxyRequest,
-};
+use crate::protocol::{DynamicProtocol, Protocol, ProtocolReporter, ProxyRequest};
 
 use super::settings::UpstreamSettings;
 

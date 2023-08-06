@@ -74,8 +74,8 @@ impl DomainListRepository {
     }
 
     // Find country code for a domain, or any of its parent domain.
-    pub fn find_country_recusive(&self, domain: &str) -> Option<CountryCode> {
-        measure_this!("DomainListRepository::find_country_recusive({domain})");
+    pub fn find_country_recursive(&self, domain: &str) -> Option<CountryCode> {
+        measure_this!("DomainListRepository::find_country_recursive({domain})");
         let mut domain = domain;
         while !domain.is_empty() {
             if let Some(country) = self.find_country(domain) {
@@ -120,30 +120,30 @@ mod tests {
         let repo = DomainListRepository::bundled().expect("to initialise");
 
         assert_eq!(
-            repo.find_country_recusive("baidu.com"),
+            repo.find_country_recursive("baidu.com"),
             Some("cn".parse().unwrap())
         );
         assert_eq!(
-            repo.find_country_recusive("qq.com"),
+            repo.find_country_recursive("qq.com"),
             Some("cn".parse().unwrap())
         );
         assert_eq!(
-            repo.find_country_recusive("cctv.com"),
+            repo.find_country_recursive("cctv.com"),
             Some("cn".parse().unwrap())
         );
 
         assert_eq!(
-            repo.find_country_recusive("www.baidu.com"),
+            repo.find_country_recursive("www.baidu.com"),
             Some("cn".parse().unwrap())
         );
         assert_eq!(
-            repo.find_country_recusive("www.qq.com"),
+            repo.find_country_recursive("www.qq.com"),
             Some("cn".parse().unwrap())
         );
         assert_eq!(
-            repo.find_country_recusive("www.cctv.com"),
+            repo.find_country_recursive("www.cctv.com"),
             Some("cn".parse().unwrap())
         );
-        assert_eq!(repo.find_country_recusive("google.com"), None);
+        assert_eq!(repo.find_country_recursive("google.com"), None);
     }
 }

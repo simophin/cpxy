@@ -1,19 +1,14 @@
 use super::op::*;
+use crate::client::rule::action::Action;
 use anyhow::{bail, Context};
 use std::{mem::take, str::FromStr};
 use tls_parser::nom::AsChar;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct Condition {
+pub struct RawCondition {
     pub key: String,
     pub value: String,
     pub op: Op,
-}
-
-#[derive(Default, Debug, PartialEq, Eq)]
-pub struct Action {
-    pub what: String,
-    pub how: String,
 }
 
 #[derive(Copy, Clone, Debug)]
@@ -58,7 +53,7 @@ enum RuleParseState {
 
 #[derive(Debug, PartialEq, Eq)]
 pub struct RawRule {
-    pub conditions: Vec<Condition>,
+    pub conditions: Vec<RawCondition>,
     pub action: Action,
 }
 
@@ -68,111 +63,139 @@ impl RawRule {
         let mut conditions = Vec::new();
 
         while let Some(c) = reader.next() {
-            match (&mut state, c) {
+            state = match (state, c) {
                 (RuleParseState::Start, '}') => {
                     return Ok(None);
                 }
 
                 (RuleParseState::Start, c) if !c.is_ascii_whitespace() => {
-                    state = RuleParseState::KeyStarted(c.to_string());
+                    RuleParseState::KeyStarted(c.to_string())
                 }
 
-                (RuleParseState::KeyStarted(cond), b) => {
+                (RuleParseState::KeyStarted(mut key), b) => {
                     if b.is_ascii_whitespace() {
-                        state = RuleParseState::KeyFinished(take(cond));
+                        RuleParseState::KeyFinished(key)
                     } else if FIRST_OP_SYMBOLIC_CHARS.contains(b) {
-                        state = RuleParseState::OpStarted {
-                            key: take(cond),
+                        RuleParseState::OpStarted {
+                            key,
                             op: b.to_string(),
-                        };
+                        }
+                    } else if b == ';' {
+                        return Ok(Some(Self {
+                            conditions,
+                            action: (key, String::default())
+                                .try_into()
+                                .context("Parsing action")?,
+                        }));
                     } else {
-                        cond.push(b);
+                        key.push(b);
+                        RuleParseState::KeyStarted(key)
                     }
                 }
 
-                (RuleParseState::KeyFinished(cond), c)
+                (RuleParseState::KeyFinished(key), c)
                     if FIRST_OP_ALPHA_CHARS.contains(c) || FIRST_OP_SYMBOLIC_CHARS.contains(c) =>
                 {
-                    state = RuleParseState::OpStarted {
-                        key: take(cond),
+                    RuleParseState::OpStarted {
+                        key,
                         op: c.to_string(),
-                    };
+                    }
                 }
 
-                (RuleParseState::OpStarted { key: cond, op }, c) => {
+                (RuleParseState::KeyFinished(key), ';') => {
+                    return Ok(Some(Self {
+                        conditions,
+                        action: (key, String::default())
+                            .try_into()
+                            .context("Parsing action")?,
+                    }))
+                }
+
+                (RuleParseState::OpStarted { key, mut op }, c) => {
                     if c.is_ascii_whitespace() {
-                        state = RuleParseState::OpFinished {
-                            key: take(cond),
+                        RuleParseState::OpFinished {
+                            key,
                             op: op
                                 .parse()
                                 .with_context(|| format!("Parsing operator: {op}"))?,
-                        };
+                        }
                     } else {
                         op.push(c.as_char());
+                        RuleParseState::OpStarted { key, op }
                     }
                 }
 
-                (RuleParseState::OpFinished { key: cond_key, op }, c)
-                    if !c.is_ascii_whitespace() =>
-                {
+                (RuleParseState::OpFinished { key, op }, c) if !c.is_ascii_whitespace() => {
                     if c != '"' {
                         bail!("Expecting \" but got {c:?}");
                     }
 
-                    state = RuleParseState::ValueStarted {
-                        key: take(cond_key),
-                        op: *op,
+                    RuleParseState::ValueStarted {
+                        key,
+                        op,
                         value: Default::default(),
                         escaping: false,
-                    };
+                    }
                 }
 
                 (
                     RuleParseState::ValueStarted {
                         key,
                         op,
-                        value,
-                        escaping,
+                        mut value,
+                        escaping: true,
                     },
                     c,
                 ) => {
-                    if *escaping {
-                        value.push(c);
-                        *escaping = false;
-                        continue;
+                    value.push(c);
+                    RuleParseState::ValueStarted {
+                        key,
+                        op,
+                        value,
+                        escaping: false,
                     }
-
-                    match c {
-                        '\\' => *escaping = true,
-                        '"' => match op {
-                            AssignOrTest::Assign => {
-                                state = RuleParseState::ActionEnd(Action {
-                                    what: take(key),
-                                    how: take(value),
-                                });
-                            }
-
-                            AssignOrTest::Test(op) => {
-                                conditions.push(Condition {
-                                    key: take(key),
-                                    value: take(value),
-                                    op: *op,
-                                });
-
-                                state = RuleParseState::CondValueEnded;
-                            }
-                        },
-
-                        _ => value.push(c),
-                    };
                 }
 
-                (RuleParseState::ActionEnd(a), c) if !c.is_ascii_whitespace() => {
+                (
+                    RuleParseState::ValueStarted {
+                        key,
+                        op,
+                        mut value,
+                        escaping: false,
+                    },
+                    c,
+                ) => match c {
+                    '\\' => RuleParseState::ValueStarted {
+                        key,
+                        op,
+                        value,
+                        escaping: true,
+                    },
+                    '"' => match op {
+                        AssignOrTest::Assign => RuleParseState::ActionEnd(
+                            Action::try_from((key, value)).context("parsing action")?,
+                        ),
+
+                        AssignOrTest::Test(op) => {
+                            conditions.push(RawCondition { key, value, op });
+                            RuleParseState::CondValueEnded
+                        }
+                    },
+
+                    _ => {
+                        value.push(c);
+                        RuleParseState::ValueStarted {
+                            key,
+                            op,
+                            value,
+                            escaping: false,
+                        }
+                    }
+                },
+
+                (RuleParseState::ActionEnd(action), c) if !c.is_ascii_whitespace() => {
                     if c == ';' {
-                        return Ok(Some(Self {
-                            conditions,
-                            action: take(a),
-                        }));
+                        return Ok(Some(Self { conditions, action }));
                     } else {
                         bail!("Expecting ; but got {c:?}");
                     }
@@ -180,13 +203,13 @@ impl RawRule {
 
                 (RuleParseState::CondValueEnded, c) if !c.is_ascii_whitespace() => {
                     if c == ',' {
-                        state = RuleParseState::Start;
+                        RuleParseState::Start
                     } else {
                         bail!("Expecting , but got {c:?}");
                     }
                 }
 
-                _ => {}
+                (s, _) => s,
             }
         }
 
@@ -278,8 +301,8 @@ mod tests {
         let src = r#"
 
             main {
-                a == "1", b == "v", action = "accept";
-                c == "2", de == "s", action = "reject";
+                a == "1", b == "v", proxy = "1";
+                c == "2", de == "s", reject;
             }
 
             t1 {
@@ -287,7 +310,7 @@ mod tests {
             }
 
             t2 {
-                k == "v", a = "block";
+                k == "v", jump = "t1";
             }
 
         "#;
@@ -302,39 +325,33 @@ mod tests {
                     rules: vec![
                         RawRule {
                             conditions: vec![
-                                Condition {
+                                RawCondition {
                                     key: "a".to_string(),
                                     value: "1".to_string(),
                                     op: Op::Equals
                                 },
-                                Condition {
+                                RawCondition {
                                     key: "b".to_string(),
                                     value: "v".to_string(),
                                     op: Op::Equals
                                 },
                             ],
-                            action: Action {
-                                what: "action".to_string(),
-                                how: "accept".to_string()
-                            }
+                            action: Action::Proxy("1".to_string())
                         },
                         RawRule {
                             conditions: vec![
-                                Condition {
+                                RawCondition {
                                     key: "c".to_string(),
                                     value: "2".to_string(),
                                     op: Op::Equals
                                 },
-                                Condition {
+                                RawCondition {
                                     key: "de".to_string(),
                                     value: "s".to_string(),
                                     op: Op::Equals
                                 },
                             ],
-                            action: Action {
-                                what: "action".to_string(),
-                                how: "reject".to_string()
-                            }
+                            action: Action::Reject
                         },
                     ]
                 },
@@ -345,15 +362,12 @@ mod tests {
                 RawTable {
                     name: "t2".to_string(),
                     rules: vec![RawRule {
-                        conditions: vec![Condition {
+                        conditions: vec![RawCondition {
                             key: "k".to_string(),
                             value: "v".to_string(),
                             op: Op::Equals
                         },],
-                        action: Action {
-                            what: "a".to_string(),
-                            how: "block".to_string()
-                        }
+                        action: Action::Jump("t1".to_string())
                     }]
                 }
             ]
