@@ -5,10 +5,10 @@ use anyhow::{bail, Context};
 use std::{mem::take, str::FromStr};
 use tls_parser::nom::AsChar;
 
-#[derive(Copy, Clone, Debug)]
+#[derive(Clone, Debug)]
 enum AssignOrTest {
     Assign,
-    Test(Op),
+    TestOp(String),
 }
 
 impl FromStr for AssignOrTest {
@@ -17,7 +17,7 @@ impl FromStr for AssignOrTest {
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         match s {
             "=" => Ok(Self::Assign),
-            _ => Ok(Self::Test(s.parse()?)),
+            _ => Ok(Self::TestOp(s.to_string())),
         }
     }
 }
@@ -154,8 +154,9 @@ impl Rule {
                                 Action::try_from((key, value)).context("parsing action")?,
                             ),
 
-                            AssignOrTest::Test(op) => {
-                                conditions.push(Condition { key, value, op });
+                            AssignOrTest::TestOp(op) => {
+                                let op: Op = (op, value).try_into().context("parsing op")?;
+                                conditions.push(Condition { key, op });
                                 RuleParseState::CondValueEnded
                             }
                         }
@@ -275,6 +276,7 @@ mod tests {
 
             t2 {
                 k == "v", jump = "t1";
+                r ~= ".*", proxy = "1";
             }
 
         "#;
@@ -291,13 +293,11 @@ mod tests {
                             conditions: vec![
                                 Condition {
                                     key: "a".to_string(),
-                                    value: "1".to_string(),
-                                    op: Op::Equals
+                                    op: Op::Equals("1".to_string())
                                 },
                                 Condition {
                                     key: "b".to_string(),
-                                    value: "v".to_string(),
-                                    op: Op::Equals
+                                    op: Op::Equals("v".to_string())
                                 },
                             ],
                             action: Action::Proxy("1".to_string())
@@ -306,18 +306,15 @@ mod tests {
                             conditions: vec![
                                 Condition {
                                     key: "c".to_string(),
-                                    value: "2".to_string(),
-                                    op: Op::NotEquals
+                                    op: Op::NotEquals("2".to_string())
                                 },
                                 Condition {
                                     key: "de".to_string(),
-                                    value: "s".to_string(),
-                                    op: Op::Contains
+                                    op: Op::In("s".to_string())
                                 },
                                 Condition {
                                     key: "f".to_string(),
-                                    value: "bc".to_string(),
-                                    op: Op::NotContains
+                                    op: Op::NotIn("bc".to_string())
                                 }
                             ],
                             action: Action::Reject
@@ -330,14 +327,22 @@ mod tests {
                 },
                 Table {
                     name: "t2".to_string(),
-                    rules: vec![Rule {
-                        conditions: vec![Condition {
-                            key: "k".to_string(),
-                            value: "v".to_string(),
-                            op: Op::Equals
-                        },],
-                        action: Action::Jump("t1".to_string())
-                    }]
+                    rules: vec![
+                        Rule {
+                            conditions: vec![Condition {
+                                key: "k".to_string(),
+                                op: Op::Equals("v".to_string())
+                            },],
+                            action: Action::Jump("t1".to_string())
+                        },
+                        Rule {
+                            conditions: vec![Condition {
+                                key: "r".to_string(),
+                                op: Op::RegexMatches(".*".parse().expect("to parse regex"))
+                            },],
+                            action: Action::Proxy("1".to_string())
+                        },
+                    ]
                 }
             ]
         );

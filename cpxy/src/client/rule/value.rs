@@ -12,9 +12,3 @@ impl<'a> From<IpNetwork> for PropertyValue<'a> {
         Self::IPNetwork(value)
     }
 }
-
-impl<'a> From<&'a [&'_ PropertyValue<'_>]> for PropertyValue<'a> {
-    fn from(value: &'a [&'_ PropertyValue<'_>]) -> Self {
-        Self::List(value)
-    }
-}

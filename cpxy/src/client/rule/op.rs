@@ -1,43 +1,35 @@
-use std::str::FromStr;
+use crate::regex::Regex;
+use anyhow::{bail, Context};
 
-use super::PropertyValue;
-use anyhow::bail;
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Op {
-    Equals,
-    NotEquals,
-    Contains,
-    NotContains,
-    RegexMatches,
+    Equals(String),
+    NotEquals(String),
+    In(String),
+    NotIn(String),
+    RegexMatches(Regex),
 }
 
-impl FromStr for Op {
-    type Err = anyhow::Error;
+impl<O: AsRef<str>, V: AsRef<str> + Into<String>> TryFrom<(O, V)> for Op {
+    type Error = anyhow::Error;
 
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
-        match s {
-            "==" => Ok(Self::Equals),
-            "!=" => Ok(Self::NotEquals),
-            "in" => Ok(Self::Contains),
-            "!in" => Ok(Self::NotContains),
-            "~=" => Ok(Self::RegexMatches),
-            _ => bail!("invalid operator: {s}"),
+    fn try_from((op, value): (O, V)) -> Result<Self, Self::Error> {
+        match op.as_ref() {
+            "==" => Ok(Self::Equals(value.into())),
+            "!=" => Ok(Self::NotEquals(value.into())),
+            "in" => Ok(Self::In(value.into())),
+            "!in" => Ok(Self::NotIn(value.into())),
+            "~=" => Ok(Self::RegexMatches(
+                value.as_ref().parse().context("Parsing regex")?,
+            )),
+            _ => bail!(
+                "invalid operator: {} with value {}",
+                op.as_ref(),
+                value.as_ref()
+            ),
         }
     }
 }
 
 pub const FIRST_OP_SYMBOLIC_CHARS: &str = "=!~";
 pub const FIRST_OP_ALPHA_CHARS: &str = "i";
-
-impl Op {
-    pub fn test(&self, left: &PropertyValue<'_>, right: &str) -> bool {
-        match self {
-            Self::Equals => left == right,
-            Self::NotEquals => left != right,
-            Self::Contains => left.contains(right),
-            Self::NotContains => !left.contains(right),
-            Self::RegexMatches => regex::Regex::new(right).unwrap().is_match(left),
-        }
-    }
-}

@@ -1,4 +1,4 @@
-use super::{Action, Program, PropertyAccessor, Rule, Table};
+use super::{Action, ExecutionContext, Outcome, Program, Rule, Table};
 use anyhow::Context;
 
 impl Program {
@@ -6,7 +6,7 @@ impl Program {
         self.tables.iter().find(|t| t.name == name)
     }
 
-    pub fn run(&self, accessor: &impl PropertyAccessor) -> anyhow::Result<Action> {
+    pub fn run(&self, ctx: &impl ExecutionContext) -> anyhow::Result<Outcome> {
         let mut call_chains = vec![self
             .table_by_name("main")
             .context("Unable to find main table")?];
@@ -16,7 +16,7 @@ impl Program {
 }
 
 impl Table {
-    fn run(&self, accessor: &impl PropertyAccessor) -> anyhow::Result<Action> {
+    fn run(&self, ctx: &impl ExecutionContext) -> anyhow::Result<Action> {
         for rule in &self.rules {}
 
         Ok(Action::Return)
@@ -24,13 +24,7 @@ impl Table {
 }
 
 impl Rule {
-    fn matches(&self, accessor: &impl PropertyAccessor) -> anyhow::Result<bool> {
-        for condition in &self.conditions {
-            if !condition.run(accessor)? {
-                return Ok(Action::Return);
-            }
-        }
-
-        Ok(self.action.clone())
+    fn matches(&self, accessor: &impl ExecutionContext) -> anyhow::Result<bool> {
+        todo!()
     }
 }

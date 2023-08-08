@@ -25,5 +25,6 @@ pub mod addr;
 mod domain_list;
 pub mod http;
 pub mod measure;
+mod regex;
 pub mod tls;
 mod ws;

@@ -1,5 +1,3 @@
-use num_traits::Num;
-
 mod action;
 mod domain;
 mod ip;
@@ -12,7 +10,6 @@ mod value;
 #[derive(Debug, Clone, PartialEq, Eq)]
 struct Condition {
     pub key: String,
-    pub value: String,
     pub op: op::Op,
 }
 
@@ -20,6 +17,15 @@ struct Condition {
 enum Action {
     Return,
     Jump(String),
+    Proxy(String),
+    ProxyGroup(String),
+    Direct,
+    Reject,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum Outcome {
+    None,
     Proxy(String),
     ProxyGroup(String),
     Direct,
@@ -45,9 +51,9 @@ pub struct Program {
 pub enum PropertyValue<'a> {
     String(&'a str),
     IPNetwork(ipnetwork::IpNetwork),
-    List(&'a [&'a PropertyValue<'a>]),
 }
 
-pub trait PropertyAccessor {
-    fn get(&self, key: &str) -> Option<&PropertyValue<'_>>;
+pub trait ExecutionContext {
+    fn get_property(&self, key: &str) -> Option<&PropertyValue<'_>>;
+    fn check_value_in(&self, value: &PropertyValue<'_>, list_name: &str) -> bool;
 }
