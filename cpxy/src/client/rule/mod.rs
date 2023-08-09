@@ -24,10 +24,10 @@ enum Action {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub enum Outcome {
+pub enum Outcome<'a> {
     None,
-    Proxy(String),
-    ProxyGroup(String),
+    Proxy(&'a str),
+    ProxyGroup(&'a str),
     Direct,
     Reject,
 }
@@ -40,6 +40,7 @@ struct Table {
 
 #[derive(Debug, PartialEq, Eq)]
 struct Rule {
+    pub line_number: usize,
     pub conditions: Vec<Condition>,
     pub action: Action,
 }
@@ -48,12 +49,7 @@ pub struct Program {
     tables: Vec<Table>,
 }
 
-pub enum PropertyValue<'a> {
-    String(&'a str),
-    IPNetwork(ipnetwork::IpNetwork),
-}
-
 pub trait ExecutionContext {
-    fn get_property(&self, key: &str) -> Option<&PropertyValue<'_>>;
-    fn check_value_in(&self, value: &PropertyValue<'_>, list_name: &str) -> bool;
+    fn get_property(&self, key: &str) -> Option<&str>;
+    fn check_value_in(&self, value: &str, list_name: &str) -> bool;
 }
