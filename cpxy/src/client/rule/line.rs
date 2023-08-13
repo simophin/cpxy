@@ -1,7 +1,7 @@
 pub struct ColRowCounter<Iter> {
     i: Iter,
-    pub line: usize,
-    pub column: usize,
+    line: usize,
+    column: usize,
 }
 
 impl<Iter> ColRowCounter<Iter> {
@@ -11,6 +11,10 @@ impl<Iter> ColRowCounter<Iter> {
             line: 0,
             column: 0,
         }
+    }
+
+    pub fn line(&self) -> usize {
+        self.line
     }
 }
 

@@ -1,6 +1,5 @@
 use super::op::*;
-use super::{Action, Condition, Rule, Table};
-use crate::client::rule::Program;
+use super::{line::ColRowCounter, Action, Condition, Program, Rule, Table};
 use anyhow::{bail, Context};
 use std::{mem::take, str::FromStr};
 use tls_parser::nom::AsChar;
@@ -22,16 +21,19 @@ impl FromStr for AssignOrTest {
     }
 }
 
+#[derive(Debug)]
 struct OpStartedState {
     key: String,
     op: String,
 }
 
+#[derive(Debug)]
 struct OpFinishedState {
     key: String,
     op: AssignOrTest,
 }
 
+#[derive(Debug)]
 struct ValueStartedState {
     key: String,
     op: AssignOrTest,
@@ -40,8 +42,10 @@ struct ValueStartedState {
     escaping: bool,
 }
 
+#[derive(Debug)]
 enum RuleParseState {
     Start,
+    CommentStarted,
     KeyStarted(String),
     KeyFinished(String),
     OpStarted(OpStartedState),
@@ -52,8 +56,11 @@ enum RuleParseState {
 }
 
 impl Rule {
-    pub fn parse(mut reader: impl Iterator<Item = char>) -> anyhow::Result<Option<Self>> {
+    pub fn parse(
+        reader: &mut ColRowCounter<impl Iterator<Item = char>>,
+    ) -> anyhow::Result<Option<Self>> {
         let mut state = RuleParseState::Start;
+        let mut line_number = 1usize;
         let mut conditions = Vec::new();
 
         while let Some(c) = reader.next() {
@@ -62,9 +69,14 @@ impl Rule {
                     return Ok(None);
                 }
 
+                (RuleParseState::Start, '#') => RuleParseState::CommentStarted,
+
                 (RuleParseState::Start, c) if !c.is_ascii_whitespace() => {
+                    line_number = reader.line();
                     RuleParseState::KeyStarted(c.to_string())
                 }
+
+                (RuleParseState::CommentStarted, '\n') => RuleParseState::Start,
 
                 (RuleParseState::KeyStarted(mut key), b) => {
                     if b.is_ascii_whitespace() {
@@ -77,6 +89,7 @@ impl Rule {
                     } else if b == ';' {
                         return Ok(Some(Self {
                             conditions,
+                            line_number,
                             action: (key, String::default())
                                 .try_into()
                                 .context("Parsing action")?,
@@ -99,6 +112,7 @@ impl Rule {
                 (RuleParseState::KeyFinished(key), ';') => {
                     return Ok(Some(Self {
                         conditions,
+                        line_number,
                         action: (key, String::default())
                             .try_into()
                             .context("Parsing action")?,
@@ -170,7 +184,11 @@ impl Rule {
 
                 (RuleParseState::ActionEnd(action), c) if !c.is_ascii_whitespace() => {
                     if c == ';' {
-                        return Ok(Some(Self { conditions, action }));
+                        return Ok(Some(Self {
+                            conditions,
+                            action,
+                            line_number,
+                        }));
                     } else {
                         bail!("Expecting ; but got {c:?}");
                     }
@@ -195,18 +213,29 @@ impl Rule {
 #[derive(Debug, PartialEq, Eq)]
 enum TableParseState {
     Start,
+    CommentStarted,
     NameStarted(String),
     NameEnded(String),
 }
 
 impl Table {
-    pub fn parse(mut reader: impl Iterator<Item = char>) -> anyhow::Result<Option<Self>> {
+    pub fn parse(
+        reader: &mut ColRowCounter<impl Iterator<Item = char>>,
+    ) -> anyhow::Result<Option<Self>> {
         let mut state = TableParseState::Start;
 
         while let Some(c) = reader.next() {
             match (&mut state, c) {
+                (TableParseState::Start, '#') => {
+                    state = TableParseState::CommentStarted;
+                }
+
                 (TableParseState::Start, c) if !c.is_whitespace() => {
                     state = TableParseState::NameStarted(c.to_string());
+                }
+
+                (TableParseState::CommentStarted, '\n') => {
+                    state = TableParseState::Start;
                 }
 
                 (TableParseState::NameStarted(name), c) => {
@@ -221,7 +250,7 @@ impl Table {
 
                 (TableParseState::NameEnded(name), '{') => {
                     let mut rules = Vec::new();
-                    while let Some(rule) = Rule::parse(&mut reader).context("parsing rule")? {
+                    while let Some(rule) = Rule::parse(reader).context("parsing rule")? {
                         rules.push(rule);
                     }
 
@@ -247,9 +276,9 @@ impl FromStr for Program {
     type Err = anyhow::Error;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
-        let mut chars = s.chars();
         let mut tables = Vec::new();
-        while let Some(table) = Table::parse(&mut chars).context("Parsing table")? {
+        let mut counter = ColRowCounter::new(s.chars());
+        while let Some(table) = Table::parse(&mut counter).context("Parsing table")? {
             tables.push(table);
         }
 
@@ -265,17 +294,20 @@ mod tests {
     fn parse_works() {
         let src = r#"
 
+            # The main table
             main {
+                # Rule number 1
                 a == "1", b == "v", proxy = "1" ;
                 c != "2", de in "s", f !in "bc", reject ;
             }
 
             t1 {
-
+                # Empty table
             }
 
             t2 {
                 k == "v", jump = "t1";
+                # Rule
                 r ~= ".*", proxy = "1";
             }
 
@@ -290,6 +322,7 @@ mod tests {
                     name: "main".to_string(),
                     rules: vec![
                         Rule {
+                            line_number: 5,
                             conditions: vec![
                                 Condition {
                                     key: "a".to_string(),
@@ -303,6 +336,7 @@ mod tests {
                             action: Action::Proxy("1".to_string())
                         },
                         Rule {
+                            line_number: 6,
                             conditions: vec![
                                 Condition {
                                     key: "c".to_string(),
@@ -329,6 +363,7 @@ mod tests {
                     name: "t2".to_string(),
                     rules: vec![
                         Rule {
+                            line_number: 14,
                             conditions: vec![Condition {
                                 key: "k".to_string(),
                                 op: Op::Equals("v".to_string())
@@ -336,6 +371,7 @@ mod tests {
                             action: Action::Jump("t1".to_string())
                         },
                         Rule {
+                            line_number: 16,
                             conditions: vec![Condition {
                                 key: "r".to_string(),
                                 op: Op::RegexMatches(".*".parse().expect("to parse regex"))

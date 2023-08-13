@@ -11,7 +11,7 @@ impl<T: AsRef<str> + Into<String>> TryFrom<(T, T)> for Action {
             ("reject", "") => Self::Reject,
             ("jump", v) if !v.is_empty() => Self::Jump(value.into()),
             ("proxy", v) if !v.is_empty() => Self::Proxy(value.into()),
-            ("proxygroup", v) if !v.is_empty() => Self::ProxyGroup(value.into()),
+            ("proxy_group", v) if !v.is_empty() => Self::ProxyGroup(value.into()),
             _ => bail!("Invalid action starting with {}", key.as_ref()),
         })
     }
@@ -35,7 +35,7 @@ mod tests {
         test_parsing("reject", "", Action::Reject);
         test_parsing("jump", "foo", Action::Jump("foo".to_string()));
         test_parsing("proxy", "foo", Action::Proxy("foo".to_string()));
-        test_parsing("proxygroup", "foo", Action::ProxyGroup("foo".to_string()));
+        test_parsing("proxy_group", "foo", Action::ProxyGroup("foo".to_string()));
 
         Action::try_from(("foo", "bar")).expect_err("To fail parsing");
         Action::try_from(("foo", "")).expect_err("To fail parsing");

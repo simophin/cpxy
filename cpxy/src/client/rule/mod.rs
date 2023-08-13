@@ -5,7 +5,7 @@ mod line;
 mod op;
 mod parser;
 mod program;
-mod value;
+mod display;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 struct Condition {
