@@ -77,8 +77,8 @@ impl Condition {
         Ok(match &self.op {
             Op::Equals(s) => prop == s,
             Op::NotEquals(s) => prop != s,
-            Op::In(list) => ctx.check_value_in(prop, list),
-            Op::NotIn(list) => !ctx.check_value_in(prop, list),
+            Op::In(list) => ctx.check_value_in(&self.key, list),
+            Op::NotIn(list) => !ctx.check_value_in(&self.key, list),
             Op::RegexMatches(r) => r.is_match(prop),
         })
     }
@@ -100,7 +100,12 @@ mod tests {
             self.props.get(key).map(|s| *s)
         }
 
-        fn check_value_in(&self, value: &str, list_name: &str) -> bool {
+        fn check_value_in(&self, key: &str, list_name: &str) -> bool {
+            let value = match self.props.get(key) {
+                Some(v) => *v,
+                None => return false,
+            };
+
             self.lists
                 .get(list_name)
                 .map(|list| list.contains(&value))

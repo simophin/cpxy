@@ -60,11 +60,14 @@ rmp-serde = "1"
 netstack-lwip = { path = "../netstack-lwip" }
 sha1_smol = "1"
 socks5-impl = "0"
-dnsclient = { version = "0", default-features = false, features = ["async-tokio"] }
+dnsclient = { version = "0", default-features = false, features = [
+    "async-tokio",
+] }
 dashmap = { version = "5", features = ["serde"] }
 zstd = "0"
 dotenvy = "0"
 non-empty-string = "0"
+iana-time-zone = "0"
 
 [dev-dependencies]
 maplit = "1"

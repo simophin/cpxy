@@ -1,11 +1,11 @@
+use crate::regex::Regex;
+
 mod action;
-mod domain;
-mod ip;
+mod display;
 mod line;
 mod op;
 mod parser;
 mod program;
-mod display;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 struct Condition {
@@ -50,6 +50,9 @@ pub struct Program {
 }
 
 pub trait ExecutionContext {
+    fn available_properties(&self) -> &[&Regex];
+    fn available_list_operations(&self) -> &[(&Regex, &Regex)];
+
     fn get_property(&self, key: &str) -> Option<&str>;
-    fn check_value_in(&self, value: &str, list_name: &str) -> bool;
+    fn check_value_in(&self, key: &str, list_name: &str) -> bool;
 }

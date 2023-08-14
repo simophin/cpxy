@@ -20,6 +20,20 @@ impl Address {
         }
     }
 
+    pub fn domain(&self) -> Option<&str> {
+        match &self.0 {
+            RealAddress::SocketAddress(_) => None,
+            RealAddress::DomainAddress(addr, _) => Some(addr.as_ref()),
+        }
+    }
+
+    pub fn ip(&self) -> Option<IpAddr> {
+        match &self.0 {
+            RealAddress::SocketAddress(addr) => Some(addr.ip()),
+            RealAddress::DomainAddress(_, _) => None,
+        }
+    }
+
     pub fn host(&self) -> Cow<str> {
         match &self.0 {
             RealAddress::SocketAddress(addr) => Cow::Owned(addr.ip().to_string()),
