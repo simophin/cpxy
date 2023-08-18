@@ -3,7 +3,7 @@ use crate::broadcast::bounded;
 use crate::buf::RWBuffer;
 use crate::client::{run_client, ClientStatistics};
 use crate::config::{ClientConfig, UpstreamConfig};
-use crate::http::{parse_request, write_http_response};
+use crate::http::{parse_request, write_http_response, WithHeaders};
 use crate::http_path::HttpPath;
 use crate::socks5::Address;
 use anyhow::{anyhow, Context};
@@ -24,17 +24,53 @@ struct Asset;
 
 enum Response {
     Empty,
-    Json(Vec<u8>),
+    Regular {
+        data: Vec<u8>,
+        mime_type: String,
+    },
     EmbedFile {
         path: String,
         file: rust_embed::EmbeddedFile,
     },
 }
 
-fn json_response(a: impl Serialize) -> Result<Response, ErrorResponse> {
-    Ok(Response::Json(
-        serde_json::to_vec(&a).map_err(|e| ErrorResponse::Generic(e.into()))?,
-    ))
+impl Response {
+    pub fn mapper<T: Serialize>(
+        mime_type: impl AsRef<str> + Into<String>,
+    ) -> impl FnOnce(T) -> Result<Self, ErrorResponse> {
+        move |data| {
+            let (data, mime_type) = if mime_type.as_ref().eq_ignore_ascii_case("application/json")
+                || mime_type.as_ref().eq_ignore_ascii_case("*/*")
+            {
+                (
+                    serde_json::to_vec(&data).context("Serialising JSON"),
+                    "application/json",
+                )
+            } else if mime_type.as_ref().eq_ignore_ascii_case("text/yaml") {
+                (
+                    serde_yaml::to_string(&data)
+                        .context("Serialising YAML")
+                        .map(|s| s.into_bytes()),
+                    "text/yaml",
+                )
+            } else {
+                (
+                    Err(anyhow!("Invalid mimetype: {}", mime_type.as_ref())),
+                    "text/plain",
+                )
+            };
+
+            if let Err(e) = &data {
+                log::error!("Error serialising response: {e}");
+            }
+
+            data.map(|data| Response::Regular {
+                data,
+                mime_type: mime_type.into(),
+            })
+            .map_err(ErrorResponse::Generic)
+        }
+    }
 }
 
 enum ErrorResponse {
@@ -105,13 +141,15 @@ impl Controller {
         Ok(())
     }
 
-    async fn set_basic_config(&mut self, mut c: ClientConfig) -> HttpResult<()> {
+    async fn set_config(&mut self, mut c: ClientConfig, replace_upstreams: bool) -> HttpResult<()> {
         let (ClientConfig { upstreams, .. }, new_stats) = (
             self.current.0.as_ref().clone(),
             self.current.1.as_ref().clone(),
         );
 
-        c.upstreams = upstreams;
+        if !replace_upstreams {
+            c.upstreams = upstreams;
+        }
 
         self.set_current_config(c, new_stats).await
     }
@@ -167,14 +205,27 @@ impl Controller {
             Ok(mut r) => {
                 let path: HttpPath = r.path.parse()?;
                 log::debug!("Dispatching {} {}", r.method, r.path);
+                let mime_type = if r.method.as_ref().eq_ignore_ascii_case("get") {
+                    r.get_header_text("Accept")
+                } else {
+                    r.get_header_text("Content-Type")
+                }
+                .unwrap_or("application/json")
+                .to_string();
+
                 match (r.method.as_ref(), path.path.as_ref()) {
                     ("OPTIONS", _) => Ok(Response::Empty),
-                    ("GET", "/api/config") => self.get_config().and_then(json_response),
+                    ("GET", "/api/config") => {
+                        self.get_config().and_then(Response::mapper(mime_type))
+                    }
                     ("POST", "/api/config") => self
-                        .set_basic_config(r.body_json().await?)
+                        .set_config(
+                            r.body_json_or_yaml().await?,
+                            path.get_query("replace") == Some("all"),
+                        )
                         .await
-                        .and_then(json_response),
-                    ("GET", "/api/stats") => self.get_stats().and_then(json_response),
+                        .and_then(Response::mapper(mime_type)),
+                    ("GET", "/api/stats") => self.get_stats().and_then(Response::mapper(mime_type)),
                     (m, "/api/gfwlist") | (m, "/api/adblocklist") => {
                         let engine = if path.path.contains("gfwlist") {
                             gfw_list_engine()
@@ -190,7 +241,7 @@ impl Controller {
                                     num_rules: None,
                                 })
                                 .map_err(|e| ErrorResponse::Generic(e))
-                                .and_then(json_response),
+                                .and_then(Response::mapper(mime_type)),
                             "POST" => engine
                                 .update(&Address::IP(self.current.0.socks5_address))
                                 .await
@@ -201,7 +252,7 @@ impl Controller {
                                     })
                                 })
                                 .map_err(|e| ErrorResponse::Generic(e))
-                                .and_then(json_response),
+                                .and_then(Response::mapper(mime_type)),
                             _ => Err(ErrorResponse::InvalidRequest(anyhow!("Unknown method {m}"))),
                         }
                     }
@@ -222,13 +273,13 @@ impl Controller {
                         }
                     }
                     ("POST", "/api/upstream") => self
-                        .update_upstreams(r.body_json().await?)
+                        .update_upstreams(r.body_json_or_yaml().await?)
                         .await
-                        .and_then(json_response),
+                        .and_then(Response::mapper(mime_type)),
                     ("DELETE", "/api/upstream") => self
-                        .delete_upstreams(r.body_json().await?)
+                        .delete_upstreams(r.body_json_or_yaml().await?)
                         .await
-                        .and_then(json_response),
+                        .and_then(Response::mapper(mime_type)),
                     (m, p) => {
                         log::warn!("Request {m} {p} not found");
                         Err(ErrorResponse::NotFound(p.to_string()))
@@ -248,16 +299,11 @@ impl Controller {
 
         match result {
             Ok(Response::Empty) => write_http_response(&mut w, 201, Some("OK"), None, &[]).await?,
-            Ok(Response::Json(buf)) => {
-                write_http_response(
-                    &mut w,
-                    200,
-                    Some("OK"),
-                    Some("application/json"),
-                    buf.as_slice(),
-                )
-                .await?
+            Ok(Response::Regular { data, mime_type }) => {
+                write_http_response(&mut w, 200, Some("OK"), Some(&mime_type), data.as_ref())
+                    .await?
             }
+
             Ok(Response::EmbedFile { path, file }) => {
                 let mime = mime_guess::from_path(path);
                 write_http_response(

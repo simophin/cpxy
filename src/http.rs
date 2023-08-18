@@ -220,13 +220,17 @@ impl<I: WithHeaders, T: AsyncRead + Unpin + Send + Sync> AsyncHttpStream<I, T> {
         }
     }
 
-    pub async fn body_json<R: DeserializeOwned>(&mut self) -> anyhow::Result<R> {
+    pub async fn body_json_or_yaml<R: DeserializeOwned>(&mut self) -> anyhow::Result<R> {
         match self.get_content_type() {
-            Some(v) if v.to_ascii_lowercase().starts_with("application/json") => {}
-            v => bail!("Invalid content type: {v:?}"),
-        };
+            Some(v) if v.to_ascii_lowercase().starts_with("application/json") => {
+                Ok(serde_json::from_slice(self.body().await?.as_ref())?)
+            }
 
-        Ok(serde_json::from_slice(self.body().await?.as_ref())?)
+            Some(v) if v.to_ascii_lowercase().starts_with("text/yaml") => {
+                Ok(serde_yaml::from_slice(self.body().await?.as_ref())?)
+            }
+            v => bail!("Invalid content type: {v:?}"),
+        }
     }
 }
 

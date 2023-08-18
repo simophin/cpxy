@@ -32,9 +32,7 @@ function transformFwmark(text: string): number {
 
 export default function BasicSettingsEdit({ onSaved, onCancelled, current_config }: Props) {
     const address = useEditState(current_config.socks5_address ?? '', mandatory('Address', validAddress))
-    const udpHost = useEditState(current_config.socks5_udp_host ?? '', mandatory('UDP host'));
     const fwmark = useEditState<number>(current_config.fwmark?.toString() ?? '', optional(isValidFwmark), transformFwmark);
-    const udpTProxyAddress = useEditState(current_config.udp_tproxy_address ?? '', optional(validAddress));
     const [routerRules, setRouterRules] = useState<boolean>(current_config.set_router_rules === true);
     const request = useHttp(`${BASE_URL}/api/config`, { headers: { "Content-Type": "application/json" } });
     const [snackbar, showSnackbar] = useSnackbar();
@@ -65,21 +63,19 @@ export default function BasicSettingsEdit({ onSaved, onCancelled, current_config
         }
     };
 
+    const onExportClicked = () => {
+        window.location.href = `${BASE_URL}/export`;
+    }
+
     const handleSave = async () => {
         try {
             let config: ClientConfig = {
                 ...current_config,
                 socks5_address: address.validate(),
-                socks5_udp_host: udpHost.validate(),
                 fwmark: fwmark.validate(),
-                udp_tproxy_address: udpTProxyAddress.validate(),
                 set_router_rules: routerRules,
                 traffic_rules: trafficRules.validate(),
             };
-
-            if (config.udp_tproxy_address?.length === 0) {
-                delete config.udp_tproxy_address;
-            }
 
             await request.execute('post', config);
             onSaved();
@@ -101,35 +97,6 @@ export default function BasicSettingsEdit({ onSaved, onCancelled, current_config
                     fullWidth
                     variant='outlined'
                 />
-                <TextField
-                    value={udpTProxyAddress.value}
-                    helperText={udpTProxyAddress.error}
-                    error={!!udpTProxyAddress.error}
-                    onChange={(e) => udpTProxyAddress.setValue(e.target.value)}
-                    margin='dense'
-                    label='UDP TProxy listen address'
-                    fullWidth
-                    variant='outlined'
-                />
-                <TextField
-                    value={fwmark.value}
-                    helperText={fwmark.error}
-                    error={!!fwmark.error}
-                    onChange={(e) => fwmark.setValue(e.target.value)}
-                    margin='dense'
-                    label='TCP fwmark'
-                    fullWidth
-                    variant='outlined'
-                />
-                <TextField
-                    label='SOCKS5 UDP Host'
-                    helperText={udpHost.error}
-                    error={!!udpHost.error}
-                    value={udpHost.value}
-                    margin='dense'
-                    fullWidth
-                    onChange={(e) => udpHost.setValue(e.target.value)}
-                    variant='outlined' />
                 <TextField
                     label='Traffic rules'
                     helperText={trafficRules.error}
@@ -170,8 +137,8 @@ export default function BasicSettingsEdit({ onSaved, onCancelled, current_config
             </Stack>
         </DialogContent>
         <DialogActions>
+            <Button onClick={onExportClicked} disabled={request.loading}>Export</Button>
             <Button onClick={onCancelled} disabled={request.loading}>Cancel</Button>
-
             <Button onClick={handleSave} variant='contained' disabled={request.loading}>Save</Button>
         </DialogActions>
         {snackbar}

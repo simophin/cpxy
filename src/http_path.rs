@@ -8,6 +8,15 @@ pub struct HttpPath {
     pub queries: SmallVec<[(String, String); 3]>,
 }
 
+impl HttpPath {
+    pub fn get_query(&self, name: &str) -> Option<&str> {
+        self.queries
+            .iter()
+            .find(|(n, _)| n == name)
+            .map(|(_, v)| v.as_str())
+    }
+}
+
 impl FromStr for HttpPath {
     type Err = anyhow::Error;
 
