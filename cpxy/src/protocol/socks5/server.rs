@@ -1,12 +1,14 @@
-use super::super::{ProtocolAcceptedState, ProtocolAcceptor, ProxyRequest};
 use anyhow::{bail, Context};
 use async_trait::async_trait;
 use bytes::Bytes;
 use socks5_impl::protocol::{
-    Address, AuthMethod, Command, HandshakeRequest, HandshakeResponse, Reply, Request, Response,
+    handshake::Request as HandshakeRequest, handshake::Response as HandshakeResponse, Address,
+    AsyncStreamOperation, AuthMethod, Command, Reply, Request, Response,
 };
 use tokio::io::AsyncWriteExt;
 use tokio::net::TcpStream;
+
+use super::super::{ProtocolAcceptedState, ProtocolAcceptor, ProxyRequest};
 
 #[derive(Default, Clone)]
 pub struct Socks5Acceptor;
@@ -23,20 +25,20 @@ impl ProtocolAcceptor for Socks5Acceptor {
         &self,
         mut stream: TcpStream,
     ) -> anyhow::Result<(Self::AcceptedState, ProxyRequest)> {
-        let req = HandshakeRequest::from_stream(&mut stream)
+        let req = HandshakeRequest::retrieve_from_async_stream(&mut stream)
             .await
             .context("Reading handshake request")?;
 
-        if !req.methods.contains(&AuthMethod::None) {
+        if !req.evaluate_method(AuthMethod::NoAuth) {
             bail!("Only non-password auth is supported")
         }
 
-        HandshakeResponse::new(AuthMethod::None)
-            .write_to(&mut stream)
+        HandshakeResponse::new(AuthMethod::NoAuth)
+            .write_to_async_stream(&mut stream)
             .await
             .context("Writing handshake response")?;
 
-        let Request { command, address } = Request::from_stream(&mut stream)
+        let Request { command, address } = Request::retrieve_from_async_stream(&mut stream)
             .await
             .context("Reading socks5 request")?;
 
@@ -44,7 +46,7 @@ impl ProtocolAcceptor for Socks5Acceptor {
             Command::Connect => {}
             _ => {
                 Response::new(Reply::CommandNotSupported, Address::unspecified())
-                    .write_to(&mut stream)
+                    .write_to_async_stream(&mut stream)
                     .await
                     .context("Writing response")?;
 
@@ -74,7 +76,7 @@ impl ProtocolAcceptedState for Socks5AcceptedState {
                 .context("Getting local address")?
                 .into(),
         )
-        .write_to(&mut self.stream)
+        .write_to_async_stream(&mut self.stream)
         .await?;
 
         if let Some(data) = initial_data {
@@ -92,7 +94,7 @@ impl ProtocolAcceptedState for Socks5AcceptedState {
         _error: Option<impl AsRef<str> + Send + Sync>,
     ) -> anyhow::Result<()> {
         Response::new(Reply::GeneralFailure, Address::unspecified())
-            .write_to(&mut self.stream)
+            .write_to_async_stream(&mut self.stream)
             .await?;
         Ok(())
     }

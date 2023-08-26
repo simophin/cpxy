@@ -1,9 +1,10 @@
-use atomic::Atomic;
-use chrono::{DateTime, Utc};
-use serde::Serialize;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
+
+use chrono::{DateTime, Utc};
+use parking_lot::RwLock;
+use serde::Serialize;
 
 pub trait ProtocolReporter: Send + Sync {
     fn inc_tx(&self, n: usize);
@@ -46,8 +47,8 @@ pub struct AtomicProtocolReporter {
     rx: AtomicUsize,
     tx: AtomicUsize,
 
-    delays: Atomic<(Duration, usize)>,
-    last_activity: Atomic<Option<Instant>>,
+    delays: RwLock<(Duration, usize)>,
+    last_activity: RwLock<Option<Instant>>,
 }
 
 impl ProtocolReporter for AtomicProtocolReporter {
@@ -60,18 +61,17 @@ impl ProtocolReporter for AtomicProtocolReporter {
     }
 
     fn report_delay(&self, delay: Duration) {
-        self.delays
-            .fetch_update(Ordering::Relaxed, Ordering::Relaxed, |(total, n)| {
-                Some((total + delay, n + 1))
-            })
-            .unwrap();
+        {
+            let mut delays = self.delays.write();
+            delays.0 += delay;
+            delays.1 += 1;
+        }
 
-        self.last_activity
-            .store(Some(Instant::now()), Ordering::Relaxed);
+        *self.last_activity.write() = Some(Instant::now());
     }
 
     fn average_delay(&self) -> Duration {
-        let (total, n) = self.delays.load(Ordering::Relaxed);
+        let (total, n) = *self.delays.read();
         total / (n as u32)
     }
 
@@ -88,7 +88,7 @@ impl ProtocolReporter for AtomicProtocolReporter {
     }
 
     fn last_activity(&self) -> Option<Instant> {
-        self.last_activity.load(Ordering::Relaxed)
+        *self.last_activity.read()
     }
 }
 

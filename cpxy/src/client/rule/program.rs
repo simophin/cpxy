@@ -88,6 +88,8 @@ impl Condition {
 mod tests {
     use std::collections::HashMap;
 
+    use crate::regex::Regex;
+
     use super::*;
 
     struct MockContext<'a> {
@@ -96,6 +98,14 @@ mod tests {
     }
 
     impl<'a> ExecutionContext for MockContext<'a> {
+        fn available_properties(&self) -> &[&Regex] {
+            todo!()
+        }
+
+        fn available_list_operations(&self) -> &[(&Regex, &Regex)] {
+            todo!()
+        }
+
         fn get_property(&self, key: &str) -> Option<&str> {
             self.props.get(key).map(|s| *s)
         }
