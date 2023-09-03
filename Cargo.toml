@@ -1,10 +1,7 @@
 [workspace]
+resolver = "2"
 
-members = [
-    "cpxy",
-    "netstack-lwip",
-    "fetcher"
-]
+members = ["cpxy", "netstack-lwip", "fetcher"]
 
 
 [profile.dev]

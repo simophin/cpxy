@@ -155,14 +155,6 @@ impl<'a> DispatchProgramContext<'a> {
     }
 }
 
-static ALL_FIXED_PROPERTIES: &[Regex] = &[
-    "req.domain".parse().unwrap(),
-    "req.port".parse().unwrap(),
-    "req.ip".parse().unwrap(),
-    "req.ip_country".parse().unwrap(),
-    "os.timezone".parse().unwrap(),
-];
-
 impl<'a> ExecutionContext for DispatchProgramContext<'a> {
     fn get_property(&self, key: &str) -> Option<&str> {
         let mut splits = key.splitn(2, '.');
