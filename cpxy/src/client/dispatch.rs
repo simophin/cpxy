@@ -6,6 +6,7 @@ use std::{
     sync::{Arc, Once},
 };
 
+use anyhow::Context;
 use async_trait::async_trait;
 use dashmap::DashMap;
 use either::Either;
@@ -21,16 +22,27 @@ use crate::{
     sni::{extract_http_host_header, extract_ssl_sni_host},
 };
 
-use super::{rule::ExecutionContext, settings::UpstreamSettings};
+use super::{
+    rule::{ExecutionContext, Outcome, Program},
+    settings::UpstreamSettings,
+};
 
-#[derive(Clone)]
-pub struct DispatchProtocol {
-    stream: Arc<RwLock<Vec<UpstreamSettings>>>,
-    stats: Arc<DashMap<String, Arc<dyn ProtocolReporter>>>,
+pub struct DispatchProtocol<'a> {
+    pub upstreams: &'a [UpstreamSettings],
+    pub reporters: &'a dyn ProtocolReporterLookup,
+    pub program: &'a Program,
+
+    pub dns_cache_lookup: &'a dyn DnsCacheLookup,
+    pub ip_country_lookup: &'a dyn IpCountryLookup,
+    pub domain_list_repository: &'a DomainListRepository,
+}
+
+pub trait ProtocolReporterLookup: Send + Sync {
+    fn lookup(&self, key: &str) -> Option<Arc<dyn ProtocolReporter>>;
 }
 
 #[async_trait]
-impl Protocol for DispatchProtocol {
+impl<'a> Protocol for DispatchProtocol<'a> {
     type ClientStream = <DynamicProtocol as Protocol>::ClientStream;
 
     async fn new_stream(
@@ -39,11 +51,26 @@ impl Protocol for DispatchProtocol {
         reporter: &Arc<dyn ProtocolReporter>,
         fwmark: Option<u32>,
     ) -> anyhow::Result<Self::ClientStream> {
+        let ctx = DispatchProgramContext::new(
+            req,
+            self.dns_cache_lookup,
+            self.ip_country_lookup,
+            self.domain_list_repository,
+        );
+
+        let outcome = self.program.run(&ctx).context("Running program")?;
+        match outcome {
+            Outcome::None => todo!(),
+            Outcome::Proxy(_) => todo!(),
+            Outcome::ProxyGroup(_) => todo!(),
+            Outcome::Direct => todo!(),
+            Outcome::Reject => todo!(),
+        }
         todo!()
     }
 }
 
-impl DispatchProtocol {
+impl<'a> DispatchProtocol<'a> {
     fn find_upstreams(
         &self,
         req: &ProxyRequest,
@@ -55,19 +82,19 @@ impl DispatchProtocol {
     }
 }
 
-pub trait DnsCacheLookup {
+pub trait DnsCacheLookup: Send + Sync {
     fn lookup(&self, host: &str) -> Option<IpAddr>;
     fn reverse(&self, ip: IpAddr) -> Option<String>;
 }
 
-pub trait IpCountryLookup {
+pub trait IpCountryLookup: Send + Sync {
     fn lookup(&self, ip: IpAddr) -> Option<CountryCode>;
 }
 
 struct DispatchProgramContext<'a> {
     req: &'a ProxyRequest,
-    dns_cache_lookup: Box<dyn DnsCacheLookup>,
-    ip_country_lookup: Box<dyn IpCountryLookup>,
+    dns_cache_lookup: &'a dyn DnsCacheLookup,
+    ip_country_lookup: &'a dyn IpCountryLookup,
     domain_list_repository: &'a DomainListRepository,
 
     domain: OnceCell<Option<Cow<'a, str>>>,
@@ -79,6 +106,27 @@ struct DispatchProgramContext<'a> {
 }
 
 impl<'a> DispatchProgramContext<'a> {
+    pub fn new(
+        req: &'a ProxyRequest,
+        dns_cache_lookup: &'a dyn DnsCacheLookup,
+        ip_country_lookup: &'a dyn IpCountryLookup,
+        domain_list_repository: &'a DomainListRepository,
+    ) -> Self {
+        Self {
+            req,
+            dns_cache_lookup,
+            ip_country_lookup,
+            domain_list_repository,
+
+            domain: OnceCell::new(),
+            port: OnceCell::new(),
+            ip: OnceCell::new(),
+            ip_country: OnceCell::new(),
+
+            os_timezone: OnceCell::new(),
+        }
+    }
+
     fn domain(&self) -> Option<&str> {
         self.domain
             .get_or_init(|| {
