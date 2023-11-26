@@ -166,10 +166,10 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v3
-
+      
       - name: Set up rust
-        run: rustup default 1.67.0
-
+        run: rustup toolchain install stable --profile minimal
+      
       - name: Rust caching
         uses: Swatinem/rust-cache@v2
         with:
