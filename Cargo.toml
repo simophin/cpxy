@@ -65,7 +65,7 @@ maplit = "1"
 cc = "1"
 
 [target.'cfg(unix)'.dependencies]
-nix = {version = "0", features = ["net"]}
+nix = {version = "0.25", features = ["net"]}
 
 [target.'cfg(target_os = "linux")'.dependencies]
 interfaces = "0"
