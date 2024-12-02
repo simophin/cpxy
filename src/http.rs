@@ -183,7 +183,6 @@ impl<I: WithHeaders, T: AsyncRead + Unpin + Send + Sync> AsyncHttpStream<I, T> {
         match (content_len, transfer_encoding) {
             (Some(len), e) if len > 0 => {
                 let mut buf = vec![0u8; len];
-                drop(e);
                 self.read_exact(buf.as_mut_slice()).await?;
                 Ok(buf)
             }

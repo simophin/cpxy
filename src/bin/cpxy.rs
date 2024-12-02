@@ -123,6 +123,11 @@ fn main() -> anyhow::Result<()> {
                     )
                 }
 
+                if tasks.is_empty() {
+                    log::warn!("No service given");
+                    return Ok(());
+                }
+
                 select_all(tasks).await.0
             }
             Command::Client {

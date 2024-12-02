@@ -2,7 +2,7 @@ use std::fmt::Debug;
 
 use super::client::{CipherParams, BASE64_ENGINE};
 use anyhow::{bail, Context};
-use base64::decode_engine;
+use base64::Engine;
 use cipher::StreamCipher;
 use futures::{AsyncRead, AsyncReadExt, AsyncWrite};
 
@@ -106,7 +106,7 @@ pub async fn accept_client<T: AsyncRead + AsyncWrite + Send + Sync + Unpin>(
 
     let initial_data = match req.request().get_header(super::client::INITIAL_DATA_HEADER) {
         Some(value) => {
-            let mut data = decode_engine(value, BASE64_ENGINE)?;
+            let mut data = BASE64_ENGINE.decode(value)?;
             rd_cipher.apply_keystream(&mut data);
             Some(data)
         }

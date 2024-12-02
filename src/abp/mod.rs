@@ -8,11 +8,14 @@ use std::{
 };
 
 use crate::{fetch::fetch_http_with_proxy, socks5::Address};
+use adblock::request::Request;
 use adblock::{
-    engine::Engine,
     lists::{FilterSet, ParseOptions},
+    Engine,
 };
 use anyhow::{anyhow, bail};
+use base64::prelude::BASE64_URL_SAFE_NO_PAD;
+use base64::Engine as Base64Engine;
 use chrono::{DateTime, Utc};
 use futures::AsyncWriteExt;
 use lazy_static::lazy_static;
@@ -136,7 +139,7 @@ async fn update_engine(
     if is_base64 {
         // Remove new lines first
         body.retain(|x| *x != b'\r' && *x != b'\n');
-        body = base64::decode(body)?;
+        body = BASE64_URL_SAFE_NO_PAD.decode(&body)?;
     }
 
     let mut filter_set = FilterSet::new(true);
@@ -165,7 +168,7 @@ async fn update_engine(
             let contents = g
                 .cache_file_path
                 .as_ref()
-                .and_then(|_| new_engine.serialize_compressed().ok());
+                .and_then(|_| new_engine.serialize_raw().ok());
             g.engine = Some((new_engine, last_updated));
             (g.cache_file_path.clone(), contents)
         }
@@ -201,9 +204,11 @@ fn matches_abp(state: &RwLock<EngineState>, addr: &Address) -> bool {
         _ => format!("http://{}", addr.get_host()),
     };
 
-    engine
-        .check_network_urls(url.as_str(), url.as_str(), "")
-        .matched
+    let Ok(req) = Request::new(&url, &url, "document") else {
+        return false;
+    };
+
+    engine.check_network_request(&req).matched
 }
 
 pub struct ABPEngine {

@@ -48,7 +48,7 @@ impl Protocol for UdpMan {
         let uuid = Uuid::new_v4();
         let initial_dst = dst.resolve_first().await?;
         let connect_msg = proto::Message::Connect {
-            uuid: uuid.as_ref().into(),
+            uuid: uuid.as_bytes().as_ref().into(),
             initial_data: initial_data.into(),
             dst: initial_dst,
             initial_data_nonce: None,
@@ -105,7 +105,7 @@ impl Protocol for UdpMan {
                     conn_id,
                     initial_reply,
                 } => {
-                    if uuid.as_ref() != received_uuid.as_ref() {
+                    if uuid.as_bytes().as_ref() != received_uuid.as_ref() {
                         let _ = incoming_tx
                             .send(Err(anyhow!(
                                 "First replying message's UUID doesn't match the requested one"
