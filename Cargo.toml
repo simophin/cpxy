@@ -6,7 +6,7 @@ version = "0.1.0"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-adblock = {version = "0", default-features = false, features = ["full-regex-handling", "embedded-domain-resolver"]}
+adblock = {version = "0.7", default-features = false, features = ["full-regex-handling", "embedded-domain-resolver"]}
 anyhow = "1"
 async-broadcast = "0"
 async-io = "1"
@@ -65,7 +65,7 @@ maplit = "1"
 cc = "1"
 
 [target.'cfg(unix)'.dependencies]
-nix = {version = "0", features = ["net"]}
+nix = {version = "0.25", features = ["net"]}
 
 [target.'cfg(target_os = "linux")'.dependencies]
 interfaces = "0"
