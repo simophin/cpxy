@@ -23,7 +23,7 @@ bytes = {version = "1", features = ["serde"]}
 chacha20 = "0"
 chrono = {version = "0", features = ["serde"]}
 cipher = "0"
-clap = {version = "4", features = ["derive"]}
+clap = {version = "3", features = ["derive"] }
 derive_more = "0"
 dirs = "5"
 dns-parser = "0"
