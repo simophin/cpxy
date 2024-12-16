@@ -161,8 +161,6 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v3
 
-      - name: Set up rust
-        run: rustup default 1.67.0 && rustup target add ${{ matrix.target }}
       - name: Rust caching
         uses: Swatinem/rust-cache@v2
         with:
