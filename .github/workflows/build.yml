@@ -47,9 +47,6 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v3
 
-      - name: Set up rust
-        run: rustup toolchain install stable --profile minimal
-
       - name: Rust caching
         uses: Swatinem/rust-cache@v2
         with:
@@ -75,12 +72,10 @@ jobs:
         target:
           - x86_64-unknown-linux-musl
           - aarch64-unknown-linux-musl
+          - mipsel-unknown-linux-musl 
     steps:
       - name: Checkout repository
         uses: actions/checkout@v3
-
-      - name: Set up rust
-        run: rustup target add ${{ matrix.target }}
 
       - name: Rust caching
         uses: Swatinem/rust-cache@v2
