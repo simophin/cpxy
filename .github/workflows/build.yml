@@ -89,7 +89,7 @@ jobs:
           key: ${{ matrix.target }}
 
       - name: Download web app
-        uses: actions/download-artifact@v3
+        uses: actions/download-artifact@v4
         with:
           name: web-app
           path: web/build
@@ -131,7 +131,7 @@ jobs:
           registry: ghcr.io
           username: ${{ github.repository_owner }}
           password: ${{ secrets.GITHUB_TOKEN }}
-      - uses: actions/download-artifact@v3
+      - uses: actions/download-artifact@v4
       - name: Rename artifacts
         run: |
           mkdir linux
@@ -176,7 +176,7 @@ jobs:
           key: ${{ matrix.target }}
 
       - name: Download web app
-        uses: actions/download-artifact@v3
+        uses: actions/download-artifact@v4
         with:
           name: web-app
           path: web/build
@@ -205,31 +205,31 @@ jobs:
           cache: "gradle"
 
       - name: Download web app
-        uses: actions/download-artifact@v3
+        uses: actions/download-artifact@v4
         with:
           name: web-app
           path: web/build
 
       - name: Download armv7 lib
-        uses: actions/download-artifact@v3
+        uses: actions/download-artifact@v4
         with:
           name: android-lib-armv7-linux-androideabi
           path: android/app/src/main/jniLibs/armeabi-v7a
 
       - name: Download arm64 lib
-        uses: actions/download-artifact@v3
+        uses: actions/download-artifact@v4
         with:
           name: android-lib-aarch64-linux-android
           path: android/app/src/main/jniLibs/arm64-v8a
 
       - name: Download i686 lib
-        uses: actions/download-artifact@v3
+        uses: actions/download-artifact@v4
         with:
           name: android-lib-i686-linux-android
           path: android/app/src/main/jniLibs/x86
 
       - name: Download x86_64 lib
-        uses: actions/download-artifact@v3
+        uses: actions/download-artifact@v4
         with:
           name: android-lib-x86_64-linux-android
           path: android/app/src/main/jniLibs/x86_64
