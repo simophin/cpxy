@@ -86,6 +86,7 @@ incremental = true
 
 [profile.release]
 strip = "symbols"
+panic = "abort"
 
 [profile.bench]
 debug = true
