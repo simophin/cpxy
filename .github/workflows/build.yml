@@ -56,7 +56,7 @@ jobs:
           key: test
 
       - name: Download web app
-        uses: actions/download-artifact@v3
+        uses: actions/download-artifact@v4
         with:
           name: web-app
           path: web/build
@@ -101,7 +101,7 @@ jobs:
           chmod +x target/${{ matrix.target }}/release/cpxy
 
       - name: Upload Linux app
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: linux-app-${{ matrix.target }}
           path: target/${{ matrix.target }}/release/cpxy
@@ -185,7 +185,7 @@ jobs:
         run: cargo install cross && cross build --release --lib --target=${{ matrix.target }}
 
       - name: Upload Android lib
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: android-lib-${{ matrix.target }}
           path: target/${{ matrix.target }}/release/libcpxy.so
@@ -239,7 +239,7 @@ jobs:
         run: cd android && ./gradlew assembleRelease
 
       - name: Upload Android app
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: android-app
           path: android/app/build/outputs/apk/release/app-release.apk
@@ -262,7 +262,7 @@ jobs:
         uses: Swatinem/rust-cache@v2
 
       - name: Download web app
-        uses: actions/download-artifact@v3
+        uses: actions/download-artifact@v4
         with:
           name: web-app
           path: web/build
@@ -271,7 +271,7 @@ jobs:
         run: cargo build --bin cpxy --release
 
       - name: Upload ${{ matrix.os }} app
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: ${{ matrix.os }}-app
           path: target/release/cpxy*
@@ -288,7 +288,7 @@ jobs:
       - publishDockerImages
     steps:
       - name: Download all artifacts
-        uses: actions/download-artifact@v3
+        uses: actions/download-artifact@v4
       - name: Archive Linux artifacts
         run: |
           for i in linux-app-*; do
