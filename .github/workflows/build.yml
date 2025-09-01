@@ -35,7 +35,7 @@ jobs:
         run: cd web && yarn install && yarn build
 
       - name: Upload web app
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: web-app
           path: web/build/*
