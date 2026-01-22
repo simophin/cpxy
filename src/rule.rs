@@ -68,6 +68,20 @@ pub struct Rule {
     action: RuleAction,
 }
 
+impl FromStr for RuleProtocol {
+    type Err = anyhow::Error;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        if s.eq_ignore_ascii_case("tcp") {
+            Ok(Self::Tcp)
+        } else if s.eq_ignore_ascii_case("udp") {
+            Ok(Self::Udp)
+        } else {
+            bail!("Invalid protocol: {s}");
+        }
+    }
+}
+
 impl FromStr for RuleDestination {
     type Err = anyhow::Error;
 
